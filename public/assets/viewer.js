@@ -169,11 +169,10 @@ function syncHudPose(){
 }
 renderer.setAnimationLoop((time)=>{
  if(cardboard){const canvas=renderer.domElement;canvas.style.position='fixed';canvas.style.inset='0';canvas.style.width='100vw';canvas.style.height='100dvh';canvas.style.zIndex='1'}
- }
  syncHudPose();syncCardboardDebug();syncXRDebug();
  scene.traverse(o=>{if(o.userData?.animate)o.userData.animate(time,gazeTarget?.userData?.portal===o)});
  if(orientation&&!renderer.xr.isPresenting)deviceOrientation.update();
  if(!orientation&&!renderer.xr.isPresenting&&!cardboard){const phi=THREE.MathUtils.degToRad(90-lat),theta=THREE.MathUtils.degToRad(lon);camera.lookAt(500*Math.sin(phi)*Math.cos(theta),500*Math.cos(phi),500*Math.sin(phi)*Math.sin(theta))}
- syncXREyes();updateGaze();if(cardboard&&!renderer.xr.isPresenting)renderCardboard();else renderer.render(scene,camera);
+ syncXREyes();updateGaze();if(legacyCardboard){legacyVREffect.render(scene,camera)}else if(cardboard&&!renderer.xr.isPresenting)renderCardboard();else renderer.render(scene,camera);
 });
 setTimeout(()=>document.querySelector('#viewer-help')?.classList.add('hide'),4200);
