@@ -1,0 +1,12 @@
+Options -Indexes
+RewriteEngine On
+
+# Never expose application internals.
+RewriteRule ^(?:config\.php|src(?:/|$)|data(?:/|$)|\.git(?:/|$)) - [F,L,NC]
+
+# Avoid rewriting the public directory twice.
+RewriteRule ^public(?:/|$) - [L]
+
+# Serve the application from /public while keeping clean URLs.
+RewriteCond %{REQUEST_URI} !^/public/
+RewriteRule ^(.*)$ public/$1 [L]
