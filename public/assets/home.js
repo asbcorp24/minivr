@@ -1,3 +1,3 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
+import * as THREE from '/assets/vendor/three/three.module.js';
 const c=document.querySelector('#space'),r=new THREE.WebGLRenderer({canvas:c,alpha:true,antialias:true}),s=new THREE.Scene(),cam=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,100);
 cam.position.z=6;const g=new THREE.BufferGeometry(),n=900,a=new Float32Array(n*3);for(let i=0;i<a.length;i++)a[i]=(Math.random()-.5)*18;g.setAttribute('position',new THREE.BufferAttribute(a,3));s.add(new THREE.Points(g,new THREE.PointsMaterial({size:.018,color:0x52e8ff,transparent:true,opacity:.5})));function z(){r.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}addEventListener('resize',z);z();r.setAnimationLoop(t=>{s.rotation.y=t*.000015;r.render(s,cam)});
