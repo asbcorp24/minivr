@@ -35,7 +35,8 @@ new THREE.TextureLoader().load(root.dataset.image,source=>{
    if(projection==='flat'){mesh.position.set(3.2,0,0);mesh.rotation.y=-Math.PI/2;}else if(projection==='180')mesh.rotation.y=Math.PI/2;
    mesh.layers.enableAll();scene.add(mesh);leftMesh=rightMesh=mesh;
  }else{leftMesh=makeEye(source,'left');rightMesh=makeEye(source,'right')}
-});
+ requestAnimationFrame(()=>requestAnimationFrame(()=>document.body.classList.remove('scene-loading')));
+},undefined,err=>{console.error('Scene texture load failed',err);document.querySelector('#loader span').textContent='SCENE LOAD ERROR';});
 
 function desktopEye(){camera.layers.enable(1);camera.layers.disable(2)}
 if(stereoMode==='mono'){camera.layers.enable(1);camera.layers.enable(2)}else desktopEye();
@@ -87,7 +88,7 @@ function renderCardboard(){
  renderer.setViewport(w/2,0,w/2,h);renderer.setScissor(w/2,0,w/2,h);camera.layers.disable(1);camera.layers.enable(2);renderer.render(scene,camera);
  renderer.setScissorTest(false);if(stereoMode==='mono'){camera.layers.enable(1);camera.layers.enable(2)}else desktopEye();camera.aspect=oldAspect;camera.updateProjectionMatrix();renderer.setViewport(0,0,w,h);
 }
-function navigate(url){document.body.classList.add('scene-leaving');setTimeout(()=>location.href=url,180)}
+function navigate(url){if(document.body.classList.contains('scene-leaving'))return;document.body.classList.add('scene-leaving');setTimeout(()=>location.href=url,260)}
 document.querySelector('#cardboard').onclick=()=>{cardboard=!cardboard;document.body.classList.toggle('cardboard',cardboard);hud.visible=cardboard||renderer.xr.isPresenting;if(cardboard)document.documentElement.requestFullscreen?.()};
 
 function updateGaze(){if(!cardboard&&!renderer.xr.isPresenting)return;if(renderer.xr.isPresenting){const xrCam=renderer.xr.getCamera(camera);const origin=new THREE.Vector3(),direction=new THREE.Vector3(0,0,-1);xrCam.getWorldPosition(origin);xrCam.getWorldDirection(direction);raycaster.set(origin,direction)}else raycaster.setFromCamera(new THREE.Vector2(0,0),camera);const hit=raycaster.intersectObjects(pickables(),false)[0]?.object||null;if(hit!==gazeTarget){if(gazeTarget&&hotspotObjects.includes(gazeTarget)){gazeTarget.material.map.dispose();gazeTarget.material.map=markerTexture(gazeTarget.userData,false);gazeTarget.scale.setScalar(gazeTarget.userData.baseScale)}if(hit&&hotspotObjects.includes(hit)){hit.material.map.dispose();hit.material.map=markerTexture(hit.userData,true);hit.scale.setScalar(hit.userData.baseScale*1.25)}gazeTarget=hit;gazeStart=performance.now();document.body.classList.remove('gazing')}if(hit){document.body.classList.add('gazing');const elapsed=performance.now()-gazeStart;document.documentElement.style.setProperty('--gaze',Math.min(1,elapsed/1200));if(elapsed>1200){gazeStart=performance.now()+999999;activate(hit)}}else{document.body.classList.remove('gazing');document.documentElement.style.setProperty('--gaze',0)}}
