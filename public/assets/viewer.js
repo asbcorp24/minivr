@@ -2,7 +2,6 @@ import * as THREE from '/assets/vendor/three/three.module.js';
 import {VRButton} from '/assets/vendor/three/addons/webxr/VRButton.js';
 import DeviceOrientationControls from '/assets/vendor/three/DeviceOrientationControls.js';
 import CardboardEffect from '/assets/vendor/three/effects/CardboardEffect.js';
-import DeviceOrientationControls from '/assets/vendor/three/addons/controls/DeviceOrientationControls.js';
 
 const root=document.querySelector('#viewer');
 const projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'mono';
@@ -88,7 +87,7 @@ const vrBtn=VRButton.createButton(renderer);vrBtn.style.display='none';document.
 
 function renderCardboard(){cardboardEffect.render(scene,camera,stereoMode)}
 function navigate(url){if(document.body.classList.contains('scene-leaving'))return;document.body.classList.add('scene-leaving');setTimeout(()=>location.href=url,260)}
-async function toggleCardboard(){if(renderer.xr.isPresenting)return;if(!cardboard){if(typeof DeviceOrientationEvent?.requestPermission==='function'){try{if((await DeviceOrientationEvent.requestPermission())!=='granted')return}catch{return}}orientation=true;deviceOrientationControls.enabled=true;deviceOrientationControls.connect();cardboard=true;document.body.classList.add('cardboard');hud.visible=true;try{await document.documentElement.requestFullscreen?.()}catch{}try{await screen.orientation?.lock?.('landscape')}catch{}resize()}else{cardboard=false;orientation=false;deviceOrientationControls.enabled=false;deviceOrientationControls.disconnect();document.body.classList.remove('cardboard');hud.visible=false;try{screen.orientation?.unlock?.()}catch{}if(document.fullscreenElement)try{await document.exitFullscreen?.()}catch{}resize()}}document.querySelector('#cardboard').onclick=toggleCardboard;
+async function toggleCardboard(){if(renderer.xr.isPresenting)return;if(!cardboard){if(typeof DeviceOrientationEvent?.requestPermission==='function'){try{if((await DeviceOrientationEvent.requestPermission())!=='granted')return}catch{return}}orientation=true;deviceOrientation.enabled=true;deviceOrientation.connect();cardboard=true;document.body.classList.add('cardboard');hud.visible=true;try{await document.documentElement.requestFullscreen?.()}catch{}try{await screen.orientation?.lock?.('landscape')}catch{}resize()}else{cardboard=false;orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();document.body.classList.remove('cardboard');hud.visible=false;try{screen.orientation?.unlock?.()}catch{}if(document.fullscreenElement)try{await document.exitFullscreen?.()}catch{}resize()}}document.querySelector('#cardboard').onclick=toggleCardboard;
 
 function updateGaze(){if(!cardboard&&!renderer.xr.isPresenting)return;if(renderer.xr.isPresenting){const xrCam=renderer.xr.getCamera(camera);const origin=new THREE.Vector3(),direction=new THREE.Vector3(0,0,-1);xrCam.getWorldPosition(origin);xrCam.getWorldDirection(direction);raycaster.set(origin,direction)}else if(cardboard){cardboardEffect.centerRay(raycaster)}else raycaster.setFromCamera(new THREE.Vector2(0,0),camera);const hit=raycaster.intersectObjects(pickables(),false)[0]?.object||null;if(hit!==gazeTarget){if(gazeTarget&&hotspotObjects.includes(gazeTarget)){gazeTarget.material.map.dispose();gazeTarget.material.map=markerTexture(gazeTarget.userData,false);gazeTarget.scale.setScalar(gazeTarget.userData.baseScale)}if(hit&&hotspotObjects.includes(hit)){hit.material.map.dispose();hit.material.map=markerTexture(hit.userData,true);hit.scale.setScalar(hit.userData.baseScale*1.25)}gazeTarget=hit;gazeStart=performance.now();document.body.classList.remove('gazing')}if(hit){document.body.classList.add('gazing');const elapsed=performance.now()-gazeStart;document.documentElement.style.setProperty('--gaze',Math.min(1,elapsed/1200));if(elapsed>1200){gazeStart=performance.now()+999999;activate(hit)}}else{document.body.classList.remove('gazing');document.documentElement.style.setProperty('--gaze',0)}}
 renderer.xr.addEventListener('sessionstart',()=>{hud.visible=true});
@@ -97,6 +96,6 @@ renderer.domElement.addEventListener('pointermove',e=>{if(cardboard||renderer.xr
 renderer.setAnimationLoop(()=>{
  if(orientation&&!renderer.xr.isPresenting)deviceOrientation.update();
  if(!orientation&&!renderer.xr.isPresenting&&!cardboard){const phi=THREE.MathUtils.degToRad(90-lat),theta=THREE.MathUtils.degToRad(lon);camera.lookAt(500*Math.sin(phi)*Math.cos(theta),500*Math.cos(phi),500*Math.sin(phi)*Math.sin(theta))}
- if(orientation&&!renderer.xr.isPresenting)deviceOrientationControls.update();syncXREyes();updateGaze();if(cardboard&&!renderer.xr.isPresenting)renderCardboard();else renderer.render(scene,camera);
+ syncXREyes();updateGaze();if(cardboard&&!renderer.xr.isPresenting)renderCardboard();else renderer.render(scene,camera);
 });
 setTimeout(()=>document.querySelector('#viewer-help')?.classList.add('hide'),4200);
