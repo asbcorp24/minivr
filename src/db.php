@@ -11,6 +11,6 @@ function db(): PDO {
  CREATE TABLE IF NOT EXISTS hotspots(id INTEGER PRIMARY KEY AUTOINCREMENT,scene_id INTEGER NOT NULL,target_scene_id INTEGER,label TEXT NOT NULL,yaw REAL NOT NULL DEFAULT 0,pitch REAL NOT NULL DEFAULT 0,type TEXT NOT NULL DEFAULT 'scene',content TEXT DEFAULT '',FOREIGN KEY(scene_id) REFERENCES tour_scenes(id) ON DELETE CASCADE);");
  $cols=$db->query("PRAGMA table_info(panoramas)")->fetchAll();$names=array_column($cols,'name');
  if(!in_array('projection',$names,true))$db->exec("ALTER TABLE panoramas ADD COLUMN projection TEXT NOT NULL DEFAULT '360'");
- if(!in_array('stereo',$names,true))$db->exec("ALTER TABLE panoramas ADD COLUMN stereo TEXT NOT NULL DEFAULT 'mono'");
+ if(!in_array('stereo',$names,true))$db->exec("ALTER TABLE panoramas ADD COLUMN stereo TEXT NOT NULL DEFAULT 'mono'");\n $tourCols=$db->query("PRAGMA table_info(tours)")->fetchAll();$tourNames=array_column($tourCols,'name');\n if(!in_array('start_scene_id',$tourNames,true))$db->exec("ALTER TABLE tours ADD COLUMN start_scene_id INTEGER");
  return $db;
 }
