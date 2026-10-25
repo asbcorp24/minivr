@@ -32,7 +32,7 @@ export default class CardboardEffect {
       c.fov=camera.fov;c.aspect=aspect;c.near=camera.near;c.far=camera.far;c.updateProjectionMatrix();
       c.layers.disableAll();c.layers.enable(0);
     }
-    if(stereo==='mono'){this.cameraL.layers.enable(1);this.cameraL.layers.enable(2);this.cameraR.layers.enable(1);this.cameraR.layers.enable(2)}else{this.cameraL.layers.enable(1);this.cameraR.layers.enable(2)}
+    if(stereo==='mono'){this.cameraL.layers.enableAll();this.cameraR.layers.enableAll()}else{this.cameraL.layers.enable(0);this.cameraL.layers.enable(1);this.cameraR.layers.enable(0);this.cameraR.layers.enable(2)}
     renderer.setRenderTarget(null);
     renderer.setScissorTest(true);
     renderer.clear();
