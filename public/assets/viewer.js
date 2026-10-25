@@ -1,5 +1,5 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
-import {VRButton} from 'https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/webxr/VRButton.js';
+import * as THREE from '/assets/vendor/three/three.module.js';
+import {VRButton} from '/assets/vendor/three/addons/webxr/VRButton.js';
 
 const root=document.querySelector('#viewer');
 const projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'mono';
