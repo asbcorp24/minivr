@@ -129,14 +129,13 @@ function updateCardboardEyes(){
 }
 function renderCardboard(){
  const {size,half,l,r}=updateCardboardEyes();
- renderer.setRenderTarget(null);
- renderer.autoClear=false;
- renderer.setScissorTest(false);renderer.setViewport(0,0,size.x,size.y);renderer.clear(true,true,true);
+ const gl=renderer.getContext();
+ renderer.setRenderTarget(null);renderer.autoClear=false;
  renderer.setScissorTest(true);
- renderer.setViewport(0,0,half,size.y);renderer.setScissor(0,0,half,size.y);renderer.clearDepth();renderer.render(scene,l);
- renderer.setViewport(half,0,size.x-half,size.y);renderer.setScissor(half,0,size.x-half,size.y);renderer.clearDepth();renderer.render(scene,r);
- renderer.setScissorTest(false);renderer.setViewport(0,0,size.x,size.y);
- renderer.autoClear=true;
+ gl.enable(gl.SCISSOR_TEST);
+ gl.viewport(0,0,half,size.y);gl.scissor(0,0,half,size.y);gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);renderer.render(scene,l);
+ gl.viewport(half,0,size.x-half,size.y);gl.scissor(half,0,size.x-half,size.y);gl.clear(gl.DEPTH_BUFFER_BIT);renderer.render(scene,r);
+ gl.disable(gl.SCISSOR_TEST);renderer.setScissorTest(false);renderer.setViewport(0,0,size.x,size.y);renderer.autoClear=true;
 }
 function navigate(url){if(document.body.classList.contains('scene-leaving'))return;document.body.classList.add('scene-leaving');setTimeout(()=>location.href=url,260)}
 async function toggleCardboard(){if(renderer.xr.isPresenting)return;if(!cardboard){if(typeof DeviceOrientationEvent?.requestPermission==='function'){try{if((await DeviceOrientationEvent.requestPermission())!=='granted')return}catch{return}}orientation=true;deviceOrientation.enabled=true;deviceOrientation.connect();cardboard=true;cardboardDebug.visible=false;document.body.classList.add('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';hud.visible=true;try{await document.documentElement.requestFullscreen?.()}catch{}try{await screen.orientation?.lock?.('landscape')}catch{}resize()}else{cardboard=false;cardboardDebug.visible=false;orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();document.body.classList.remove('cardboard');document.querySelector('#controls').style.display='';document.querySelector('#top').style.display='';hud.visible=false;try{screen.orientation?.unlock?.()}catch{}if(document.fullscreenElement)try{await document.exitFullscreen?.()}catch{}resize()}}document.querySelector('#cardboard').onclick=toggleCardboard;
@@ -152,6 +151,8 @@ function syncHudPose(){
  head.updateMatrixWorld(true);head.getWorldPosition(hud.position);head.getWorldQuaternion(hud.quaternion);hud.scale.setScalar(cardboard?.62:1);
 }
 renderer.setAnimationLoop((time)=>{
+ if(cardboard){const canvas=renderer.domElement;canvas.style.position='fixed';canvas.style.inset='0';canvas.style.width='100vw';canvas.style.height='100dvh';canvas.style.zIndex='1'}
+ }
  syncHudPose();syncCardboardDebug();syncXRDebug();
  scene.traverse(o=>{if(o.userData?.animate)o.userData.animate(time,gazeTarget?.userData?.portal===o)});
  if(orientation&&!renderer.xr.isPresenting)deviceOrientation.update();
