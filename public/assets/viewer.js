@@ -1,5 +1,4 @@
 import * as THREE from '/assets/vendor/three/three.module.js';
-import {VRButton} from '/assets/vendor/three/addons/webxr/VRButton.js';
 import DeviceOrientationControls from '/assets/vendor/three/DeviceOrientationControls.js';
 
 const root=document.querySelector('#viewer');
@@ -104,7 +103,22 @@ addEventListener('pointerup',e=>{if(down&&!moved&&!cardboard&&!renderer.xr.isPre
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}addEventListener('resize',resize);resize();
 document.querySelector('#gyro').onclick=async()=>{if(typeof DeviceOrientationEvent?.requestPermission==='function'&&(await DeviceOrientationEvent.requestPermission())!=='granted')return;orientation=!orientation;deviceOrientation.enabled=orientation};
 document.querySelector('#full').onclick=()=>document.documentElement.requestFullscreen?.();
-const vrBtn=VRButton.createButton(renderer);vrBtn.style.cssText+=';display:none!important;visibility:hidden!important;position:fixed!important;left:-9999px!important';document.body.appendChild(vrBtn);const vrControl=document.querySelector('#vr');vrControl.textContent='ENTER VR';if(!navigator.xr){vrControl.disabled=true;vrControl.title='WebXR недоступен в этом браузере'}vrControl.onclick=()=>{if(cardboard)return;vrBtn.click()};
+const vrControl=document.querySelector('#vr');vrControl.textContent='ENTER VR';let xrSession=null;
+async function startImmersiveVR(){
+ if(cardboard||renderer.xr.isPresenting)return;
+ if(!navigator.xr){await toggleCardboard();return}
+ try{
+  const supported=await navigator.xr.isSessionSupported?.('immersive-vr');
+  if(!supported){await toggleCardboard();return}
+  xrSession=await navigator.xr.requestSession('immersive-vr',{optionalFeatures:['local-floor','bounded-floor','hand-tracking']});
+  xrSession.addEventListener('end',()=>{xrSession=null},{once:true});
+  await renderer.xr.setSession(xrSession);
+ }catch(err){
+  console.warn('WebXR immersive-vr failed; using Cardboard fallback',err);
+  if(!renderer.xr.isPresenting)await toggleCardboard();
+ }
+}
+vrControl.onclick=startImmersiveVR;
 
 function updateCardboardEyes(){
  const size=renderer.getDrawingBufferSize(new THREE.Vector2()),half=Math.max(1,Math.floor(size.x/2));
