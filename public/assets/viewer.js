@@ -1,7 +1,6 @@
 import * as THREE from '/assets/vendor/three/three.module.js';
 import {VRButton} from '/assets/vendor/three/addons/webxr/VRButton.js';
 import DeviceOrientationControls from '/assets/vendor/three/DeviceOrientationControls.js';
-import CardboardEffect from '/assets/vendor/three/effects/CardboardEffect.js';
 
 const root=document.querySelector('#viewer');
 const projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'mono';
@@ -10,7 +9,7 @@ const tourData=JSON.parse(document.querySelector('#tour-data')?.textContent||'{"
 const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1100);
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.xr.enabled=true;root.appendChild(renderer.domElement);
 let cardboard=false,lon=0,lat=0,down=false,x0=0,y0=0,lon0=0,lat0=0,orientation=false,leftMesh,rightMesh;
-const cardboardEffect=new CardboardEffect(renderer);
+const cardboardStereo=new THREE.StereoCamera();cardboardStereo.eyeSep=.064;
 const deviceOrientation=new DeviceOrientationControls(camera);deviceOrientation.enabled=false;
 
 function eyeTexture(source,eye){
@@ -101,11 +100,24 @@ document.querySelector('#gyro').onclick=async()=>{if(typeof DeviceOrientationEve
 document.querySelector('#full').onclick=()=>document.documentElement.requestFullscreen?.();
 const vrBtn=VRButton.createButton(renderer);vrBtn.style.display='none';document.body.appendChild(vrBtn);const vrControl=document.querySelector('#vr');if(!navigator.xr){vrControl.disabled=true;vrControl.title='WebXR недоступен в этом браузере'}vrControl.onclick=()=>vrBtn.click();
 
-function renderCardboard(){cardboardEffect.render(scene,camera,stereoMode)}
+function updateCardboardEyes(){
+ const size=renderer.getDrawingBufferSize(new THREE.Vector2()),half=Math.max(1,Math.floor(size.x/2));
+ camera.aspect=half/Math.max(1,size.y);camera.updateProjectionMatrix();camera.updateMatrixWorld(true);cardboardStereo.update(camera);
+ const l=cardboardStereo.cameraL,r=cardboardStereo.cameraR;
+ if(stereoMode==='mono'){l.layers.enableAll();r.layers.enableAll()}else{l.layers.disableAll();l.layers.enable(0);l.layers.enable(1);r.layers.disableAll();r.layers.enable(0);r.layers.enable(2)}
+ return {size,half,l,r};
+}
+function renderCardboard(){
+ const {size,half,l,r}=updateCardboardEyes();
+ renderer.setRenderTarget(null);renderer.setScissorTest(false);renderer.clear();renderer.setScissorTest(true);
+ renderer.setViewport(0,0,half,size.y);renderer.setScissor(0,0,half,size.y);renderer.render(scene,l);
+ renderer.setViewport(half,0,size.x-half,size.y);renderer.setScissor(half,0,size.x-half,size.y);renderer.render(scene,r);
+ renderer.setScissorTest(false);renderer.setViewport(0,0,size.x,size.y);
+}
 function navigate(url){if(document.body.classList.contains('scene-leaving'))return;document.body.classList.add('scene-leaving');setTimeout(()=>location.href=url,260)}
 async function toggleCardboard(){if(renderer.xr.isPresenting)return;if(!cardboard){if(typeof DeviceOrientationEvent?.requestPermission==='function'){try{if((await DeviceOrientationEvent.requestPermission())!=='granted')return}catch{return}}orientation=true;deviceOrientation.enabled=true;deviceOrientation.connect();cardboard=true;document.body.classList.add('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';hud.visible=true;try{await document.documentElement.requestFullscreen?.()}catch{}try{await screen.orientation?.lock?.('landscape')}catch{}resize()}else{cardboard=false;orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();document.body.classList.remove('cardboard');document.querySelector('#controls').style.display='';document.querySelector('#top').style.display='';hud.visible=false;try{screen.orientation?.unlock?.()}catch{}if(document.fullscreenElement)try{await document.exitFullscreen?.()}catch{}resize()}}document.querySelector('#cardboard').onclick=toggleCardboard;
 
-function updateGaze(){if(!cardboard&&!renderer.xr.isPresenting)return;if(renderer.xr.isPresenting){const xrCam=renderer.xr.getCamera(camera);const origin=new THREE.Vector3(),direction=new THREE.Vector3(0,0,-1);xrCam.getWorldPosition(origin);xrCam.getWorldDirection(direction);raycaster.set(origin,direction)}else if(cardboard){cardboardEffect.centerRay(raycaster)}else raycaster.setFromCamera(new THREE.Vector2(0,0),camera);const hit=raycaster.intersectObjects(pickables(),false)[0]?.object||null;if(hit!==gazeTarget){if(gazeTarget&&hotspotObjects.includes(gazeTarget)&&!gazeTarget.userData.portal){gazeTarget.material.map.dispose();gazeTarget.material.map=markerTexture(gazeTarget.userData,false);gazeTarget.scale.setScalar(gazeTarget.userData.baseScale)}if(hit&&hotspotObjects.includes(hit)&&!hit.userData.portal){hit.material.map.dispose();hit.material.map=markerTexture(hit.userData,true);hit.scale.setScalar(hit.userData.baseScale*1.25)}gazeTarget=hit;gazeStart=performance.now();document.body.classList.remove('gazing')}if(hit){document.body.classList.add('gazing');const elapsed=performance.now()-gazeStart;document.documentElement.style.setProperty('--gaze',Math.min(1,elapsed/1200));if(elapsed>1200){gazeStart=performance.now()+999999;activate(hit)}}else{document.body.classList.remove('gazing');document.documentElement.style.setProperty('--gaze',0)}}
+function updateGaze(){if(!cardboard&&!renderer.xr.isPresenting)return;if(renderer.xr.isPresenting){const xrCam=renderer.xr.getCamera(camera);const origin=new THREE.Vector3(),direction=new THREE.Vector3(0,0,-1);xrCam.getWorldPosition(origin);xrCam.getWorldDirection(direction);raycaster.set(origin,direction)}else if(cardboard){const {l}=updateCardboardEyes();raycaster.setFromCamera(new THREE.Vector2(0,0),l)}else raycaster.setFromCamera(new THREE.Vector2(0,0),camera);const hit=raycaster.intersectObjects(pickables(),false)[0]?.object||null;if(hit!==gazeTarget){if(gazeTarget&&hotspotObjects.includes(gazeTarget)&&!gazeTarget.userData.portal){gazeTarget.material.map.dispose();gazeTarget.material.map=markerTexture(gazeTarget.userData,false);gazeTarget.scale.setScalar(gazeTarget.userData.baseScale)}if(hit&&hotspotObjects.includes(hit)&&!hit.userData.portal){hit.material.map.dispose();hit.material.map=markerTexture(hit.userData,true);hit.scale.setScalar(hit.userData.baseScale*1.25)}gazeTarget=hit;gazeStart=performance.now();document.body.classList.remove('gazing')}if(hit){document.body.classList.add('gazing');const elapsed=performance.now()-gazeStart;document.documentElement.style.setProperty('--gaze',Math.min(1,elapsed/1200));if(elapsed>1200){gazeStart=performance.now()+999999;activate(hit)}}else{document.body.classList.remove('gazing');document.documentElement.style.setProperty('--gaze',0)}}
 renderer.xr.addEventListener('sessionstart',()=>{hud.visible=true;document.body.classList.add('xr-presenting')});
 function syncXREyes(){if(!renderer.xr.isPresenting||stereoMode==='mono')return;const xrCam=renderer.xr.getCamera(camera);if(xrCam?.cameras?.length>=2){xrCam.cameras[0].layers.enable(0);xrCam.cameras[0].layers.enable(1);xrCam.cameras[0].layers.disable(2);xrCam.cameras[1].layers.enable(0);xrCam.cameras[1].layers.enable(2);xrCam.cameras[1].layers.disable(1)}}renderer.xr.addEventListener('sessionend',()=>{hud.visible=cardboard;document.body.classList.remove('xr-presenting')});
 renderer.domElement.addEventListener('pointermove',e=>{if(cardboard||renderer.xr.isPresenting||down)return;const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);const hit=raycaster.intersectObjects(hotspotObjects,false)[0]?.object||null;hotspotObjects.forEach(o=>{const b=o.userData.baseScale||11,s=o===hit?b*1.23:b;o.scale.lerp(new THREE.Vector3(s,s,1),.18)});renderer.domElement.style.cursor=hit?'pointer':'grab'});
