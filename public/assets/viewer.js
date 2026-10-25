@@ -1,5 +1,6 @@
 import * as THREE from '/assets/vendor/three/three.module.js';
 import DeviceOrientationControls from '/assets/vendor/three/DeviceOrientationControls.js';
+import VREffect from '/assets/vendor/three/effects/VREffect.js';
 
 const root=document.querySelector('#viewer');
 const projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'mono';
@@ -9,6 +10,7 @@ const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/i
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.xr.enabled=true;root.appendChild(renderer.domElement);
 let cardboard=false,lon=0,lat=0,down=false,x0=0,y0=0,lon0=0,lat0=0,orientation=false,leftMesh,rightMesh;
 const cardboardStereo=new THREE.StereoCamera();cardboardStereo.eyeSep=.064;
+const legacyVREffect=new VREffect(renderer);let legacyVRDisplay=null,legacyCardboard=false;
 const deviceOrientation=new DeviceOrientationControls(camera);deviceOrientation.enabled=false;
 const cardboardDebug=new THREE.Group();cardboardDebug.visible=false;cardboardDebug.layers.enableAll();scene.add(cardboardDebug);
 const xrDebug=new THREE.Group();xrDebug.visible=false;xrDebug.layers.set(0);xrDebug.position.set(0,1.6,-2.5);scene.add(xrDebug);
@@ -138,7 +140,22 @@ function renderCardboard(){
  gl.disable(gl.SCISSOR_TEST);renderer.setScissorTest(false);renderer.setViewport(0,0,size.x,size.y);renderer.autoClear=true;
 }
 function navigate(url){if(document.body.classList.contains('scene-leaving'))return;document.body.classList.add('scene-leaving');setTimeout(()=>location.href=url,260)}
-async function toggleCardboard(){if(renderer.xr.isPresenting)return;if(!cardboard){if(typeof DeviceOrientationEvent?.requestPermission==='function'){try{if((await DeviceOrientationEvent.requestPermission())!=='granted')return}catch{return}}orientation=true;deviceOrientation.enabled=true;deviceOrientation.connect();cardboard=true;cardboardDebug.visible=false;document.body.classList.add('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';hud.visible=true;try{await document.documentElement.requestFullscreen?.()}catch{}try{await screen.orientation?.lock?.('landscape')}catch{}resize()}else{cardboard=false;cardboardDebug.visible=false;orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();document.body.classList.remove('cardboard');document.querySelector('#controls').style.display='';document.querySelector('#top').style.display='';hud.visible=false;try{screen.orientation?.unlock?.()}catch{}if(document.fullscreenElement)try{await document.exitFullscreen?.()}catch{}resize()}}document.querySelector('#cardboard').onclick=toggleCardboard;
+async function toggleCardboard(){
+ if(renderer.xr.isPresenting)return;
+ if(legacyCardboard&&legacyVRDisplay){try{await legacyVREffect.exitPresent()}catch{}legacyCardboard=false;cardboard=false;hud.visible=false;document.body.classList.remove('cardboard');document.querySelector('#controls').style.display='';document.querySelector('#top').style.display='';resize();return}
+ try{
+  const displays=await navigator.getVRDisplays?.();
+  legacyVRDisplay=displays?.[0]||null;
+  if(legacyVRDisplay){
+   legacyVREffect.setVRDisplay(legacyVRDisplay);legacyVREffect.setSize(innerWidth,innerHeight,false);
+   await legacyVREffect.requestPresent();legacyCardboard=true;cardboard=false;orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();hud.visible=true;document.body.classList.add('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';return;
+  }
+ }catch(err){console.warn('Legacy Cardboard requestPresent failed',err)}
+ // Emergency fallback only when the polyfilled VRDisplay cannot present.
+ if(typeof DeviceOrientationEvent?.requestPermission==='function'){try{if((await DeviceOrientationEvent.requestPermission())!=='granted')return}catch{return}}
+ orientation=true;deviceOrientation.enabled=true;deviceOrientation.connect();cardboard=true;hud.visible=true;document.body.classList.add('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';try{await document.documentElement.requestFullscreen?.()}catch{}resize();
+}
+document.querySelector('#cardboard').onclick=toggleCardboard;
 
 function updateGaze(){if(!cardboard&&!renderer.xr.isPresenting)return;if(renderer.xr.isPresenting){const xrCam=renderer.xr.getCamera(camera);const origin=new THREE.Vector3(),direction=new THREE.Vector3(0,0,-1);xrCam.getWorldPosition(origin);xrCam.getWorldDirection(direction);raycaster.set(origin,direction)}else if(cardboard){const {l}=updateCardboardEyes();raycaster.setFromCamera(new THREE.Vector2(0,0),l)}else raycaster.setFromCamera(new THREE.Vector2(0,0),camera);const hit=raycaster.intersectObjects(pickables(),false)[0]?.object||null;if(hit!==gazeTarget){if(gazeTarget&&hotspotObjects.includes(gazeTarget)&&!gazeTarget.userData.portal){gazeTarget.material.map.dispose();gazeTarget.material.map=markerTexture(gazeTarget.userData,false);gazeTarget.scale.setScalar(gazeTarget.userData.baseScale)}if(hit&&hotspotObjects.includes(hit)&&!hit.userData.portal){hit.material.map.dispose();hit.material.map=markerTexture(hit.userData,true);hit.scale.setScalar(hit.userData.baseScale*1.25)}gazeTarget=hit;gazeStart=performance.now();document.body.classList.remove('gazing')}if(hit){document.body.classList.add('gazing');const elapsed=performance.now()-gazeStart;document.documentElement.style.setProperty('--gaze',Math.min(1,elapsed/1200));if(elapsed>1200){gazeStart=performance.now()+999999;activate(hit)}}else{document.body.classList.remove('gazing');document.documentElement.style.setProperty('--gaze',0)}}
 renderer.xr.addEventListener('sessionstart',()=>{camera.layers.enable(0);cardboard=false;cardboardDebug.visible=false;orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();document.body.classList.remove('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';hud.visible=true;xrDebug.visible=true;document.body.classList.add('xr-presenting')});
