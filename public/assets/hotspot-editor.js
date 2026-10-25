@@ -4,5 +4,8 @@ let lon=0,lat=0,down=false,x=0,y=0,l0=0,a0=0;const projection=root.dataset.proje
 new THREE.TextureLoader().load(root.dataset.image,t=>{t.colorSpace=THREE.SRGBColorSpace;if(stereo==='sbs'){t.repeat.set(.5,1)}else if(stereo==='tb'){t.repeat.set(1,.5);t.offset.y=.5}let g;if(projection==='flat')g=new THREE.PlaneGeometry(4.8,2.7);else if(projection==='180')g=new THREE.SphereGeometry(500,64,40,0,Math.PI);else g=new THREE.SphereGeometry(500,64,40);const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:t,side:projection==='flat'?THREE.FrontSide:THREE.BackSide}));if(projection==='flat')m.position.z=-3.2;else if(projection==='180')m.rotation.y=Math.PI/2;scene.add(m)});
 r.domElement.onpointerdown=e=>{down=true;x=e.clientX;y=e.clientY;l0=lon;a0=lat};addEventListener('pointerup',()=>down=false);addEventListener('pointermove',e=>{if(down){lon=l0+(x-e.clientX)*.12;lat=Math.max(-85,Math.min(85,a0+(e.clientY-y)*.12))}});
 function size(){const w=root.clientWidth,h=root.clientHeight;r.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}new ResizeObserver(size).observe(root);size();
-r.setAnimationLoop(()=>{const p=THREE.MathUtils.degToRad(90-lat),q=THREE.MathUtils.degToRad(lon);cam.lookAt(500*Math.sin(p)*Math.cos(q),500*Math.cos(p),500*Math.sin(p)*Math.sin(q));r.render(scene,cam)});
-document.querySelector('#capture').onclick=()=>{document.querySelector('#yaw').value=lon.toFixed(1);document.querySelector('#pitch').value=lat.toFixed(1);root.classList.add('flash');setTimeout(()=>root.classList.remove('flash'),220)};
+const yawInput=document.querySelector('#yaw'),pitchInput=document.querySelector('#pitch');
+function syncPoint(){yawInput.value=lon.toFixed(1);pitchInput.value=lat.toFixed(1)}
+r.setAnimationLoop(()=>{const p=THREE.MathUtils.degToRad(90-lat),q=THREE.MathUtils.degToRad(lon);cam.lookAt(500*Math.sin(p)*Math.cos(q),500*Math.cos(p),500*Math.sin(p)*Math.sin(q));syncPoint();r.render(scene,cam)});
+document.querySelector('#capture').onclick=()=>{syncPoint();root.classList.add('flash');setTimeout(()=>root.classList.remove('flash'),220)};
+document.querySelector('.hotspot-form')?.addEventListener('submit',syncPoint);
