@@ -1,12 +1,13 @@
 Options -Indexes
 RewriteEngine On
 
+# Redirect browser-visible /public URLs to clean URLs.
+# THE_REQUEST prevents a redirect loop after the internal rewrite below.
+RewriteCond %{THE_REQUEST} \s/+public(?:/([^?\s]*))? [NC]
+RewriteRule ^public(?:/(.*))?$ /$1 [R=301,L,NE]
+
 # Never expose application internals.
 RewriteRule ^(?:config\.php|src(?:/|$)|data(?:/|$)|\.git(?:/|$)) - [F,L,NC]
 
-# Avoid rewriting the public directory twice.
-RewriteRule ^public(?:/|$) - [L]
-
-# Serve the application from /public while keeping clean URLs.
-RewriteCond %{REQUEST_URI} !^/public/
+# Internally serve everything from /public.
 RewriteRule ^(.*)$ public/$1 [L]
