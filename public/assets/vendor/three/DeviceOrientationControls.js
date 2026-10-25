@@ -6,7 +6,7 @@
  *
  * originally from https://github.com/mrdoob/three.js/blob/r93/examples/js/controls/DeviceOrientationControls.js
  */
-import * as THREE from '../three.module.js';
+import * as THREE from './three.module.js';
 
 const DeviceOrientationControls = function ( object ) {
 
