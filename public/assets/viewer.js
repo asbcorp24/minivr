@@ -3,6 +3,7 @@ import {VRButton} from 'https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/
 
 const root=document.querySelector('#viewer');
 const projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'mono';
+const tour=Number(root.dataset.tour||0),hotspotData=JSON.parse(document.querySelector('#hotspots-data')?.textContent||'[]');
 const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1100);
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.xr.enabled=true;root.appendChild(renderer.domElement);
 let cardboard=false,lon=0,lat=0,down=false,x0=0,y0=0,lon0=0,lat0=0,orientation=false,leftMesh,rightMesh;
@@ -39,6 +40,10 @@ const hud=new THREE.Group();camera.add(hud);scene.add(camera);
 const panel=new THREE.Mesh(new THREE.PlaneGeometry(2.8,.48),new THREE.MeshBasicMaterial({color:0x061823,transparent:true,opacity:.82,depthTest:false}));panel.position.set(0,-1.15,-3);panel.renderOrder=100;hud.add(panel);
 function label(text,x){const cv=document.createElement('canvas');cv.width=512;cv.height=128;const c=cv.getContext('2d');c.fillStyle='#d9fbff';c.font='bold 38px monospace';c.textAlign='center';c.fillText(text,256,72);const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));s.scale.set(1.25,.31,1);s.position.set(x,-1.15,-2.96);s.renderOrder=101;hud.add(s)}
 label('←',-.9);label('MENU',0);label('→',.9);hud.visible=false;
+const hotspotObjects=[];
+function hotspotSprite(h){const cv=document.createElement('canvas');cv.width=512;cv.height=160;const c=cv.getContext('2d');c.fillStyle='#06232ddd';c.beginPath();c.roundRect(10,10,492,140,35);c.fill();c.strokeStyle='#55efff';c.lineWidth=5;c.stroke();c.fillStyle='#eaffff';c.font='bold 30px sans-serif';c.textAlign='center';c.fillText('◉  '+h.label,256,92);const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true}));sp.scale.set(34,10.6,1);const yaw=THREE.MathUtils.degToRad(Number(h.yaw)),pitch=THREE.MathUtils.degToRad(Number(h.pitch)),rad=110;sp.position.set(rad*Math.cos(pitch)*Math.cos(yaw),rad*Math.sin(pitch),rad*Math.cos(pitch)*Math.sin(yaw));sp.userData=h;sp.layers.enableAll();scene.add(sp);hotspotObjects.push(sp)}
+hotspotData.forEach(hotspotSprite);
+const raycaster=new THREE.Raycaster();let gazeTarget=null,gazeStart=0;
 
 renderer.domElement.addEventListener('pointerdown',e=>{down=true;x0=e.clientX;y0=e.clientY;lon0=lon;lat0=lat});
 addEventListener('pointerup',()=>down=false);addEventListener('pointermove',e=>{if(down&&!orientation){lon=lon0+(x0-e.clientX)*.12;lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}});
@@ -58,7 +63,8 @@ function renderCardboard(){
 }
 document.querySelector('#cardboard').onclick=()=>{cardboard=!cardboard;document.body.classList.toggle('cardboard',cardboard);hud.visible=cardboard;if(cardboard)document.documentElement.requestFullscreen?.()};
 
+function updateGaze(){if(!cardboard&&!renderer.xr.isPresenting)return;raycaster.setFromCamera(new THREE.Vector2(0,0),camera);const hit=raycaster.intersectObjects(hotspotObjects)[0]?.object||null;if(hit!==gazeTarget){gazeTarget=hit;gazeStart=performance.now();document.body.classList.remove('gazing')}if(hit){document.body.classList.add('gazing');const elapsed=performance.now()-gazeStart;document.documentElement.style.setProperty('--gaze',Math.min(1,elapsed/1200));if(elapsed>1200&&hit.userData.target_panorama_id){location.href='/viewer.php?id='+hit.userData.target_panorama_id+'&tour='+tour+'&scene='+hit.userData.target_scene_id}}else{document.body.classList.remove('gazing');document.documentElement.style.setProperty('--gaze',0)}}
 renderer.setAnimationLoop(()=>{
  if(!orientation&&!renderer.xr.isPresenting){const phi=THREE.MathUtils.degToRad(90-lat),theta=THREE.MathUtils.degToRad(lon);camera.lookAt(500*Math.sin(phi)*Math.cos(theta),500*Math.cos(phi),500*Math.sin(phi)*Math.sin(theta))}
- if(cardboard&&!renderer.xr.isPresenting)renderCardboard();else renderer.render(scene,camera);
+ updateGaze();if(cardboard&&!renderer.xr.isPresenting)renderCardboard();else renderer.render(scene,camera);
 });
