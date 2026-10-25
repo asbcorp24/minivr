@@ -1,5 +1,6 @@
 import * as THREE from '/assets/vendor/three/three.module.js';
 import {VRButton} from '/assets/vendor/three/addons/webxr/VRButton.js';
+import DeviceOrientationControls from '/assets/vendor/three/DeviceOrientationControls.js';
 import DeviceOrientationControls from '/assets/vendor/three/addons/controls/DeviceOrientationControls.js';
 
 const root=document.querySelector('#viewer');
@@ -10,7 +11,7 @@ const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/i
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.xr.enabled=true;root.appendChild(renderer.domElement);
 let cardboard=false,lon=0,lat=0,down=false,x0=0,y0=0,lon0=0,lat0=0,orientation=false,leftMesh,rightMesh;
 const cardboardStereo=new THREE.StereoCamera();cardboardStereo.eyeSep=.064;
-const deviceQ=new THREE.Quaternion(),screenQ=new THREE.Quaternion(),deviceEuler=new THREE.Euler(),zee=new THREE.Vector3(0,0,1),q1=new THREE.Quaternion(-Math.sqrt(.5),0,0,Math.sqrt(.5));let deviceAlpha=0,deviceBeta=0,deviceGamma=0;function applyDeviceOrientation(){const orient=THREE.MathUtils.degToRad(screen.orientation?.angle||window.orientation||0);deviceEuler.set(deviceBeta,deviceAlpha,-deviceGamma,'YXZ');deviceQ.setFromEuler(deviceEuler);deviceQ.multiply(q1);deviceQ.multiply(screenQ.setFromAxisAngle(zee,-orient));camera.quaternion.copy(deviceQ)}
+const deviceOrientation=new DeviceOrientationControls(camera);deviceOrientation.enabled=false;
 
 function eyeTexture(source,eye){
  const t=source.clone();t.needsUpdate=true;t.colorSpace=THREE.SRGBColorSpace;
@@ -80,7 +81,7 @@ addEventListener('pointerup',e=>{if(down&&!moved&&!cardboard&&!renderer.xr.isPre
 
 
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}addEventListener('resize',resize);resize();
-document.querySelector('#gyro').onclick=async()=>{if(typeof DeviceOrientationEvent?.requestPermission==='function')await DeviceOrientationEvent.requestPermission();orientation=!orientation};
+document.querySelector('#gyro').onclick=async()=>{if(typeof DeviceOrientationEvent?.requestPermission==='function'&&(await DeviceOrientationEvent.requestPermission())!=='granted')return;orientation=!orientation;deviceOrientation.enabled=orientation};
 document.querySelector('#full').onclick=()=>document.documentElement.requestFullscreen?.();
 const vrBtn=VRButton.createButton(renderer);vrBtn.style.display='none';document.body.appendChild(vrBtn);const vrControl=document.querySelector('#vr');if(!navigator.xr){vrControl.disabled=true;vrControl.title='WebXR недоступен в этом браузере'}vrControl.onclick=()=>vrBtn.click();
 
@@ -98,6 +99,7 @@ renderer.xr.addEventListener('sessionstart',()=>{hud.visible=true});
 function syncXREyes(){if(!renderer.xr.isPresenting||stereoMode==='mono')return;const xrCam=renderer.xr.getCamera(camera);if(xrCam?.cameras?.length>=2){xrCam.cameras[0].layers.set(1);xrCam.cameras[1].layers.set(2)}}renderer.xr.addEventListener('sessionend',()=>{hud.visible=cardboard});
 renderer.domElement.addEventListener('pointermove',e=>{if(cardboard||renderer.xr.isPresenting||down)return;const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);const hit=raycaster.intersectObjects(hotspotObjects,false)[0]?.object||null;hotspotObjects.forEach(o=>{const b=o.userData.baseScale||11,s=o===hit?b*1.23:b;o.scale.lerp(new THREE.Vector3(s,s,1),.18)});renderer.domElement.style.cursor=hit?'pointer':'grab'});
 renderer.setAnimationLoop(()=>{
+ if(orientation&&!renderer.xr.isPresenting)deviceOrientation.update();
  if(!orientation&&!renderer.xr.isPresenting&&!cardboard){const phi=THREE.MathUtils.degToRad(90-lat),theta=THREE.MathUtils.degToRad(lon);camera.lookAt(500*Math.sin(phi)*Math.cos(theta),500*Math.cos(phi),500*Math.sin(phi)*Math.sin(theta))}
  if(orientation&&!renderer.xr.isPresenting)deviceOrientationControls.update();syncXREyes();updateGaze();if(cardboard&&!renderer.xr.isPresenting)renderCardboard();else renderer.render(scene,camera);
 });
