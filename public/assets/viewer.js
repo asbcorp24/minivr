@@ -1,6 +1,7 @@
 import * as THREE from '/assets/vendor/three/three.module.js';
 import DeviceOrientationControls from '/assets/vendor/three/DeviceOrientationControls.js';
 import VREffect from '/assets/vendor/three/effects/VREffect.js';
+import VRControls from '/assets/vendor/three/controls/VRControls.js';
 
 const root=document.querySelector('#viewer');
 const projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'mono';
@@ -10,7 +11,7 @@ const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/i
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.xr.enabled=true;root.appendChild(renderer.domElement);
 let cardboard=false,lon=0,lat=0,down=false,x0=0,y0=0,lon0=0,lat0=0,orientation=false,leftMesh,rightMesh;
 const cardboardStereo=new THREE.StereoCamera();cardboardStereo.eyeSep=.064;
-const legacyVREffect=new VREffect(renderer);let legacyVRDisplay=null,legacyCardboard=false;
+const legacyVREffect=new VREffect(renderer);const legacyVRControls=new VRControls(camera);let legacyVRDisplay=null,legacyCardboard=false;
 const deviceOrientation=new DeviceOrientationControls(camera);deviceOrientation.enabled=false;
 const cardboardDebug=new THREE.Group();cardboardDebug.visible=false;cardboardDebug.layers.enableAll();scene.add(cardboardDebug);
 const xrDebug=new THREE.Group();xrDebug.visible=false;xrDebug.layers.set(0);xrDebug.position.set(0,1.6,-2.5);scene.add(xrDebug);
@@ -147,7 +148,7 @@ async function toggleCardboard(){
   const displays=await navigator.getVRDisplays?.();
   legacyVRDisplay=displays?.[0]||null;
   if(legacyVRDisplay){
-   legacyVREffect.setVRDisplay(legacyVRDisplay);legacyVREffect.setSize(innerWidth,innerHeight,false);
+   legacyVREffect.setVRDisplay(legacyVRDisplay);legacyVRControls.setVRDisplay(legacyVRDisplay);legacyVREffect.setSize(innerWidth,innerHeight,false);
    await legacyVREffect.requestPresent();legacyCardboard=true;cardboard=false;orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();hud.visible=true;document.body.classList.add('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';return;
   }
  }catch(err){console.warn('Legacy Cardboard requestPresent failed',err)}
@@ -169,6 +170,7 @@ function syncHudPose(){
 }
 renderer.setAnimationLoop((time)=>{
  if(cardboard){const canvas=renderer.domElement;canvas.style.position='fixed';canvas.style.inset='0';canvas.style.width='100vw';canvas.style.height='100dvh';canvas.style.zIndex='1'}
+ if(legacyCardboard)legacyVRControls.update();
  syncHudPose();syncCardboardDebug();syncXRDebug();
  scene.traverse(o=>{if(o.userData?.animate)o.userData.animate(time,gazeTarget?.userData?.portal===o)});
  if(orientation&&!renderer.xr.isPresenting)deviceOrientation.update();
