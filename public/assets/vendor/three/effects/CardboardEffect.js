@@ -30,9 +30,9 @@ export default class CardboardEffect {
     this.cameraR.position.addScaledVector(right,this.eyeSeparation/2);
     for(const c of [this.cameraL,this.cameraR]) {
       c.fov=camera.fov;c.aspect=aspect;c.near=camera.near;c.far=camera.far;c.updateProjectionMatrix();
-      c.layers.enableAll();
+      c.layers.disableAll();c.layers.enable(0);
     }
-    if(stereo!=='mono'){this.cameraL.layers.disable(2);this.cameraR.layers.disable(1)}
+    if(stereo==='mono'){this.cameraL.layers.enable(1);this.cameraL.layers.enable(2);this.cameraR.layers.enable(1);this.cameraR.layers.enable(2)}else{this.cameraL.layers.enable(1);this.cameraR.layers.enable(2)}
     renderer.setRenderTarget(null);
     renderer.setScissorTest(true);
     renderer.clear();
