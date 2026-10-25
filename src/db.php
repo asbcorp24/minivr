@@ -1,0 +1,13 @@
+<?php
+declare(strict_types=1);
+require_once __DIR__ . '/../config.php';
+function db(): PDO {
+ static $db=null; if($db) return $db;
+ if(!is_dir(dirname(DB_PATH))) mkdir(dirname(DB_PATH),0775,true);
+ $db=new PDO('sqlite:'.DB_PATH,null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
+ $db->exec("CREATE TABLE IF NOT EXISTS panoramas(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,slug TEXT UNIQUE NOT NULL,description TEXT DEFAULT '',image TEXT NOT NULL,preview TEXT, published INTEGER NOT NULL DEFAULT 1,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+ CREATE TABLE IF NOT EXISTS tours(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,slug TEXT UNIQUE NOT NULL,description TEXT DEFAULT '',cover TEXT,published INTEGER NOT NULL DEFAULT 1,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+ CREATE TABLE IF NOT EXISTS tour_scenes(id INTEGER PRIMARY KEY AUTOINCREMENT,tour_id INTEGER NOT NULL,panorama_id INTEGER NOT NULL,title TEXT,sort_order INTEGER DEFAULT 0,FOREIGN KEY(tour_id) REFERENCES tours(id) ON DELETE CASCADE,FOREIGN KEY(panorama_id) REFERENCES panoramas(id) ON DELETE CASCADE);
+ CREATE TABLE IF NOT EXISTS hotspots(id INTEGER PRIMARY KEY AUTOINCREMENT,scene_id INTEGER NOT NULL,target_scene_id INTEGER,label TEXT NOT NULL,yaw REAL NOT NULL DEFAULT 0,pitch REAL NOT NULL DEFAULT 0,type TEXT NOT NULL DEFAULT 'scene',content TEXT DEFAULT '',FOREIGN KEY(scene_id) REFERENCES tour_scenes(id) ON DELETE CASCADE);");
+ return $db;
+}
