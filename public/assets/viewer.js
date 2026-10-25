@@ -79,17 +79,18 @@ addEventListener('deviceorientation',e=>{if(!orientation||e.alpha==null)return;c
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}addEventListener('resize',resize);resize();
 document.querySelector('#gyro').onclick=async()=>{if(typeof DeviceOrientationEvent?.requestPermission==='function')await DeviceOrientationEvent.requestPermission();orientation=!orientation};
 document.querySelector('#full').onclick=()=>document.documentElement.requestFullscreen?.();
-const vrBtn=VRButton.createButton(renderer);vrBtn.style.display='none';document.body.appendChild(vrBtn);document.querySelector('#vr').onclick=()=>vrBtn.click();
+const vrBtn=VRButton.createButton(renderer);vrBtn.style.display='none';document.body.appendChild(vrBtn);const vrControl=document.querySelector('#vr');if(!navigator.xr){vrControl.disabled=true;vrControl.title='WebXR недоступен в этом браузере'}vrControl.onclick=()=>vrBtn.click();
 
+function setEyeLayers(eye){camera.layers.enableAll();if(stereoMode!=='mono'){if(eye==='left')camera.layers.disable(2);else camera.layers.disable(1)}}
 function renderCardboard(){
- const w=innerWidth,h=innerHeight,oldAspect=camera.aspect;renderer.setScissorTest(true);
- camera.aspect=(w/2)/h;camera.updateProjectionMatrix();
- renderer.setViewport(0,0,w/2,h);renderer.setScissor(0,0,w/2,h);camera.layers.disable(2);camera.layers.enable(1);renderer.render(scene,camera);
- renderer.setViewport(w/2,0,w/2,h);renderer.setScissor(w/2,0,w/2,h);camera.layers.disable(1);camera.layers.enable(2);renderer.render(scene,camera);
- renderer.setScissorTest(false);if(stereoMode==='mono'){camera.layers.enable(1);camera.layers.enable(2)}else desktopEye();camera.aspect=oldAspect;camera.updateProjectionMatrix();renderer.setViewport(0,0,w,h);
+ const size=renderer.getDrawingBufferSize(new THREE.Vector2()),w=size.x,h=size.y,half=Math.floor(w/2),oldAspect=camera.aspect;
+ renderer.setScissorTest(true);camera.aspect=half/h;camera.updateProjectionMatrix();
+ setEyeLayers('left');renderer.setViewport(0,0,half,h);renderer.setScissor(0,0,half,h);renderer.render(scene,camera);
+ setEyeLayers('right');renderer.setViewport(half,0,w-half,h);renderer.setScissor(half,0,w-half,h);renderer.render(scene,camera);
+ renderer.setScissorTest(false);camera.layers.enableAll();if(stereoMode!=='mono')desktopEye();camera.aspect=oldAspect;camera.updateProjectionMatrix();renderer.setViewport(0,0,w,h);
 }
 function navigate(url){if(document.body.classList.contains('scene-leaving'))return;document.body.classList.add('scene-leaving');setTimeout(()=>location.href=url,260)}
-document.querySelector('#cardboard').onclick=()=>{cardboard=!cardboard;document.body.classList.toggle('cardboard',cardboard);hud.visible=cardboard||renderer.xr.isPresenting;if(cardboard)document.documentElement.requestFullscreen?.()};
+async function toggleCardboard(){if(renderer.xr.isPresenting)return;cardboard=!cardboard;document.body.classList.toggle('cardboard',cardboard);hud.visible=cardboard;if(cardboard){orientation=true;if(typeof DeviceOrientationEvent?.requestPermission==='function'){try{orientation=(await DeviceOrientationEvent.requestPermission())==='granted'}catch{orientation=false}}try{await document.documentElement.requestFullscreen?.()}catch{}resize()}else{orientation=false;if(document.fullscreenElement)try{await document.exitFullscreen?.()}catch{}resize()}}document.querySelector('#cardboard').onclick=toggleCardboard;
 
 function updateGaze(){if(!cardboard&&!renderer.xr.isPresenting)return;if(renderer.xr.isPresenting){const xrCam=renderer.xr.getCamera(camera);const origin=new THREE.Vector3(),direction=new THREE.Vector3(0,0,-1);xrCam.getWorldPosition(origin);xrCam.getWorldDirection(direction);raycaster.set(origin,direction)}else raycaster.setFromCamera(new THREE.Vector2(0,0),camera);const hit=raycaster.intersectObjects(pickables(),false)[0]?.object||null;if(hit!==gazeTarget){if(gazeTarget&&hotspotObjects.includes(gazeTarget)){gazeTarget.material.map.dispose();gazeTarget.material.map=markerTexture(gazeTarget.userData,false);gazeTarget.scale.setScalar(gazeTarget.userData.baseScale)}if(hit&&hotspotObjects.includes(hit)){hit.material.map.dispose();hit.material.map=markerTexture(hit.userData,true);hit.scale.setScalar(hit.userData.baseScale*1.25)}gazeTarget=hit;gazeStart=performance.now();document.body.classList.remove('gazing')}if(hit){document.body.classList.add('gazing');const elapsed=performance.now()-gazeStart;document.documentElement.style.setProperty('--gaze',Math.min(1,elapsed/1200));if(elapsed>1200){gazeStart=performance.now()+999999;activate(hit)}}else{document.body.classList.remove('gazing');document.documentElement.style.setProperty('--gaze',0)}}
 renderer.xr.addEventListener('sessionstart',()=>{hud.visible=true});
