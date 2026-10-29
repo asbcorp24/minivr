@@ -1,0 +1,20 @@
+{
+  "name": "MiniVR — Панорамные VR-туры",
+  "short_name": "MiniVR",
+  "description": "Панорамы 360°, VR-туры и Cardboard",
+  "lang": "ru",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#03070d",
+  "theme_color": "#03070d",
+  "icons": [
+    {
+      "src": "/assets/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
