@@ -7,14 +7,14 @@ export function createMoonlight(scene,settings={}){
  const pitch=THREE.MathUtils.degToRad(clamp(settings.moonPitch,-90,90));
  const strength=clamp(settings.moonIntensity??55,0,100)/100;
  const width=clamp(settings.moonPathWidth??16,2,60);
- const dir=new THREE.Vector3(-Math.cos(pitch)*Math.cos(yaw),Math.sin(pitch),Math.cos(pitch)*Math.sin(yaw));
+ const dir=new THREE.Vector3(Math.cos(pitch)*Math.sin(yaw),Math.sin(pitch),-Math.cos(pitch)*Math.cos(yaw));
  const resources=[],updates=[];
- const moon=new THREE.Sprite(new THREE.SpriteMaterial({color:0xdce9ff,transparent:true,opacity:.7*strength,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending}));
- moon.position.copy(dir).multiplyScalar(350);moon.scale.set(24,24,1);moon.layers.enableAll();scene.add(moon);resources.push([moon,null,moon.material]);
+ const moon=new THREE.Sprite(new THREE.SpriteMaterial({color:0xdce9ff,transparent:true,opacity:Math.min(1,.95*strength),depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending}));
+ moon.position.copy(dir).multiplyScalar(350);moon.scale.set(44,44,1);moon.layers.enableAll();scene.add(moon);resources.push([moon,null,moon.material]);
  const glow=new THREE.Sprite(new THREE.SpriteMaterial({color:0x9dbce8,transparent:true,opacity:.12*strength,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending}));
- glow.position.copy(dir).multiplyScalar(348);glow.scale.set(90,90,1);glow.layers.enableAll();scene.add(glow);resources.push([glow,null,glow.material]);
+ glow.position.copy(dir).multiplyScalar(348);glow.scale.set(145,145,1);glow.layers.enableAll();scene.add(glow);resources.push([glow,null,glow.material]);
  updates.push(t=>{glow.material.opacity=strength*(.10+.025*Math.sin(t*.00035))});
- if(settings.moonPath!==false && settings.water){
+ if(settings.moonPath!==false){
   const polygon=Array.isArray(settings.waterPolygon)?settings.waterPolygon.filter(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)).slice(0,80):[];
   const centerYaw=clamp(settings.waterYaw,-180,180);
   const unwrap=x=>((x-centerYaw+540)%360)-180;
@@ -42,7 +42,7 @@ export function createMoonlight(scene,settings={}){
     const normalized=((az+180)%360+360)%360-180;
     const visible=inside(unwrap(normalized),el);
     const a=THREE.MathUtils.degToRad(normalized),b=THREE.MathUtils.degToRad(el),r=35;
-    const idx=i*3;positions[idx]=visible?-r*Math.cos(b)*Math.cos(a):10000;positions[idx+1]=visible?r*Math.sin(b):10000;positions[idx+2]=visible?r*Math.cos(b)*Math.sin(a):10000;
+    const idx=i*3;positions[idx]=visible?r*Math.cos(b)*Math.sin(a):10000;positions[idx+1]=visible?r*Math.sin(b):10000;positions[idx+2]=visible?-r*Math.cos(b)*Math.cos(a):10000;
    }
    geo.attributes.position.needsUpdate=true;
   });
