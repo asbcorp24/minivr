@@ -26,7 +26,7 @@ export function createMoonlight(scene,settings={}){
   geo.setAttribute('position',new THREE.BufferAttribute(positions,3));geo.setAttribute('aPhase',new THREE.BufferAttribute(phase,1));geo.setAttribute('aSize',new THREE.BufferAttribute(sizes,1));
   const mat=new THREE.ShaderMaterial({
    uniforms:{uTime:{value:0},uOpacity:{value:strength*.75},uPixel:{value:Math.min(devicePixelRatio||1,2)}},
-   vertexShader:'attribute float aPhase;attribute float aSize;uniform float uTime;uniform float uPixel;varying float vAlpha;void main(){vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;gl_PointSize=clamp((5.+aSize*8.)*uPixel,2.,16.);vAlpha=(.5+.5*sin(uTime*2.5+aPhase))*aSize;}',
+   vertexShader:'precision mediump float;attribute float aPhase;attribute float aSize;uniform float uTime;uniform float uPixel;varying float vAlpha;void main(){vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;gl_PointSize=clamp((5.+aSize*8.)*uPixel,2.,16.);vAlpha=(.5+.5*sin(uTime*2.5+aPhase))*aSize;}',
    fragmentShader:'precision mediump float;uniform float uOpacity;varying float vAlpha;void main(){float d=length(gl_PointCoord-.5)*2.;float a=(1.-smoothstep(.1,1.,d))*vAlpha*uOpacity;if(a<.01)discard;gl_FragColor=vec4(.72,.83,1.,a);}',
    transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending
   });
