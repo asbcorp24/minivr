@@ -33,13 +33,13 @@ export function createEnvironment(scene,settings={}){
   updates.push((time,camera)=>{material.uniforms.uTime.value=time*.001;camera.getWorldPosition(mesh.position)});
  };
  if(settings.liveWater)makeLayer('water',clamp(settings.waterShimmer??35,0,100)/100,'#9ab9cf',
-  `vec2 p=vUv*vec2(210.,90.);float n=noise(vec2(p.x*.23+uTime*.15,p.y*.35));float wave=sin(p.y*1.7+sin(p.x*.4+uTime*.3)*1.5+uTime*.65);float sparkle=smoothstep(.93,.995,n*.43+wave*.30+.27);alpha=.015+.22*sparkle;`);
+  `vec2 p=vUv*vec2(210.,90.);float n=noise(vec2(p.x*.23+uTime*.15,p.y*.35));float wave=sin(p.y*1.7+sin(p.x*.4+uTime*.3)*1.5+uTime*.65);float sparkle=smoothstep(.58,.82,n*.55+wave*.23+.25);alpha=.035+.45*sparkle;`);
  if(settings.clouds)makeLayer('sky',clamp(settings.cloudDensity??35,0,100)/100,'#c7d1d9',
-  `vec2 p=vUv*vec2(9.,5.);float n=noise(p+vec2(uTime*.009,0.))* .6+noise(p*2.7+vec2(uTime*.018,0.))*.4;alpha=smoothstep(.43,.73,n)*.27;`);
+  `vec2 p=vUv*vec2(9.,5.);float n=noise(p+vec2(uTime*.009,0.))* .6+noise(p*2.7+vec2(uTime*.018,0.))*.4;alpha=smoothstep(.34,.67,n)*.58;`);
  if(settings.stars)makeLayer('sky',clamp(settings.starDensity??55,0,100)/100,'#dce8ff',
-  `vec2 p=floor(vUv*vec2(1100.,520.));float h=hash(p);float star=step(.997,h);float flicker=.7+.3*sin(uTime*(.5+hash(p+2.)*2.)+h*40.);alpha=star*flicker*.7;`);
+  `vec2 p=floor(vUv*vec2(1100.,520.));float h=hash(p);float star=step(.994,h);float flicker=.7+.3*sin(uTime*(.5+hash(p+2.)*2.)+h*40.);alpha=star*flicker*1.0;`);
  if(settings.lightBeams)makeLayer('light',clamp(settings.beamIntensity??40,0,100)/100,'#ffe6b5',
-  `float center=(${Number(settings.sunYaw||0).toFixed(2)}+180.)/360.;float dx=abs(fract(vUv.x-center+.5)-.5);float rays=pow(max(0.,sin(dx*390.+sin(vUv.y*13.)*1.5)),14.);float cone=exp(-dx*dx*150.)*smoothstep(.1,.65,vUv.y);alpha=(.045+rays*.16)*cone;`);
+  `float center=(${Number(settings.sunYaw||0).toFixed(2)}+180.)/360.;float dx=abs(fract(vUv.x-center+.5)-.5);float rays=pow(max(0.,sin(dx*390.+sin(vUv.y*13.)*1.5)),14.);float cone=exp(-dx*dx*150.)*smoothstep(.1,.65,vUv.y);alpha=(.12+rays*.38)*cone;`);
  if(settings.lampGlow){
   const lamps=Array.isArray(settings.lamps)?settings.lamps.slice(0,20):[];
   const c=document.createElement('canvas');c.width=c.height=128;const ctx=c.getContext('2d'),g=ctx.createRadialGradient(64,64,1,64,64,63);
