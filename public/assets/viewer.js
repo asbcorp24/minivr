@@ -1,3 +1,4 @@
+import {createTiledPanorama} from '/assets/tiled-panorama.js';
 import * as THREE from '/assets/vendor/three/three.module.js';
 import DeviceOrientationControls from '/assets/vendor/three/DeviceOrientationControls.js';
 import VREffect from '/assets/vendor/three/effects/VREffect.js';
@@ -54,7 +55,17 @@ function installPanorama(source){
  if(getViewerMode()===ViewerMode.DESKTOP){if(stereoMode==='mono')camera.layers.set(0);else desktopEye()}
  requestAnimationFrame(()=>requestAnimationFrame(()=>document.body.classList.remove('scene-loading')));
 }
-new THREE.TextureLoader().load(root.dataset.image,installPanorama,undefined,err=>{console.error('Scene texture load failed',err);document.querySelector('#loader span').textContent='SCENE LOAD ERROR';});
+let tiledPanorama=null;
+async function loadInitialPanorama(){
+ if(projection==='360'&&stereoMode==='mono'&&root.dataset.tiles){
+  try{
+   tiledPanorama=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer});
+   document.body.classList.remove('scene-loading');return;
+  }catch(err){console.warn('Tile mode unavailable; falling back to original image',err)}
+ }
+ new THREE.TextureLoader().load(root.dataset.image,installPanorama,undefined,err=>{console.error('Scene texture load failed',err);document.querySelector('#loader span').textContent='SCENE LOAD ERROR';});
+}
+loadInitialPanorama();
 
 function desktopEye(){camera.layers.enable(0);camera.layers.enable(1);camera.layers.disable(2)}
 if(stereoMode==='mono'){camera.layers.set(0)}else desktopEye();
@@ -170,6 +181,7 @@ async function switchSceneInPlace(url){
  const image=next.dataset.image;
  const texture=await new THREE.TextureLoader().loadAsync(image);
  projection=next.dataset.projection||'360';stereoMode=next.dataset.stereo||'mono';
+ if(tiledPanorama){tiledPanorama.dispose();tiledPanorama=null;}
  installPanorama(texture);
  const nextTour=JSON.parse(doc.querySelector('#tour-data')?.textContent||'{}');
  tourData.current=nextTour.current??-1;
@@ -255,6 +267,7 @@ function syncHudPose(){
  head.updateMatrixWorld(true);head.getWorldPosition(hud.position);head.getWorldQuaternion(hud.quaternion);hud.scale.setScalar(1);
 }
 renderer.setAnimationLoop((time)=>{
+ tiledPanorama?.update();
  const mode=getViewerMode();
  if(mode===ViewerMode.CARDBOARD&&cardboard){const canvas=renderer.domElement;canvas.style.position='fixed';canvas.style.inset='0';canvas.style.width='100vw';canvas.style.height='100dvh';canvas.style.zIndex='1'}
  if(mode===ViewerMode.CARDBOARD&&legacyCardboard){legacyVRControls.update();camera.updateMatrixWorld(true);hud.visible=false}
