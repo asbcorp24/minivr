@@ -97,19 +97,29 @@ function hotspotSprite(h){
  }
 }
 hotspotData.forEach(hotspotSprite);
+function actionSprite(label,x,action,parent,y=-1.62,z=-3.02,width=1.15){
+ const canvas=document.createElement('canvas');canvas.width=512;canvas.height=144;
+ const ctx=canvas.getContext('2d');ctx.fillStyle='#124554';ctx.fillRect(0,0,512,144);
+ ctx.strokeStyle='#76efff';ctx.lineWidth=7;ctx.strokeRect(4,4,504,136);
+ ctx.fillStyle='#ffffff';ctx.font='bold 52px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,256,72);
+ const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(canvas),transparent:true,depthTest:false}));
+ sprite.position.set(x,y,z);sprite.scale.set(width,.36,1);sprite.renderOrder=140;
+ sprite.userData.action=action;sprite.layers.enableAll();parent.add(sprite);interactive.push(sprite);
+ return sprite;
+}
 function contentPanel(h){
  closePanels(contentGroup);clearGroup(contentGroup);
  if(getViewerMode()===ViewerMode.CARDBOARD){
   // The normal HUD is hidden in Cardboard. Display the information in world space.
-  scene.attach(contentGroup);
+  scene.add(contentGroup);
   camera.updateMatrixWorld(true);
   const pos=new THREE.Vector3(),quat=new THREE.Quaternion(),forward=new THREE.Vector3(0,0,-1);
   camera.getWorldPosition(pos);camera.getWorldQuaternion(quat);
   contentGroup.position.copy(pos).add(forward.applyQuaternion(quat).multiplyScalar(3.5));
   contentGroup.quaternion.copy(quat);contentGroup.scale.setScalar(.65);
-  contentGroup.layers.enableAll();
+  contentGroup.layers.enableAll();contentGroup.traverse(o=>o.layers.enableAll());
  }else{
-  hud.attach(contentGroup);contentGroup.position.set(0,0,0);
+  hud.add(contentGroup);contentGroup.position.set(0,0,0);
   contentGroup.quaternion.identity();contentGroup.scale.setScalar(1);
  }
  contentGroup.visible=true;
@@ -247,7 +257,7 @@ cardboardReticle.position.set(0,0,-1.2);
 camera.add(cardboardReticle);
 cardboardReticle.visible=false;
 function placeCardboardMenu(){camera.updateMatrixWorld(true);const p=new THREE.Vector3(),q=new THREE.Quaternion(),dir=new THREE.Vector3(0,0,-1);camera.getWorldPosition(p);camera.getWorldQuaternion(q);dir.applyQuaternion(q);cardboardMenu.position.copy(p).add(dir.multiplyScalar(2.2));cardboardMenu.quaternion.copy(q);cardboardMenu.visible=true;cardboardMenuPlaced=true}
-function updateCardboardGaze(){if(getViewerMode()!==ViewerMode.CARDBOARD){cardboardReticle.visible=false;return}if(!cardboardMenuPlaced)placeCardboardMenu();cardboardReticle.visible=true;camera.updateMatrixWorld(true);const origin=new THREE.Vector3(),direction=new THREE.Vector3();camera.getWorldPosition(origin);camera.getWorldDirection(direction);raycaster.set(origin,direction);const menuHit=raycaster.intersectObjects(cardboardTargets,false)[0];const infoHit=contentGroup.visible&&contentGroup.parent===scene?raycaster.intersectObjects(contentGroup.children,true).find(h=>h.object.userData?.action):null;const portalHit=raycaster.intersectObjects(hotspotObjects,false)[0];const candidates=[menuHit,portalHit,infoHit].filter(Boolean).sort((a,b)=>a.distance-b.distance);const hit=candidates[0]?.object||null;if(hit!==cardboardFocus){if(cardboardFocus){cardboardFocus.scale.setScalar(cardboardFocus.userData.baseScale||1);if(cardboardFocus.userData.cardboardAction)cardboardFocus.material.opacity=.82}cardboardFocus=hit;cardboardFocusStart=performance.now()}let p=0;if(hit){p=Math.max(0,Math.min(1,(performance.now()-cardboardFocusStart)/800));if(hit.userData.cardboardAction){hit.scale.setScalar(1-.25*p);hit.material.opacity=.35+.47*(1-p)}if(p>=1){cardboardFocusStart=performance.now()+999999;if(hit.userData.cardboardAction)hit.userData.cardboardAction();else activate(hit)}}cbReticleBase.material.color.setHex(hit?0x00d8ff:0xffffff);cbReticleFuse.geometry.dispose();cbReticleFuse.geometry=new THREE.RingGeometry(.014,.017,48,1,Math.PI/2,Math.max(.001,Math.PI*2*p))}
+function updateCardboardGaze(){if(getViewerMode()!==ViewerMode.CARDBOARD){cardboardReticle.visible=false;return}if(!cardboardMenuPlaced)placeCardboardMenu();cardboardReticle.visible=true;camera.updateMatrixWorld(true);const origin=new THREE.Vector3(),direction=new THREE.Vector3();camera.getWorldPosition(origin);camera.getWorldDirection(direction);raycaster.set(origin,direction);const menuHit=raycaster.intersectObjects(cardboardTargets,false)[0];const infoHit=contentGroup.visible&&contentGroup.parent===scene?raycaster.intersectObjects(contentGroup.children,true).find(h=>h.object.userData?.action):null;const portalHit=raycaster.intersectObjects(hotspotObjects,false)[0];const candidates=(contentGroup.visible&&contentGroup.parent===scene?[infoHit]:[menuHit,portalHit]).filter(Boolean).sort((a,b)=>a.distance-b.distance);const hit=candidates[0]?.object||null;if(hit!==cardboardFocus){if(cardboardFocus){cardboardFocus.scale.setScalar(cardboardFocus.userData.baseScale||1);if(cardboardFocus.userData.cardboardAction)cardboardFocus.material.opacity=.82}cardboardFocus=hit;cardboardFocusStart=performance.now()}let p=0;if(hit){p=Math.max(0,Math.min(1,(performance.now()-cardboardFocusStart)/800));if(hit.userData.cardboardAction){hit.scale.setScalar(1-.25*p);hit.material.opacity=.35+.47*(1-p)}if(p>=1){cardboardFocusStart=performance.now()+999999;if(hit.userData.cardboardAction)hit.userData.cardboardAction();else activate(hit)}}cbReticleBase.material.color.setHex(hit?0x00d8ff:0xffffff);cbReticleFuse.geometry.dispose();cbReticleFuse.geometry=new THREE.RingGeometry(.014,.017,48,1,Math.PI/2,Math.max(.001,Math.PI*2*p))}
 function updateGaze(){if(getViewerMode()!==ViewerMode.WEBXR)return;const xrCam=renderer.xr.getCamera(camera);const origin=new THREE.Vector3(),direction=new THREE.Vector3(0,0,-1);xrCam.getWorldPosition(origin);xrCam.getWorldDirection(direction);raycaster.set(origin,direction);const hit=raycaster.intersectObjects(pickables(),false)[0]?.object||null;const previous=gazeTarget;if(hit!==previous){if(previous&&hotspotObjects.includes(previous)&&!previous.userData.portal){previous.material.map.dispose();previous.material.map=markerTexture(previous.userData,false);previous.scale.setScalar(previous.userData.baseScale)}if(previous?.material?.color&&previous.userData?.interactive)previous.material.color.setHex(previous.userData.baseColor||0x2a2a2a);if(hit&&hotspotObjects.includes(hit)&&!hit.userData.portal){hit.material.map.dispose();hit.material.map=markerTexture(hit.userData,true);hit.scale.setScalar(hit.userData.baseScale*1.25)}gazeTarget=hit;gazeStart=performance.now();document.body.classList.remove('gazing')}if(hit){document.body.classList.add('gazing');const elapsed=performance.now()-gazeStart,progress=Math.min(1,elapsed/1200);document.documentElement.style.setProperty('--gaze',progress);updateGazeCursor(hit,progress);if(hit.material?.color&&hit.userData?.interactive)hit.material.color.setHex(hit.userData.hoverColor||0x444444);if(elapsed>1200){gazeStart=performance.now()+999999;activate(hit)}}else{document.body.classList.remove('gazing');document.documentElement.style.setProperty('--gaze',0);updateGazeCursor(null,0)}}
 renderer.xr.addEventListener('sessionstart',()=>{camera.layers.enable(0);cardboard=false;cardboardDebug.visible=false;orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();document.body.classList.remove('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';hud.visible=true;xrDebug.visible=false;document.body.classList.add('xr-presenting')});
 function syncXREyes(){if(!renderer.xr.isPresenting||stereoMode==='mono')return;const xrCam=renderer.xr.getCamera(camera);if(!xrCam?.cameras?.length)return;if(xrCam.cameras.length>=2){xrCam.cameras[0].layers.disableAll();xrCam.cameras[0].layers.enable(0);xrCam.cameras[0].layers.enable(1);xrCam.cameras[1].layers.disableAll();xrCam.cameras[1].layers.enable(0);xrCam.cameras[1].layers.enable(2)}}renderer.xr.addEventListener('sessionend',()=>{xrDebug.visible=false;hud.visible=cardboard;document.body.classList.remove('xr-presenting');document.querySelector('#controls').style.display='';document.querySelector('#top').style.display=''});
