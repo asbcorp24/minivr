@@ -16,7 +16,7 @@ if(new URLSearchParams(location.search).has('effects_debug')){
  const diagnostic=document.createElement('pre');
  diagnostic.id='minivr-effects-diagnostics';
  diagnostic.style.cssText='position:fixed;top:56px;left:8px;z-index:999999;max-width:min(94vw,440px);max-height:55vh;overflow:auto;background:rgba(0,0,0,.88);color:#aaffcc;padding:12px;border:1px solid #5b9;font:12px/1.45 monospace;white-space:pre-wrap;pointer-events:none';
- const report=()=>{diagnostic.textContent='MiniVR / effects debug\\n'+JSON.stringify(effectSettings,null,2)+'\\nModules: '+[!!effectSystem,!!atmosphereSystem,!!moonSystem].join(' / ')};
+ const report=()=>{diagnostic.textContent='MiniVR / effects debug\\n'+JSON.stringify(effectSettings,null,2)+'\\nModules: '+[!!effectSystem,!!atmosphereSystem,!!moonSystem,!!environmentSystem].join(' / ')};
  document.addEventListener('DOMContentLoaded',()=>{document.body.appendChild(diagnostic);report()});
  window.addEventListener('error',e=>{diagnostic.textContent+='\\nERROR: '+e.message});
  window.addEventListener('unhandledrejection',e=>{diagnostic.textContent+='\\nREJECTION: '+String(e.reason)});
@@ -201,7 +201,7 @@ async function switchSceneInPlace(url){
  projection=next.dataset.projection||'360';stereoMode=next.dataset.stereo||'mono';
  if(tiledPanorama){tiledPanorama.dispose();tiledPanorama=null;}
  installPanorama(texture);
- effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();try{effectSettings=JSON.parse(next.dataset.effects||'{}')}catch(e){effectSettings={}}effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);root.dataset.effects=next.dataset.effects||'{}';
+ effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();try{effectSettings=JSON.parse(next.dataset.effects||'{}')}catch(e){effectSettings={}}effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);root.dataset.effects=next.dataset.effects||'{}';
  const nextTour=JSON.parse(doc.querySelector('#tour-data')?.textContent||'{}');
  tourData.current=nextTour.current??-1;
  hotspotData=JSON.parse(doc.querySelector('#hotspots-data')?.textContent||'[]');
