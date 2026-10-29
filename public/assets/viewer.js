@@ -124,12 +124,48 @@ function contentPanel(h){
   contentGroup.quaternion.identity();contentGroup.scale.setScalar(1);
  }
  contentGroup.visible=true;
- const head=document.createElement('canvas');head.width=1000;head.height=190;const c=head.getContext('2d');c.fillStyle='#031720f4';c.fillRect(0,0,1000,190);c.strokeStyle='#5cecff';c.lineWidth=6;c.strokeRect(5,5,990,185);c.fillStyle='#65efff';c.font='bold 24px monospace';c.fillText(h.type==='image'?'IMAGE':'INFORMATION',42,48);c.fillStyle='#fff';c.font='bold 43px sans-serif';c.fillText((h.label||'').slice(0,36),42,118);
- const hs=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(head),transparent:true,depthTest:false}));hs.scale.set(4.3,.82,1);hs.position.set(0,1.12,-3.08);hs.renderOrder=132;contentGroup.add(hs);
- if(h.type==='image'&&h.content){new THREE.TextureLoader().load(h.content,t=>{if(!contentGroup.visible)return;t.colorSpace=THREE.SRGBColorSpace;const im=t.image||{},aspect=im.width&&im.height?im.width/im.height:16/9,maxW=4.15,maxH=2.25;let w=maxW,hg=w/aspect;if(hg>maxH){hg=maxH;w=hg*aspect}const pic=new THREE.Sprite(new THREE.SpriteMaterial({map:t,transparent:true,depthTest:false}));pic.scale.set(w,hg,1);pic.position.set(0,-.18,-3.04);pic.renderOrder=131;contentGroup.add(pic)},undefined,()=>addInfoText('Не удалось загрузить изображение'))}
- else addInfoText(h.content||'Нет информации');
- actionSprite('ЗАКРЫТЬ',0,()=>{contentGroup.visible=false;clearGroup(contentGroup);if(getViewerMode()===ViewerMode.CARDBOARD){cardboardMenuPlaced=false;placeCardboardMenu()}},contentGroup,-1.55,-3.02,1.8);
- function addInfoText(text){const cv=document.createElement('canvas');cv.width=1000;cv.height=560;const x=cv.getContext('2d');x.fillStyle='#031720f4';x.fillRect(0,0,1000,560);x.strokeStyle='#5cecff';x.lineWidth=5;x.strokeRect(4,4,992,552);x.fillStyle='#e9ffff';x.font='28px sans-serif';const words=String(text).split(' ');let line='',y=60;for(const w of words){const test=line+w+' ';if(x.measureText(test).width>890){x.fillText(line,45,y);line=w+' ';y+=43}else line=test;if(y>500)break}x.fillText(line,45,y);const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));sp.scale.set(4.3,2.4,1);sp.position.set(0,-.12,-3.04);sp.renderOrder=131;contentGroup.add(sp)}
+
+ const cv=document.createElement('canvas');cv.width=1024;cv.height=768;
+ const ctx=cv.getContext('2d');
+ function paintFrame(){
+  ctx.fillStyle='#062b38f5';ctx.fillRect(0,0,1024,768);
+  ctx.strokeStyle='#68eaff';ctx.lineWidth=6;ctx.strokeRect(4,4,1016,760);
+  ctx.fillStyle='#0d5265';ctx.fillRect(5,5,1014,145);
+  ctx.fillStyle='#84f5ff';ctx.font='bold 27px sans-serif';ctx.fillText(h.type==='image'?'ИЗОБРАЖЕНИЕ':'ИНФОРМАЦИЯ',44,52);
+  ctx.fillStyle='#ffffff';ctx.font='bold 45px sans-serif';ctx.fillText((h.label||'').slice(0,34),44,115);
+ }
+ paintFrame();
+ const texture=new THREE.CanvasTexture(cv);texture.colorSpace=THREE.SRGBColorSpace;
+ const panel=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false}));
+ panel.scale.set(4.1,3.08,1);panel.position.set(0,-.05,-3.08);panel.renderOrder=131;panel.layers.enableAll();contentGroup.add(panel);
+ function refresh(){texture.needsUpdate=true}
+ function drawText(value){
+  paintFrame();ctx.fillStyle='#eaffff';ctx.font='35px sans-serif';
+  const maxWidth=910,lineHeight=52;let y=220;
+  for(const paragraph of String(value).split(/\\n/)){
+   let line='';
+   for(const word of paragraph.split(/\\s+/)){
+    const next=line?line+' '+word:word;
+    if(ctx.measureText(next).width>maxWidth&&line){ctx.fillText(line,48,y);y+=lineHeight;line=word}else line=next;
+    if(y>660)break;
+   }
+   if(y>660)break;
+   ctx.fillText(line,48,y);y+=lineHeight;
+  }
+  refresh();
+ }
+ if(h.type==='image'&&h.content){
+  const image=new Image();image.onload=()=>{
+   if(!contentGroup.visible)return;
+   paintFrame();
+   const w=image.naturalWidth,hg=image.naturalHeight,ratio=Math.min(925/w,545/hg);
+   ctx.drawImage(image,(1024-w*ratio)/2,168,w*ratio,hg*ratio);refresh();
+  };image.onerror=()=>drawText('Не удалось загрузить изображение');image.src=h.content;
+ }else drawText(h.content||'Нет информации');
+ actionSprite('ЗАКРЫТЬ',0,()=>{
+  contentGroup.visible=false;clearGroup(contentGroup);
+  if(getViewerMode()===ViewerMode.CARDBOARD){cardboardMenuPlaced=false;placeCardboardMenu()}
+ },contentGroup,-1.9,-3.0,1.8);
 }
 const raycaster=new THREE.Raycaster();let gazeTarget=null,gazeStart=0;
 const gazeCursor=new THREE.Group();const gazeBase=new THREE.Mesh(new THREE.RingGeometry(.018,.025,48),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.72,depthTest:false}));const gazeProgress=new THREE.Mesh(new THREE.RingGeometry(.028,.034,48,1,Math.PI/2,0.001),new THREE.MeshBasicMaterial({color:0x66f4ff,transparent:true,opacity:.95,depthTest:false}));gazeBase.renderOrder=gazeProgress.renderOrder=200;gazeCursor.add(gazeBase,gazeProgress);gazeCursor.position.set(0,0,-1.25);gazeCursor.visible=false;camera.add(gazeCursor);
