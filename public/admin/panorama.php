@@ -7,7 +7,7 @@
 <label>Скорость частиц <input type="number" name="speed" min=".1" max="4" step=".1" value="<?=htmlspecialchars((string)($savedEffects['speed']??1))?>"></label>
 <label>Ветер (−8…+8), направление и сила <input type="number" name="wind" min="-8" max="8" step=".5" value="<?=htmlspecialchars((string)($savedEffects['wind']??0))?>"></label>
 <label>Прозрачность частиц, % <input type="range" name="opacity" min="10" max="100" value="<?=htmlspecialchars((string)($savedEffects['opacity']??80))?>"></label>
-<fieldset style="border:1px solid #36738d;border-radius:14px;padding:16px;margin:14px 0"><legend>Атмосфера и освещение</legend>
+</fieldset><fieldset style="border:1px solid #36738d;border-radius:14px;padding:16px;margin:14px 0"><legend>Атмосфера и освещение</legend>
 <label class="check"><input type="checkbox" name="fog" <?=!empty($savedEffects['fog'])?'checked':''?>> Объёмная дымка</label>
 <label>Плотность тумана <input type="range" name="fogDensity" min="0" max="100" value="<?=htmlspecialchars((string)($savedEffects['fogDensity']??25))?>"></label>
 <label class="check"><input type="checkbox" name="storm" <?=!empty($savedEffects['storm'])?'checked':''?>> Гроза и вспышки молний</label>
@@ -16,4 +16,4 @@
 <label>Яркость свечения <input type="range" name="sunIntensity" min="0" max="100" value="<?=htmlspecialchars((string)($savedEffects['sunIntensity']??30))?>"></label>
 <label class="check"><input type="checkbox" name="fireflies" <?=!empty($savedEffects['fireflies'])?'checked':''?>> Светлячки</label>
 <label>Количество светлячков <input type="range" name="fireflyDensity" min="0" max="100" value="<?=htmlspecialchars((string)($savedEffects['fireflyDensity']??30))?>"></label>
-</fieldset></fieldset><label class="check"><input type="checkbox" name="published" <?=!$existing||$existing['published']?'checked':''?>> Опубликовать сразу</label><button class="btn">СОХРАНИТЬ →</button></form></main></body></html>
+</fieldset><label class="check"><input type="checkbox" name="published" <?=!$existing||$existing['published']?'checked':''?>> Опубликовать сразу</label><button class="btn">СОХРАНИТЬ →</button></form></main></body></html>
