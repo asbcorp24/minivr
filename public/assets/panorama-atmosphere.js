@@ -13,7 +13,7 @@ export function createAtmosphere(scene,settings={}){
   const points=new THREE.Points(geo,mat);points.frustumCulled=false;points.layers.enableAll();scene.add(points);parts.push({object:points,geo,mat});
   updates.push((t,camera)=>{mat.uniforms.uTime.value=t*.001;camera.getWorldPosition(points.position)});
  };
- if(settings.fog)makeCloud('#d5e4e9',clamp(settings.fogDensity,0,100)/100*.22,Math.round(clamp(settings.fogDensity,0,100)*1.6),23,-2,'fog');
+ if(settings.fog)makeCloud('#d5e4e9',clamp(settings.fogDensity,0,100)/100*.22,Math.round(clamp(settings.fogDensity,0,100)*1.6),23,clamp(settings.fogHeight,-10,10),'fog');
  if(settings.fireflies)makeCloud('#ffdc70',.85,Math.round(clamp(settings.fireflyDensity,0,100)*1.2),12,0,'fireflies');
  let lightning=null;
  if(settings.storm){
@@ -26,8 +26,31 @@ export function createAtmosphere(scene,settings={}){
  if(settings.sunRays){
   const intensity=clamp(settings.sunIntensity,0,100)/100;
   const sun=new THREE.Sprite(new THREE.SpriteMaterial({color:0xffdfa0,transparent:true,opacity:intensity*.13,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending}));
-  sun.position.set(-140,110,-240);sun.scale.set(210,210,1);sun.layers.enableAll();scene.add(sun);parts.push({object:sun,geo:null,mat:sun.material});
+  const yaw=THREE.MathUtils.degToRad(clamp(settings.sunYaw,-180,180)),pitch=THREE.MathUtils.degToRad(clamp(settings.sunPitch,-90,90));sun.position.set(-280*Math.cos(pitch)*Math.cos(yaw),280*Math.sin(pitch),280*Math.cos(pitch)*Math.sin(yaw));sun.scale.set(210,210,1);sun.layers.enableAll();scene.add(sun);parts.push({object:sun,geo:null,mat:sun.material});
   updates.push((t)=>{sun.material.opacity=intensity*(.12+.025*Math.sin(t*.0004))});
+ }
+ if(settings.water){
+  const yaw=THREE.MathUtils.degToRad(clamp(settings.waterYaw,-180,180)),pitch=THREE.MathUtils.degToRad(clamp(settings.waterPitch,-90,90)),radius=THREE.MathUtils.degToRad(clamp(settings.waterRadius,2,70));
+  const center=new THREE.Vector3(-Math.cos(pitch)*Math.cos(yaw),Math.sin(pitch),Math.cos(pitch)*Math.sin(yaw));
+  const axis=new THREE.Vector3(0,1,0);if(Math.abs(center.dot(axis))>.95)axis.set(1,0,0);
+  const right=new THREE.Vector3().crossVectors(center,axis).normalize(),up=new THREE.Vector3().crossVectors(center,right).normalize();
+  const ringCount=12,segments=48,verts=new Float32Array(ringCount*segments*3);
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(verts,3));
+  const mat=new THREE.PointsMaterial({color:0xc5e9ff,size:.52,transparent:true,opacity:.42,depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true});
+  const ripples=new THREE.Points(geo,mat);ripples.frustumCulled=false;ripples.layers.enableAll();scene.add(ripples);parts.push({object:ripples,geo,mat});
+  updates.push((time,camera)=>{
+   const t=time*.0003;camera.getWorldPosition(ripples.position);
+   for(let k=0;k<ringCount;k++){
+    const phase=(t*(.6+(k%3)*.13)+k*.137)%1;
+    const rr=radius*(.12+phase*.88),r=18;
+    for(let j=0;j<segments;j++){
+     const a=j/segments*Math.PI*2,point=center.clone().multiplyScalar(Math.cos(rr)).addScaledVector(right,Math.sin(rr)*Math.cos(a)).addScaledVector(up,Math.sin(rr)*Math.sin(a)).normalize().multiplyScalar(r);
+     const idx=(k*segments+j)*3;verts[idx]=point.x;verts[idx+1]=point.y;verts[idx+2]=point.z;
+    }
+   }
+   geo.attributes.position.needsUpdate=true;
+   mat.opacity=.18+.18*Math.sin(time*.001);
+  });
  }
  return {update(time,camera){for(const fn of updates)fn(time,camera)},dispose(){for(const p of parts){scene.remove(p.object);p.geo?.dispose();p.mat.dispose()}}};
 }
