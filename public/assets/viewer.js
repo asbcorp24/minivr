@@ -4,8 +4,8 @@ import VREffect from '/assets/vendor/three/effects/VREffect.js';
 import VRControls from '/assets/vendor/three/controls/VRControls.js';
 
 const root=document.querySelector('#viewer');
-const projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'mono';
-const tour=Number(root.dataset.tour||0),backUrl=root.dataset.back||'/',hotspotData=JSON.parse(document.querySelector('#hotspots-data')?.textContent||'[]');
+let projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'mono';
+const tour=Number(root.dataset.tour||0),backUrl=root.dataset.back||'/';let hotspotData=JSON.parse(document.querySelector('#hotspots-data')?.textContent||'[]');
 const tourData=JSON.parse(document.querySelector('#tour-data')?.textContent||'{"scenes":[],"current":-1}');
 const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1100);
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.xr.enabled=true;root.appendChild(renderer.domElement);
@@ -42,15 +42,19 @@ function makeEye(source,eye){
  else if(projection==='180')mesh.rotation.y=Math.PI/2;
  mesh.layers.set(eye==='left'?1:2);scene.add(mesh);return mesh;
 }
-new THREE.TextureLoader().load(root.dataset.image,source=>{
+function installPanorama(source){
  source.colorSpace=THREE.SRGBColorSpace;
+ const previous=[...new Set([leftMesh,rightMesh].filter(Boolean))];
  if(stereoMode==='mono'){
-   const mesh=new THREE.Mesh(geometry(sourceAspect(source)),new THREE.MeshBasicMaterial({map:source,side:projection==='flat'?THREE.FrontSide:THREE.BackSide}));
-   if(projection==='flat'){mesh.position.set(3.2,0,0);mesh.rotation.y=-Math.PI/2;}else if(projection==='180')mesh.rotation.y=Math.PI/2;
-   mesh.layers.set(0);scene.add(mesh);leftMesh=rightMesh=mesh;
- }else{leftMesh=makeEye(source,'left');rightMesh=makeEye(source,'right')}
+  const mesh=new THREE.Mesh(geometry(sourceAspect(source)),new THREE.MeshBasicMaterial({map:source,side:projection==='flat'?THREE.FrontSide:THREE.BackSide}));
+  if(projection==='flat'){mesh.position.set(3.2,0,0);mesh.rotation.y=-Math.PI/2;}else if(projection==='180')mesh.rotation.y=Math.PI/2;
+  mesh.layers.set(0);scene.add(mesh);leftMesh=rightMesh=mesh;
+ }else{leftMesh=makeEye(source,'left');rightMesh=makeEye(source,'right');source.dispose()}
+ for(const mesh of previous){scene.remove(mesh);mesh.geometry.dispose();mesh.material.map?.dispose();mesh.material.dispose()}
+ if(getViewerMode()===ViewerMode.DESKTOP){if(stereoMode==='mono')camera.layers.set(0);else desktopEye()}
  requestAnimationFrame(()=>requestAnimationFrame(()=>document.body.classList.remove('scene-loading')));
-},undefined,err=>{console.error('Scene texture load failed',err);document.querySelector('#loader span').textContent='SCENE LOAD ERROR';});
+}
+new THREE.TextureLoader().load(root.dataset.image,installPanorama,undefined,err=>{console.error('Scene texture load failed',err);document.querySelector('#loader span').textContent='SCENE LOAD ERROR';});
 
 function desktopEye(){camera.layers.enable(0);camera.layers.enable(1);camera.layers.disable(2)}
 if(stereoMode==='mono'){camera.layers.set(0)}else desktopEye();
@@ -150,8 +154,39 @@ function renderCardboard(){
  gl.disable(gl.SCISSOR_TEST);renderer.setScissorTest(false);renderer.setViewport(0,0,size.x,size.y);renderer.autoClear=true;
 }
 const cardboardRestoreKey='minivr:cardboard:restore';
+async function switchSceneInPlace(url){
+ const response=await fetch(url,{credentials:'same-origin'});
+ if(!response.ok)throw new Error('Scene HTTP '+response.status);
+ const doc=new DOMParser().parseFromString(await response.text(),'text/html');
+ const next=doc.querySelector('#viewer');
+ if(!next)throw new Error('Scene data missing');
+ const image=next.dataset.image;
+ const texture=await new THREE.TextureLoader().loadAsync(image);
+ projection=next.dataset.projection||'360';stereoMode=next.dataset.stereo||'mono';
+ installPanorama(texture);
+ const nextTour=JSON.parse(doc.querySelector('#tour-data')?.textContent||'{}');
+ tourData.current=nextTour.current??-1;
+ hotspotData=JSON.parse(doc.querySelector('#hotspots-data')?.textContent||'[]');
+ for(const obj of hotspotObjects){scene.remove(obj);obj.material.map?.dispose();obj.material.dispose()}
+ hotspotObjects.length=0;activeHotspot=null;
+ hotspotData.forEach(hotspotSprite);
+ closePanels();menuPage=Math.max(0,Math.floor(Math.max(0,tourData.current)/6));buildMenu();
+ root.dataset.image=image;root.dataset.projection=projection;root.dataset.stereo=stereoMode;
+ root.dataset.scene=next.dataset.scene;
+ document.title=doc.title;
+ const topTitle=doc.querySelector('#top b'),currentTitle=document.querySelector('#top b');
+ if(topTitle&&currentTitle)currentTitle.textContent=topTitle.textContent;
+ history.pushState({miniVRScene:true},'',url);
+ cardboardMenuPlaced=false;
+ if(getViewerMode()===ViewerMode.CARDBOARD)placeCardboardMenu();
+}
 function navigate(url){
  if(document.body.classList.contains('scene-leaving'))return;
+ const target=new URL(url,location.href);
+ if(getViewerMode()===ViewerMode.CARDBOARD&&target.origin===location.origin&&target.pathname==='/viewer.php'){
+  switchSceneInPlace(target.pathname+target.search).catch(err=>console.error('In-place scene switch failed',err));
+  return;
+ }
  if(getViewerMode()===ViewerMode.CARDBOARD){
   try{sessionStorage.setItem(cardboardRestoreKey,JSON.stringify({path:new URL(url,location.href).pathname,expires:Date.now()+30000}))}catch{}
  }else{try{sessionStorage.removeItem(cardboardRestoreKey)}catch{}}
