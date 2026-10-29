@@ -9,7 +9,19 @@ export function createPanoramaEffects(scene,settings){
  const count=type==='none'?0:Math.round(density*(type==='rain'?8:type==='snow'?5:3)*(mobile?.6:1));
  if(!count)return {update(){},dispose(){}};
  const positions=new Float32Array(count*3),velocities=new Float32Array(count),drift=new Float32Array(count),colors=new Float32Array(count*3),sizes=new Float32Array(count);
- const randomize=i=>{positions[i*3]=(Math.random()-.5)*35;positions[i*3+1]=Math.random()*22-10;positions[i*3+2]=(Math.random()-.5)*35;velocities[i]=.35+Math.random()*.85;drift[i]=Math.random()*6.28;sizes[i]=.65+Math.random()*.65;const palette=type==='leaves'?['#bd6a22','#e7b454','#a94a21','#a4a04d']:type==='snow'?['#ffffff','#e7f5ff']:['#a5c8e5','#d4e9f9'];const color=new THREE.Color(palette[Math.floor(Math.random()*palette.length)]);colors[i*3]=color.r;colors[i*3+1]=color.g;colors[i*3+2]=color.b};
+ const layerDepths=[5,11,20],layerSpeed=[1.22,1,.72];
+ const randomize=i=>{
+  const layer=i%3,depth=layerDepths[layer],angle=Math.random()*Math.PI*2,radius=depth*(.55+Math.random()*.45);
+  positions[i*3]=Math.cos(angle)*radius;
+  positions[i*3+1]=(Math.random()-.5)*22;
+  positions[i*3+2]=Math.sin(angle)*radius;
+  velocities[i]=(.35+Math.random()*.85)*layerSpeed[layer];
+  drift[i]=Math.random()*6.28;
+  sizes[i]=(.65+Math.random()*.65)*(layer===0?1.12:layer===2?.78:1);
+  const palette=type==='leaves'?['#bd6a22','#e7b454','#a94a21','#a4a04d']:type==='snow'?['#ffffff','#e7f5ff']:['#a5c8e5','#d4e9f9'];
+  const color=new THREE.Color(palette[Math.floor(Math.random()*palette.length)]);
+  colors[i*3]=color.r;colors[i*3+1]=color.g;colors[i*3+2]=color.b;
+ };
  for(let i=0;i<count;i++)randomize(i);
  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(positions,3));geo.setAttribute('color',new THREE.BufferAttribute(colors,3));geo.setAttribute('aSize',new THREE.BufferAttribute(sizes,1));
  const mat=new THREE.ShaderMaterial({
@@ -22,11 +34,11 @@ export function createPanoramaEffects(scene,settings){
  let prev=0;
  function update(time,camera){
   if(!prev){prev=time;return}const dt=Math.min(.05,(time-prev)/1000);prev=time;
-  mat.uniforms.uTime.value=time*.001;if(camera)particles.position.copy(camera.position);
+  mat.uniforms.uTime.value=time*.001;if(camera){camera.getWorldPosition(particles.position)}
   for(let i=0;i<count;i++){
    const n=i*3;positions[n+1]-=dt*speed*velocities[i]*(type==='rain'?17:type==='snow'?2:3);
    positions[n]+=(Math.sin(time*.0006+drift[i])*(type==='rain'?.5:type==='snow'?1.1:2.8)+wind)*dt;positions[n+2]+=Math.cos(time*.0004+drift[i])*dt*(type==='leaves'?1.2:.25);
-   if(positions[n+1]<-11||Math.abs(positions[n])>18){positions[n+1]=11;positions[n]=(Math.random()-.5)*35;positions[n+2]=(Math.random()-.5)*35}
+   if(positions[n+1]<-11||Math.abs(positions[n])>24||Math.abs(positions[n+2])>24){const layer=i%3,depth=layerDepths[layer],angle=Math.random()*Math.PI*2,radius=depth*(.55+Math.random()*.45);positions[n+1]=11;positions[n]=Math.cos(angle)*radius;positions[n+2]=Math.sin(angle)*radius}
   }geo.attributes.position.needsUpdate=true;
  }
  function dispose(){scene.remove(particles);geo.dispose();mat.dispose()}
