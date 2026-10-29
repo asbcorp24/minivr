@@ -34,15 +34,21 @@ document.querySelector('#capture').onclick=()=>{syncPoint();root.classList.add('
 document.querySelector('.hotspot-form')?.addEventListener('submit',syncPoint);
 const fullscreenButton=document.querySelector('#hotspot-fullscreen');
 function syncFullscreenButton(){
- const expanded=document.fullscreenElement===root||root.classList.contains('hotspot-expanded');
+ const expanded=root.classList.contains('hotspot-expanded');
+ if(!fullscreenButton)return;
  fullscreenButton.querySelector('span').textContent=expanded?'Свернуть':'На весь экран';
  fullscreenButton.setAttribute('aria-label',expanded?'Свернуть панораму':'Развернуть панораму');
  fullscreenButton.firstChild.textContent=expanded?'⤢ ':'⛶ ';
- size();
+ document.body.classList.toggle('hotspot-fullscreen-active',expanded);
+ requestAnimationFrame(size);
 }
-fullscreenButton?.addEventListener('click',async()=>{
- if(document.fullscreenElement===root){await document.exitFullscreen();return}
- if(root.classList.contains('hotspot-expanded')){root.classList.remove('hotspot-expanded');syncFullscreenButton();return}
- try{if(!root.requestFullscreen)throw new Error('Fullscreen unavailable');await root.requestFullscreen()}catch{root.classList.add('hotspot-expanded');syncFullscreenButton()}
+fullscreenButton?.addEventListener('click',e=>{
+ e.preventDefault();e.stopPropagation();
+ root.classList.toggle('hotspot-expanded');
+ syncFullscreenButton();
 });
-document.addEventListener('fullscreenchange',syncFullscreenButton);
+document.addEventListener('keydown',e=>{
+ if(e.key==='Escape'&&root.classList.contains('hotspot-expanded')){
+  root.classList.remove('hotspot-expanded');syncFullscreenButton();
+ }
+});
