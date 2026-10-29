@@ -96,15 +96,38 @@ export function createEnvironment(scene,settings={}){
  if(settings.lightBeams)makeLayer('light',clamp(settings.beamIntensity??40,0,100)/100,'#ffe6b5',
   `float center=(${Number(settings.sunYaw||0).toFixed(2)}+180.)/360.;float dx=abs(fract(vUv.x-center+.5)-.5);float rays=pow(max(0.,sin(dx*390.+sin(vUv.y*13.)*1.5)),14.);float cone=exp(-dx*dx*150.)*smoothstep(.1,.65,vUv.y);alpha=(.12+rays*.38)*cone;`);
  if(settings.lampGlow){
-  const lamps=Array.isArray(settings.lamps)?settings.lamps.slice(0,20):[];
-  const c=document.createElement('canvas');c.width=c.height=128;const ctx=c.getContext('2d'),g=ctx.createRadialGradient(64,64,1,64,64,63);
-  g.addColorStop(0,'rgba(255,239,193,.85)');g.addColorStop(.17,'rgba(255,209,139,.35)');g.addColorStop(1,'rgba(255,193,110,0)');ctx.fillStyle=g;ctx.fillRect(0,0,128,128);
-  const t=new THREE.CanvasTexture(c);
-  for(const [yaw,pitch] of lamps){const a=THREE.MathUtils.degToRad(yaw),b=THREE.MathUtils.degToRad(pitch);
-   const m=new THREE.SpriteMaterial({map:t,transparent:true,depthTest:false,depthWrite:false,opacity:clamp(settings.lampIntensity??60,0,100)/100,blending:THREE.AdditiveBlending});
-   const sp=new THREE.Sprite(m);sp.position.set(90*Math.cos(b)*Math.cos(a),90*Math.sin(b),-90*Math.cos(b)*Math.sin(a));sp.scale.set(11,11,1);sp.layers.enableAll();scene.add(sp);resources.push({mesh:sp,material:m});
+  const lamps=Array.isArray(settings.lamps)?settings.lamps.filter(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)).slice(0,20):[];
+  // Two independently textured glows: a broad soft halo and a compact bright core.
+  const makeGlowTexture=(core)=>{
+   const c=document.createElement('canvas');c.width=c.height=256;
+   const ctx=c.getContext('2d'),g=ctx.createRadialGradient(128,128,0,128,128,127);
+   if(core){g.addColorStop(0,'rgba(255,251,226,1)');g.addColorStop(.08,'rgba(255,238,190,.94)');g.addColorStop(.23,'rgba(255,205,120,.42)');g.addColorStop(.65,'rgba(255,172,90,.07)');}
+   else{g.addColorStop(0,'rgba(255,223,166,.58)');g.addColorStop(.14,'rgba(255,207,144,.36)');g.addColorStop(.48,'rgba(255,185,116,.12)');}
+   g.addColorStop(1,'rgba(255,170,100,0)');
+   ctx.fillStyle=g;ctx.fillRect(0,0,256,256);
+   return new THREE.CanvasTexture(c);
+  };
+  const haloTexture=makeGlowTexture(false),coreTexture=makeGlowTexture(true);
+  resources.push({maskTexture:haloTexture},{maskTexture:coreTexture});
+  const intensity=clamp(settings.lampIntensity??60,0,100)/100;
+  for(const [yaw,pitch] of lamps){
+   const a=THREE.MathUtils.degToRad(yaw),b=THREE.MathUtils.degToRad(pitch);
+   const direction=new THREE.Vector3(Math.cos(b)*Math.cos(a),Math.sin(b),-Math.cos(b)*Math.sin(a));
+   const makeSprite=(map,scale,opacity)=>{
+    const material=new THREE.SpriteMaterial({map,color:0xffffff,transparent:true,depthTest:false,depthWrite:false,opacity,blending:THREE.AdditiveBlending});
+    const sprite=new THREE.Sprite(material);
+    sprite.position.copy(direction).multiplyScalar(90);
+    sprite.scale.set(scale,scale,1);sprite.layers.enableAll();sprite.renderOrder=35;
+    scene.add(sprite);resources.push({mesh:sprite,material});
+    updates.push((time,camera)=>{
+     camera.getWorldPosition(sprite.position);
+     sprite.position.addScaledVector(direction,90);
+     material.opacity=opacity*(.96+.04*Math.sin(time*.0014+yaw));
+    });
+   };
+   makeSprite(haloTexture,38,intensity*.85);
+   makeSprite(coreTexture,13,Math.min(1,intensity*1.3));
   }
-  resources.push({maskTexture:t});
  }
  if(settings.windLeaves){
   const polygon=mask('vegetation'),count=Math.round(clamp(settings.leafDensity??30,0,100)*2.5);
