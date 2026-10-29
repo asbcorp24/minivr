@@ -149,7 +149,22 @@ function renderCardboard(){
  gl.viewport(half,0,size.x-half,size.y);gl.scissor(half,0,size.x-half,size.y);gl.clear(gl.DEPTH_BUFFER_BIT);renderer.render(scene,r);
  gl.disable(gl.SCISSOR_TEST);renderer.setScissorTest(false);renderer.setViewport(0,0,size.x,size.y);renderer.autoClear=true;
 }
-function navigate(url){if(document.body.classList.contains('scene-leaving'))return;document.body.classList.add('scene-leaving');setTimeout(()=>location.href=url,260)}
+const cardboardRestoreKey='minivr:cardboard:restore';
+function navigate(url){
+ if(document.body.classList.contains('scene-leaving'))return;
+ if(getViewerMode()===ViewerMode.CARDBOARD){
+  try{sessionStorage.setItem(cardboardRestoreKey,JSON.stringify({path:new URL(url,location.href).pathname,expires:Date.now()+30000}))}catch{}
+ }else{try{sessionStorage.removeItem(cardboardRestoreKey)}catch{}}
+ document.body.classList.add('scene-leaving');
+ setTimeout(()=>location.href=url,260)
+}
+async function restoreCardboardAfterNavigation(){
+ let saved=null;
+ try{saved=JSON.parse(sessionStorage.getItem(cardboardRestoreKey)||'null');sessionStorage.removeItem(cardboardRestoreKey)}catch{}
+ if(!saved||saved.path!=='/viewer.php'||Date.now()>saved.expires)return;
+ // Browsers may require a fresh gesture for fullscreen; stereo presentation itself is restored.
+ await toggleCardboard();
+}
 async function toggleCardboard(){
  if(renderer.xr.isPresenting)return;
  if(legacyCardboard&&legacyVRDisplay){try{await legacyVREffect.exitPresent()}catch{}legacyCardboard=false;cardboard=false;hud.visible=false;cardboardMenu.visible=false;cardboardReticle.visible=false;cardboardMenuPlaced=false;document.body.classList.remove('cardboard');document.querySelector('#controls').style.display='';document.querySelector('#top').style.display='';resize();return}
@@ -166,6 +181,7 @@ async function toggleCardboard(){
  orientation=true;deviceOrientation.enabled=true;deviceOrientation.connect();cardboard=true;hud.visible=false;gazeCursor.visible=false;cardboardMenuPlaced=false;placeCardboardMenu();document.body.classList.add('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';try{await document.documentElement.requestFullscreen?.()}catch{}resize();
 }
 document.querySelector('#cardboard').onclick=toggleCardboard;
+restoreCardboardAfterNavigation().catch(err=>console.warn('Cardboard restore failed',err));
 
 // Cardboard gaze menu: world-locked, based on Ramotion vr-menu-demo focusFire pattern.
 const cardboardMenu=new THREE.Group();cardboardMenu.visible=false;scene.add(cardboardMenu);const cardboardTargets=[];let cardboardFocus=null,cardboardFocusStart=0,cardboardMenuPlaced=false;
