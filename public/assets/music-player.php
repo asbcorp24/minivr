@@ -9,6 +9,9 @@ if($miniVrTracks): ?>
 #music-player .music-meta{display:flex;flex-direction:column;min-width:0;max-width:145px;overflow:hidden}
 #music-player .music-title,#music-player .music-artist{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #music-player .music-artist{color:#9fc2ce}
+body:has(#viewer) #music-player{top:58px;bottom:auto;right:12px;z-index:15}
+body:has(#viewer).cardboard #music-player,body:has(#viewer).xr-presenting #music-player{display:none!important}
+@media(max-width:600px){body:has(#viewer) #music-player{top:48px;right:8px;padding:5px 8px;gap:5px;max-width:calc(100vw - 16px);border-radius:12px}body:has(#viewer) #music-player button{width:29px;height:29px}body:has(#viewer) #music-player .music-meta{max-width:105px}}
 body.music-player-hidden #music-player{display:none}
 </style>
 <div id="music-player" aria-label="Музыкальный плеер">
