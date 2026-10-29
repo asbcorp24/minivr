@@ -10,6 +10,17 @@ import VRControls from '/assets/vendor/three/controls/VRControls.js';
 const root=document.querySelector('#viewer');
 let effectSettings={};try{effectSettings=JSON.parse(root.dataset.effects||'{}')}catch(e){}
 let effectSystem=null,atmosphereSystem=null,moonSystem=null,lastEffectTime=0;
+// Opt-in diagnostics: /viewer.php?id=...&effects_debug=1
+if(new URLSearchParams(location.search).has('effects_debug')){
+ const diagnostic=document.createElement('pre');
+ diagnostic.id='minivr-effects-diagnostics';
+ diagnostic.style.cssText='position:fixed;top:56px;left:8px;z-index:999999;max-width:min(94vw,440px);max-height:55vh;overflow:auto;background:rgba(0,0,0,.88);color:#aaffcc;padding:12px;border:1px solid #5b9;font:12px/1.45 monospace;white-space:pre-wrap;pointer-events:none';
+ const report=()=>{diagnostic.textContent='MiniVR / effects debug\\n'+JSON.stringify(effectSettings,null,2)+'\\nModules: '+[!!effectSystem,!!atmosphereSystem,!!moonSystem].join(' / ')};
+ document.addEventListener('DOMContentLoaded',()=>{document.body.appendChild(diagnostic);report()});
+ window.addEventListener('error',e=>{diagnostic.textContent+='\\nERROR: '+e.message});
+ window.addEventListener('unhandledrejection',e=>{diagnostic.textContent+='\\nREJECTION: '+String(e.reason)});
+}
+
 let projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'mono';
 const tour=Number(root.dataset.tour||0),backUrl=root.dataset.back||'/';let hotspotData=JSON.parse(document.querySelector('#hotspots-data')?.textContent||'[]');
 const tourData=JSON.parse(document.querySelector('#tour-data')?.textContent||'{"scenes":[],"current":-1}');
