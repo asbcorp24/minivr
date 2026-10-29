@@ -24,16 +24,16 @@ function draw(){
  marker(number('waterYaw'),number('waterPitch'),'#55c9ff','◉ Вода',number('waterRadius'));
 }
 function apply(e){
- const p=read(e),kind=mode.value,[yaw,pitch]=names[kind];set(yaw,p.yaw);set(pitch,p.pitch);
+ const p=read(e),kind=mode.value,[yaw,pitch]=names[kind];if(kind!=='water'||!dragging||!anchor||anchor===p){set(yaw,p.yaw);set(pitch,p.pitch)}
  if(kind==='water'&&dragging&&anchor){
-  const a=THREELESS(angle(anchor.yaw),angle(anchor.pitch)),b=THREELESS(angle(p.yaw),angle(p.pitch));
+  const a=[angle(anchor.yaw),angle(anchor.pitch)],b=[angle(p.yaw),angle(p.pitch)];
   const dot=Math.sin(a[1])*Math.sin(b[1])+Math.cos(a[1])*Math.cos(b[1])*Math.cos(a[0]-b[0]);
   set('waterRadius',Math.max(2,Math.min(70,Math.acos(Math.max(-1,Math.min(1,dot)))*180/Math.PI)));
  }
  draw();
 }
-const angle=v=>v*Math.PI/180,THREELESS=(a,b)=>[a,b];
-canvas.addEventListener('pointerdown',e=>{dragging=true;anchor=read(e);canvas.setPointerCapture(e.pointerId);apply(e)});
+const angle=v=>v*Math.PI/180;
+canvas.addEventListener('pointerdown',e=>{dragging=true;anchor=read(e);canvas.setPointerCapture(e.pointerId);const [yaw,pitch]=names[mode.value];set(yaw,anchor.yaw);set(pitch,anchor.pitch);draw()});
 canvas.addEventListener('pointermove',e=>{if(dragging)apply(e)});
 const finish=()=>{dragging=false;anchor=null};canvas.addEventListener('pointerup',finish);canvas.addEventListener('pointercancel',finish);
 form.addEventListener('input',e=>{if(['sunYaw','sunPitch','waterYaw','waterPitch','waterRadius'].includes(e.target.name))draw()});
