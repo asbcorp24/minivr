@@ -13,7 +13,41 @@ export function createAtmosphere(scene,settings={}){
   const points=new THREE.Points(geo,mat);points.frustumCulled=false;points.layers.enableAll();scene.add(points);parts.push({object:points,geo,mat});
   updates.push((t,camera)=>{mat.uniforms.uTime.value=t*.001;camera.updateMatrixWorld(true);camera.getWorldPosition(points.position)});
  };
- if(settings.fog)makeCloud('#d5e4e9',clamp(settings.fogDensity,0,100)/100*.22,Math.round(clamp(settings.fogDensity,0,100)*1.6),23,clamp(settings.fogHeight,-10,10),'fog');
+ if(settings.fog){
+  // Panorama fog is a continuous, slowly drifting atmospheric veil, not point sprites.
+  const density=clamp(settings.fogDensity??40,0,100)/100;
+  const height=clamp(settings.fogHeight??0,-10,10);
+  const fogGeo=new THREE.SphereGeometry(65,64,32);
+  const fogMat=new THREE.ShaderMaterial({
+   uniforms:{uTime:{value:0},uDensity:{value:density},uHeight:{value:height}},
+   vertexShader:`precision highp float;
+    varying vec3 vDir;
+    void main(){vDir=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+   fragmentShader:`precision highp float;
+    varying vec3 vDir;uniform float uTime;uniform float uDensity;uniform float uHeight;
+    float hash(vec3 p){p=fract(p*.1031);p+=dot(p,p.yzx+33.33);return fract((p.x+p.y)*p.z);}
+    float noise3(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
+     return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
+                mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);}
+    void main(){
+     vec3 d=normalize(vDir);
+     float latitude=asin(clamp(d.y,-1.0,1.0));
+     float horizon=uHeight*.018;
+     float low=1.0-smoothstep(-.19+horizon,.32+horizon,latitude);
+     float ground=smoothstep(-1.3,-.30+horizon,latitude);
+     vec3 p=d*5.2+vec3(uTime*.012,0.,uTime*.008);
+     float n=noise3(p)*.55+noise3(p*2.15+8.3)*.3+noise3(p*4.2+16.7)*.15;
+     float banks=smoothstep(.20,.79,n);
+     float alpha=uDensity*(.075+.34*banks)*low*ground;
+     alpha*=smoothstep(0.005,.08,uDensity);
+     gl_FragColor=vec4(vec3(.78,.84,.87),clamp(alpha,0.,.52));
+    }`,
+   transparent:true,side:THREE.BackSide,depthWrite:false,depthTest:false,blending:THREE.NormalBlending
+  });
+  const fogMesh=new THREE.Mesh(fogGeo,fogMat);fogMesh.layers.enableAll();fogMesh.renderOrder=5;scene.add(fogMesh);
+  parts.push({object:fogMesh,geo:fogGeo,mat:fogMat});
+  updates.push((time,camera)=>{fogMat.uniforms.uTime.value=time*.001;camera.getWorldPosition(fogMesh.position)});
+ }
  if(settings.fireflies)makeCloud('#ffdc70',.85,Math.round(clamp(settings.fireflyDensity,0,100)*1.2),12,0,'fireflies');
  let lightning=null;
  if(settings.storm){
