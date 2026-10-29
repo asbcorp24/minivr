@@ -9,11 +9,37 @@ export function createMoonlight(scene,settings={}){
  const width=clamp(settings.moonPathWidth??16,2,60);
  const dir=new THREE.Vector3(Math.cos(pitch)*Math.sin(yaw),Math.sin(pitch),-Math.cos(pitch)*Math.cos(yaw));
  const resources=[],updates=[];
- const moon=new THREE.Sprite(new THREE.SpriteMaterial({color:0xdce9ff,transparent:true,opacity:Math.min(1,.95*strength),depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending}));
+ // Alpha-masked procedural textures: a Sprite without a map is a square.
+ const makeTexture=(halo=false)=>{
+  const canvas=document.createElement('canvas');canvas.width=canvas.height=256;
+  const ctx=canvas.getContext('2d'),cx=128,cy=128;
+  if(halo){
+   const gradient=ctx.createRadialGradient(cx,cy,5,cx,cy,125);
+   gradient.addColorStop(0,'rgba(207,225,255,0.42)');
+   gradient.addColorStop(.25,'rgba(174,204,255,0.22)');
+   gradient.addColorStop(.55,'rgba(146,183,245,0.07)');
+   gradient.addColorStop(1,'rgba(146,183,245,0)');
+   ctx.fillStyle=gradient;ctx.fillRect(0,0,256,256);
+  }else{
+   const r=111;
+   const gradient=ctx.createRadialGradient(99,93,6,cx,cy,r);
+   gradient.addColorStop(0,'#fffef0');gradient.addColorStop(.65,'#e6edee');
+   gradient.addColorStop(.94,'#c2d0dc');gradient.addColorStop(1,'#b7c8d7');
+   ctx.fillStyle=gradient;ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();
+   ctx.save();ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.clip();
+   // Subtle lunar maria, deterministic so the surface does not flicker.
+   const patches=[[87,105,25,.07],[151,143,29,.09],[127,77,17,.07],[109,163,21,.06],[173,105,13,.06]];
+   for(const [x,y,radius,alpha] of patches){ctx.fillStyle='rgba(67,86,105,'+alpha+')';ctx.beginPath();ctx.ellipse(x,y,radius,radius*.75,.3,0,Math.PI*2);ctx.fill()}
+   ctx.restore();
+  }
+  const texture=new THREE.CanvasTexture(canvas);texture.needsUpdate=true;return texture;
+ };
+ const moonTexture=makeTexture(false),glowTexture=makeTexture(true);
+ const moon=new THREE.Sprite(new THREE.SpriteMaterial({map:moonTexture,color:0xffffff,transparent:true,opacity:Math.min(1,.95*strength),depthWrite:false,depthTest:false}));
  moon.position.copy(dir).multiplyScalar(350);moon.scale.set(44,44,1);moon.layers.enableAll();scene.add(moon);resources.push([moon,null,moon.material]);
- const glow=new THREE.Sprite(new THREE.SpriteMaterial({color:0x9dbce8,transparent:true,opacity:.12*strength,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending}));
+ const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture,color:0xffffff,transparent:true,opacity:Math.min(1,strength),depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending}));
  glow.position.copy(dir).multiplyScalar(348);glow.scale.set(145,145,1);glow.layers.enableAll();scene.add(glow);resources.push([glow,null,glow.material]);
- updates.push(t=>{glow.material.opacity=strength*(.10+.025*Math.sin(t*.00035))});
+ updates.push(t=>{glow.material.opacity=strength*(.85+.08*Math.sin(t*.00035))});
  if(settings.moonPath!==false){
   const polygon=Array.isArray(settings.waterPolygon)?settings.waterPolygon.filter(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)).slice(0,80):[];
   const centerYaw=clamp(settings.waterYaw,-180,180);
@@ -47,5 +73,5 @@ export function createMoonlight(scene,settings={}){
    geo.attributes.position.needsUpdate=true;
   });
  }
- return {update(t,c){for(const fn of updates)fn(t,c)},dispose(){for(const [obj,geo,mat] of resources){scene.remove(obj);geo?.dispose();mat.dispose()}}};
+ return {update(t,c){for(const fn of updates)fn(t,c)},dispose(){for(const [obj,geo,mat] of resources){scene.remove(obj);geo?.dispose();mat.dispose()}moonTexture.dispose();glowTexture.dispose()}};
 }
