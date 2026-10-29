@@ -13,7 +13,7 @@ const groups={
  moon:['moonVisible','moonYaw','moonPitch','moonIntensity'],
  fireflies:['fireflyDensity'],
  moonPath:['moonPathWidth','moonHorizon','moonBottom'],
- liveWater:['waterShimmer'],clouds:['cloudDensity'],stars:['starDensity'],lightBeams:['beamIntensity'],lampGlow:['lampIntensity'],windLeaves:['leafDensity']
+ liveWater:['waterShimmer'],clouds:['cloudDensity'],stars:['starDensity'],lightBeams:['beamIntensity'],lampGlow:['lampIntensity'],windLeaves:['leafDensity'],bubbles:['bubbleIntensity'],steam:['steamIntensity'],timeOfDay:['dayPhase'],floatingLeaves:['floatingDensity']
 };
 function refresh(){
  for(const [key,fields] of Object.entries(groups)){
@@ -26,9 +26,9 @@ function refresh(){
  const waterActive=checked('moon')&&checked('moonPath'),moonActive=checked('moon'),sunActive=checked('sunRays');
  const tool=mode?.value||'water';
  const tools=mode?.options||[];
- for(const option of tools){option.disabled=(option.value==='sun'&&!sunActive)||(option.value==='moon'&&!moonActive)||(option.value==='polygon'&&!waterActive)||(option.value==='mask-water'&&!checked('liveWater'))||(option.value==='mask-sky'&&!checked('clouds')&&!checked('stars'))||(option.value==='mask-light'&&!checked('lightBeams'))||(option.value==='mask-vegetation'&&!checked('windLeaves'))||(option.value==='lamp'&&!checked('lampGlow'))}
+ for(const option of tools){option.disabled=(option.value==='sun'&&!sunActive)||(option.value==='moon'&&!moonActive)||(option.value==='polygon'&&!waterActive)||(option.value==='mask-water'&&!checked('liveWater'))||(option.value==='mask-sky'&&!checked('clouds')&&!checked('stars'))||(option.value==='mask-light'&&!checked('lightBeams'))||(option.value==='mask-vegetation'&&!checked('windLeaves'))||(option.value==='lamp'&&!checked('lampGlow'))||(option.value==='mask-bubbles'&&!checked('bubbles'))||(option.value==='mask-steam'&&!checked('steam'))||(option.value==='mask-floating'&&!checked('floatingLeaves'))}
  if(mode?.selectedOptions[0]?.disabled){const available=Array.from(tools).find(o=>!o.disabled);if(available)mode.value=available.value}
- const anyTool=sunActive||moonActive||waterActive||['liveWater','clouds','stars','lightBeams','lampGlow','windLeaves'].some(checked);
+ const anyTool=sunActive||moonActive||waterActive||['liveWater','clouds','stars','lightBeams','lampGlow','windLeaves','bubbles','steam','floatingLeaves'].some(checked);
  if(map)map.hidden=!anyTool;
  if(map)map.style.display=anyTool?'':'none';
  const polygon=mode?.value==='polygon'||mode?.value?.startsWith('mask-')||mode?.value==='lamp';
