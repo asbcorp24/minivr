@@ -189,7 +189,7 @@ async function switchSceneInPlace(url){
  projection=next.dataset.projection||'360';stereoMode=next.dataset.stereo||'mono';
  if(tiledPanorama){tiledPanorama.dispose();tiledPanorama=null;}
  installPanorama(texture);
- effectSystem?.dispose();atmosphereSystem?.dispose();try{effectSettings=JSON.parse(next.dataset.effects||'{}')}catch(e){effectSettings={}}effectSystem=createPanoramaEffects(scene,effectSettings);
+ effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();try{effectSettings=JSON.parse(next.dataset.effects||'{}')}catch(e){effectSettings={}}effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);root.dataset.effects=next.dataset.effects||'{}';
  const nextTour=JSON.parse(doc.querySelector('#tour-data')?.textContent||'{}');
  tourData.current=nextTour.current??-1;
  hotspotData=JSON.parse(doc.querySelector('#hotspots-data')?.textContent||'[]');
