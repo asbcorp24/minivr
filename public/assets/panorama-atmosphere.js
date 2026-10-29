@@ -26,7 +26,7 @@ export function createAtmosphere(scene,settings={}){
  if(settings.sunRays){
   const intensity=clamp(settings.sunIntensity,0,100)/100;
   const sun=new THREE.Sprite(new THREE.SpriteMaterial({color:0xffdfa0,transparent:true,opacity:intensity*.13,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending}));
-  const yaw=THREE.MathUtils.degToRad(clamp(settings.sunYaw,-180,180)),pitch=THREE.MathUtils.degToRad(clamp(settings.sunPitch,-90,90));sun.position.set(280*Math.cos(pitch)*Math.sin(yaw),280*Math.sin(pitch),-280*Math.cos(pitch)*Math.cos(yaw));sun.scale.set(210,210,1);sun.layers.enableAll();scene.add(sun);parts.push({object:sun,geo:null,mat:sun.material});
+  const yaw=THREE.MathUtils.degToRad(clamp(settings.sunYaw,-180,180)),pitch=THREE.MathUtils.degToRad(clamp(settings.sunPitch,-90,90));sun.position.set(280*Math.cos(pitch)*Math.cos(yaw),280*Math.sin(pitch),-280*Math.cos(pitch)*Math.sin(yaw));sun.scale.set(210,210,1);sun.layers.enableAll();scene.add(sun);parts.push({object:sun,geo:null,mat:sun.material});
   updates.push((t)=>{sun.material.opacity=intensity*(.12+.025*Math.sin(t*.0004))});
  }
  return {update(time,camera){for(const fn of updates)fn(time,camera)},dispose(){for(const p of parts){scene.remove(p.object);p.geo?.dispose();p.mat.dispose()}}};
