@@ -7,7 +7,7 @@ export function createMoonlight(scene,settings={}){
  const pitch=THREE.MathUtils.degToRad(clamp(settings.moonPitch,-90,90));
  const strength=clamp(settings.moonIntensity??55,0,100)/100;
  const width=clamp(settings.moonPathWidth??16,2,60);
- const dir=new THREE.Vector3(Math.cos(pitch)*Math.sin(yaw),Math.sin(pitch),-Math.cos(pitch)*Math.cos(yaw));
+ const dir=new THREE.Vector3(Math.cos(pitch)*Math.cos(yaw),Math.sin(pitch),-Math.cos(pitch)*Math.sin(yaw));
  const resources=[],updates=[];
  // Alpha-masked procedural textures: a Sprite without a map is a square.
  const makeTexture=(halo=false)=>{
@@ -68,7 +68,7 @@ export function createMoonlight(scene,settings={}){
     const normalized=((az+180)%360+360)%360-180;
     const visible=inside(unwrap(normalized),el);
     const a=THREE.MathUtils.degToRad(normalized),b=THREE.MathUtils.degToRad(el),r=35;
-    const idx=i*3;positions[idx]=visible?r*Math.cos(b)*Math.sin(a):10000;positions[idx+1]=visible?r*Math.sin(b):10000;positions[idx+2]=visible?-r*Math.cos(b)*Math.cos(a):10000;
+    const idx=i*3;positions[idx]=visible?r*Math.cos(b)*Math.cos(a):10000;positions[idx+1]=visible?r*Math.sin(b):10000;positions[idx+2]=visible?-r*Math.cos(b)*Math.sin(a):10000;
    }
    geo.attributes.position.needsUpdate=true;
   });
