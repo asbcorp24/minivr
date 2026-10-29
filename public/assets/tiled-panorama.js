@@ -29,11 +29,12 @@ export async function createTiledPanorama({url,scene,camera,renderer}){
   },undefined,()=>pending.delete(key));
  }
  const low=manifest.levels[0];
- for(let y=0;y<low.rows;y++)for(let x=0;x<low.cols;x++)load(low,x,y);
+ const baseQueue=[];for(let y=0;y<low.rows;y++)for(let x=0;x<low.cols;x++)baseQueue.push([x,y]);
  let last=0;
  function update(){
   if(performance.now()-last<160)return;last=performance.now();
-  const fov=camera.fov||75;
+  for(const [bx,by] of baseQueue)load(low,bx,by);
+ const fov=camera.fov||75;
   const idx=Math.max(0,Math.min(manifest.levels.length-1,Math.floor(Math.log2(75/Math.max(10,fov)))+1));
   const level=manifest.levels[idx];camera.updateMatrixWorld(true);
   const direction=new THREE.Vector3();camera.getWorldDirection(direction);
