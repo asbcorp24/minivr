@@ -145,14 +145,20 @@ function updateCardboardEyes(){
 }
 function renderCardboard(){
  const {size,half,l,r}=updateCardboardEyes();
- const gl=renderer.getContext();
- renderer.setRenderTarget(null);renderer.autoClear=false;
+ renderer.setRenderTarget(null);
  renderer.setScissorTest(true);
- gl.enable(gl.SCISSOR_TEST);
- gl.viewport(0,0,half,size.y);gl.scissor(0,0,half,size.y);gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);renderer.render(scene,l);
- gl.viewport(half,0,size.x-half,size.y);gl.scissor(half,0,size.x-half,size.y);gl.clear(gl.DEPTH_BUFFER_BIT);renderer.render(scene,r);
- gl.disable(gl.SCISSOR_TEST);renderer.setScissorTest(false);renderer.setViewport(0,0,size.x,size.y);renderer.autoClear=true;
+ renderer.setViewport(0,0,half,size.y);
+ renderer.setScissor(0,0,half,size.y);
+ renderer.clear(true,true,true);
+ renderer.render(scene,l);
+ renderer.setViewport(half,0,size.x-half,size.y);
+ renderer.setScissor(half,0,size.x-half,size.y);
+ renderer.clear(true,true,true);
+ renderer.render(scene,r);
+ renderer.setScissorTest(false);
+ renderer.setViewport(0,0,size.x,size.y);
 }
+
 const cardboardRestoreKey='minivr:cardboard:restore';
 async function switchSceneInPlace(url){
  const response=await fetch(url,{credentials:'same-origin'});
