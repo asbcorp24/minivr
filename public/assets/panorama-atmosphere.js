@@ -29,36 +29,5 @@ export function createAtmosphere(scene,settings={}){
   const yaw=THREE.MathUtils.degToRad(clamp(settings.sunYaw,-180,180)),pitch=THREE.MathUtils.degToRad(clamp(settings.sunPitch,-90,90));sun.position.set(280*Math.cos(pitch)*Math.sin(yaw),280*Math.sin(pitch),-280*Math.cos(pitch)*Math.cos(yaw));sun.scale.set(210,210,1);sun.layers.enableAll();scene.add(sun);parts.push({object:sun,geo:null,mat:sun.material});
   updates.push((t)=>{sun.material.opacity=intensity*(.12+.025*Math.sin(t*.0004))});
  }
- if(settings.water){
-  const yaw=THREE.MathUtils.degToRad(clamp(settings.waterYaw,-180,180)),pitch=THREE.MathUtils.degToRad(clamp(settings.waterPitch,-90,90)),radius=THREE.MathUtils.degToRad(clamp(settings.waterRadius,2,70));
-  const center=new THREE.Vector3(Math.cos(pitch)*Math.sin(yaw),Math.sin(pitch),-Math.cos(pitch)*Math.cos(yaw));
-  const axis=new THREE.Vector3(0,1,0);if(Math.abs(center.dot(axis))>.95)axis.set(1,0,0);
-  const right=new THREE.Vector3().crossVectors(center,axis).normalize(),up=new THREE.Vector3().crossVectors(center,right).normalize();
-  const polygon=Array.isArray(settings.waterPolygon)&&settings.waterPolygon.length>=3?settings.waterPolygon.filter(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)).slice(0,80):[];
-  // Unwrap longitudes around the selected water center to handle the 360° seam.
-  const unwrap=x=>((x-clamp(settings.waterYaw,-180,180)+540)%360)-180;
-  const poly=polygon.map(p=>[unwrap(p[0]),p[1]]);
-  const inside=(x,y)=>{if(poly.length<3)return true;let hit=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])hit=!hit}return hit};
-  const ringCount=12,segments=48,verts=new Float32Array(ringCount*segments*3);
-  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(verts,3));
-  const mat=new THREE.PointsMaterial({color:0xc5e9ff,size:.52,transparent:true,opacity:.42,depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true});
-  const ripples=new THREE.Points(geo,mat);ripples.frustumCulled=false;ripples.layers.enableAll();scene.add(ripples);parts.push({object:ripples,geo,mat});
-  updates.push((time,camera)=>{
-   const t=time*.0003;camera.updateMatrixWorld(true);camera.getWorldPosition(ripples.position);
-   for(let k=0;k<ringCount;k++){
-    const phase=(t*(.6+(k%3)*.13)+k*.137)%1;
-    const rr=radius*(.12+phase*.88),r=18;
-    for(let j=0;j<segments;j++){
-     const a=j/segments*Math.PI*2,point=center.clone().multiplyScalar(Math.cos(rr)).addScaledVector(right,Math.sin(rr)*Math.cos(a)).addScaledVector(up,Math.sin(rr)*Math.sin(a)).normalize().multiplyScalar(r);
-     const idx=(k*segments+j)*3;
-     const az=Math.atan2(point.x,-point.z)*180/Math.PI,el=Math.asin(THREE.MathUtils.clamp(point.y/r,-1,1))*180/Math.PI;
-     const visible=inside(unwrap(az),el);
-     verts[idx]=visible?point.x:10000;verts[idx+1]=visible?point.y:10000;verts[idx+2]=visible?point.z:10000;
-    }
-   }
-   geo.attributes.position.needsUpdate=true;
-   mat.opacity=.18+.18*Math.sin(time*.001);
-  });
- }
  return {update(time,camera){for(const fn of updates)fn(time,camera)},dispose(){for(const p of parts){scene.remove(p.object);p.geo?.dispose();p.mat.dispose()}}};
 }
