@@ -216,7 +216,7 @@ function renderCardboard(){
  gl.disable(gl.SCISSOR_TEST);renderer.setScissorTest(false);renderer.setViewport(0,0,size.x,size.y);renderer.autoClear=true;
 }
 const cardboardRestoreKey='minivr:cardboard:restore';
-async async function switchSceneInPlace(url){
+async function switchSceneInPlace(url){
  const response=await fetch(url,{credentials:'same-origin'});
  if(!response.ok)throw new Error('Scene HTTP '+response.status);
  const doc=new DOMParser().parseFromString(await response.text(),'text/html');
