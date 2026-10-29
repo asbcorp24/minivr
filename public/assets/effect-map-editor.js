@@ -43,13 +43,13 @@ function draw(){
 
 }
 function apply(e){
- const p=read(e),kind=mode.value,[yaw,pitch]=names[kind];if(yaw&&pitch){set(yaw,p.yaw);set(pitch,p.pitch)}
+ const p=read(e),kind=mode.value,[yaw,pitch]=names[kind]||[];if(yaw&&pitch){set(yaw,p.yaw);set(pitch,p.pitch)}
 
  draw();
 }
 const angle=v=>v*Math.PI/180;
-canvas.addEventListener('pointerdown',e=>{if(mode.value==='polygon'||mode.value.startsWith('mask-')||mode.value==='lamp'){const points=current();if(points.length<(mode.value==='lamp'?20:80)){const p=read(e);points.push([Math.round(p.yaw*10)/10,Math.round(p.pitch*10)/10]);savePolygon();saveLayers();draw()}return}dragging=true;anchor=read(e);canvas.setPointerCapture(e.pointerId);const [yaw,pitch]=names[mode.value];set(yaw,anchor.yaw);set(pitch,anchor.pitch);draw()});
-canvas.addEventListener('pointermove',e=>{if(dragging&&mode.value!=='polygon')apply(e)});
+canvas.addEventListener('pointerdown',e=>{if(mode.value==='polygon'||mode.value.startsWith('mask-')||mode.value==='lamp'){const points=current();if(points.length<(mode.value==='lamp'?20:80)){const p=read(e);points.push([Math.round(p.yaw*10)/10,Math.round(p.pitch*10)/10]);savePolygon();saveLayers();draw()}return}dragging=true;anchor=read(e);canvas.setPointerCapture(e.pointerId);const [yaw,pitch]=names[mode.value]||[];if(yaw&&pitch){set(yaw,anchor.yaw);set(pitch,anchor.pitch)}draw()});
+canvas.addEventListener('pointermove',e=>{if(dragging&&names[mode.value])apply(e)});
 const finish=()=>{dragging=false;anchor=null};canvas.addEventListener('pointerup',finish);canvas.addEventListener('pointercancel',finish);
 form.addEventListener('input',e=>{if(['sunYaw','sunPitch','moonYaw','moonPitch'].includes(e.target.name))draw()});
 document.getElementById('effect-map-file')?.addEventListener('change',e=>{const file=e.target.files?.[0];if(!file)return;const url=URL.createObjectURL(file);image.onload=()=>{loaded=true;draw();URL.revokeObjectURL(url)};image.src=url});
