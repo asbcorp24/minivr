@@ -32,3 +32,17 @@ function syncPoint(){yawInput.value=lon.toFixed(1);pitchInput.value=lat.toFixed(
 r.setAnimationLoop(()=>{const p=THREE.MathUtils.degToRad(90-lat),q=THREE.MathUtils.degToRad(lon);cam.lookAt(500*Math.sin(p)*Math.cos(q),500*Math.cos(p),500*Math.sin(p)*Math.sin(q));syncPoint();r.render(scene,cam)});
 document.querySelector('#capture').onclick=()=>{syncPoint();root.classList.add('flash');setTimeout(()=>root.classList.remove('flash'),220)};
 document.querySelector('.hotspot-form')?.addEventListener('submit',syncPoint);
+const fullscreenButton=document.querySelector('#hotspot-fullscreen');
+function syncFullscreenButton(){
+ const expanded=document.fullscreenElement===root||root.classList.contains('hotspot-expanded');
+ fullscreenButton.querySelector('span').textContent=expanded?'Свернуть':'На весь экран';
+ fullscreenButton.setAttribute('aria-label',expanded?'Свернуть панораму':'Развернуть панораму');
+ fullscreenButton.firstChild.textContent=expanded?'⤢ ':'⛶ ';
+ size();
+}
+fullscreenButton?.addEventListener('click',async()=>{
+ if(document.fullscreenElement===root){await document.exitFullscreen();return}
+ if(root.classList.contains('hotspot-expanded')){root.classList.remove('hotspot-expanded');syncFullscreenButton();return}
+ try{if(!root.requestFullscreen)throw new Error('Fullscreen unavailable');await root.requestFullscreen()}catch{root.classList.add('hotspot-expanded');syncFullscreenButton()}
+});
+document.addEventListener('fullscreenchange',syncFullscreenButton);
