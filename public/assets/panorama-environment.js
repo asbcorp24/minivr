@@ -129,6 +129,35 @@ export function createEnvironment(scene,settings={}){
    makeSprite(coreTexture,13,Math.min(1,intensity*1.3));
   }
  }
+ // 10: bubbles and rising vapour, masked to selected source areas.
+ if(settings.bubbles)makeLayer('bubbles',clamp(settings.bubbleIntensity??50,0,100)/100,'#b7e2ee',
+  `vec2 p=vUv*vec2(170.,85.);vec2 id=floor(p);vec2 cell=fract(p)-.5;
+   float h=hash(id);float active=step(.91,h);
+   float phase=fract(uTime*(.11+.15*hash(id+7.))+h);
+   vec2 q=cell-vec2(.22*sin(uTime*.7+h*20.),phase-.5);
+   float ring=1.-smoothstep(.025,.085,abs(length(q)-(.08+.10*hash(id+3.))));
+   alpha=active*ring*(.15+.45*(1.-phase));`);
+ if(settings.steam)makeLayer('steam',clamp(settings.steamIntensity??45,0,100)/100,'#e4e9e7',
+  `vec2 p=vUv*vec2(13.,7.);float t=uTime;
+   float n=noise(p+vec2(sin(t*.07+p.y)*.18,-t*.10))*.65+noise(p*2.6+vec2(t*.035,-t*.17))*.35;
+   alpha=smoothstep(.40,.75,n)*(.15+.4*noise(p*.5-vec2(0.,t*.035)));`);
+ // 11: transparent time-of-day grading; avoids pretending to replace daytime skies.
+ if(settings.timeOfDay){
+  const stage=clamp(settings.dayPhase??65,0,100)/100;
+  const warm=Math.exp(-Math.pow((stage-.48)/.19,2));
+  const dark=THREE.MathUtils.smoothstep(stage,.58,1);
+  const color=new THREE.Color('#f8aa67').lerp(new THREE.Color('#20395b'),dark);
+  makeLayer('all',Math.max(.05,.18*warm+.55*dark),color,
+   `alpha=.55;`);
+ }
+ // 12: slowly drifting isolated leaves, limited to a user-drawn water region.
+ if(settings.floatingLeaves)makeLayer('floating',clamp(settings.floatingDensity??40,0,100)/100,'#c7a16b',
+  `vec2 p=vUv*vec2(100.,45.);p.x+=uTime*.028;p.y+=sin(p.x*.4+uTime*.11)*.09;
+   vec2 id=floor(p),q=fract(p)-.5;float h=hash(id);
+   float selected=step(.93,h);float angle=h*6.283+sin(uTime*.19+h*10.)*.3;
+   vec2 r=vec2(cos(angle)*q.x-sin(angle)*q.y,sin(angle)*q.x+cos(angle)*q.y);
+   float leaf=1.-smoothstep(.0,.08,length(r*vec2(1.6,3.2))-.22);
+   alpha=selected*leaf*.55;`);
  if(settings.windLeaves){
   const polygon=mask('vegetation'),count=Math.round(clamp(settings.leafDensity??30,0,100)*2.5);
   if(polygon.length>=3&&count){
