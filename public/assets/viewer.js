@@ -1,3 +1,4 @@
+import {createMoonlight} from '/assets/panorama-moonlight.js';
 import {createAtmosphere} from '/assets/panorama-atmosphere.js';
 import {createPanoramaEffects} from '/assets/panorama-effects.js';
 import {createTiledPanorama} from '/assets/tiled-panorama.js';
@@ -8,12 +9,12 @@ import VRControls from '/assets/vendor/three/controls/VRControls.js';
 
 const root=document.querySelector('#viewer');
 let effectSettings={};try{effectSettings=JSON.parse(root.dataset.effects||'{}')}catch(e){}
-let effectSystem=null,atmosphereSystem=null,lastEffectTime=0;
+let effectSystem=null,atmosphereSystem=null,moonSystem=null,lastEffectTime=0;
 let projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'mono';
 const tour=Number(root.dataset.tour||0),backUrl=root.dataset.back||'/';let hotspotData=JSON.parse(document.querySelector('#hotspots-data')?.textContent||'[]');
 const tourData=JSON.parse(document.querySelector('#tour-data')?.textContent||'{"scenes":[],"current":-1}');
 const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1100);
-effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);
+effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.xr.enabled=true;root.appendChild(renderer.domElement);
 let cardboard=false,lon=0,lat=0,down=false,x0=0,y0=0,lon0=0,lat0=0,orientation=false,leftMesh,rightMesh;
 const cardboardStereo=new THREE.StereoCamera();cardboardStereo.eyeSep=.064;
@@ -274,7 +275,7 @@ function syncHudPose(){
 }
 renderer.setAnimationLoop((time)=>{
  tiledPanorama?.update();
- effectSystem?.update(time,camera);atmosphereSystem?.update(time,camera);
+ effectSystem?.update(time,camera);atmosphereSystem?.update(time,camera);moonSystem?.update(time,camera);
  if(getViewerMode()===ViewerMode.DESKTOP&&!down&&!orientation&&effectSettings.rotation){
   const dt=lastEffectTime?Math.min(.05,(time-lastEffectTime)/1000):0;
   lon+=dt*Math.max(0,Math.min(10,Number(effectSettings.rotationSpeed)||1));
