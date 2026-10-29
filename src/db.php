@@ -84,6 +84,10 @@ function db(): PDO
         $db->exec("ALTER TABLE panoramas ADD COLUMN stereo TEXT NOT NULL DEFAULT 'mono'");
     }
 
+    if (!in_array('effects', $names, true)) {
+        $db->exec("ALTER TABLE panoramas ADD COLUMN effects TEXT NOT NULL DEFAULT '{}'");
+    }
+
     $tourCols = $db->query("PRAGMA table_info(tours)")->fetchAll();
     $tourNames = array_column($tourCols, 'name');
 
