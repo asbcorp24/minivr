@@ -34,6 +34,11 @@ export function createAtmosphere(scene,settings={}){
   const center=new THREE.Vector3(-Math.cos(pitch)*Math.cos(yaw),Math.sin(pitch),Math.cos(pitch)*Math.sin(yaw));
   const axis=new THREE.Vector3(0,1,0);if(Math.abs(center.dot(axis))>.95)axis.set(1,0,0);
   const right=new THREE.Vector3().crossVectors(center,axis).normalize(),up=new THREE.Vector3().crossVectors(center,right).normalize();
+  const polygon=Array.isArray(settings.waterPolygon)&&settings.waterPolygon.length>=3?settings.waterPolygon.filter(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)).slice(0,80):[];
+  // Unwrap longitudes around the selected water center to handle the 360° seam.
+  const unwrap=x=>((x-clamp(settings.waterYaw,-180,180)+540)%360)-180;
+  const poly=polygon.map(p=>[unwrap(p[0]),p[1]]);
+  const inside=(x,y)=>{if(poly.length<3)return true;let hit=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])hit=!hit}return hit};
   const ringCount=12,segments=48,verts=new Float32Array(ringCount*segments*3);
   const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(verts,3));
   const mat=new THREE.PointsMaterial({color:0xc5e9ff,size:.52,transparent:true,opacity:.42,depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true});
@@ -45,7 +50,10 @@ export function createAtmosphere(scene,settings={}){
     const rr=radius*(.12+phase*.88),r=18;
     for(let j=0;j<segments;j++){
      const a=j/segments*Math.PI*2,point=center.clone().multiplyScalar(Math.cos(rr)).addScaledVector(right,Math.sin(rr)*Math.cos(a)).addScaledVector(up,Math.sin(rr)*Math.sin(a)).normalize().multiplyScalar(r);
-     const idx=(k*segments+j)*3;verts[idx]=point.x;verts[idx+1]=point.y;verts[idx+2]=point.z;
+     const idx=(k*segments+j)*3;
+     const az=Math.atan2(point.z,-point.x)*180/Math.PI,el=Math.asin(THREE.MathUtils.clamp(point.y/r,-1,1))*180/Math.PI;
+     const visible=inside(unwrap(az),el);
+     verts[idx]=visible?point.x:0;verts[idx+1]=visible?point.y:0;verts[idx+2]=visible?point.z:0;
     }
    }
    geo.attributes.position.needsUpdate=true;
