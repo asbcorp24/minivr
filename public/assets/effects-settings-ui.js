@@ -10,7 +10,7 @@ const groups={
  fog:['fogDensity','fogHeight'],
  storm:['stormIntensity'],
  sunRays:['sunIntensity','sunYaw','sunPitch'],
- moon:['moonYaw','moonPitch','moonIntensity'],
+ moon:['moonVisible','moonYaw','moonPitch','moonIntensity'],
  fireflies:['fireflyDensity'],
  moonPath:['moonPathWidth','moonHorizon','moonBottom']
 };
