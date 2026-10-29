@@ -129,18 +129,44 @@ export function createEnvironment(scene,settings={}){
    makeSprite(coreTexture,13,Math.min(1,intensity*1.3));
   }
  }
- // 10: bubbles and rising vapour, masked to selected source areas.
- if(settings.bubbles)makeLayer('bubbles',clamp(settings.bubbleIntensity??50,0,100)/100,'#b7e2ee',
-  `vec2 p=vUv*vec2(170.,85.);vec2 id=floor(p);vec2 cell=fract(p)-.5;
-   float h=hash(id);float active=step(.91,h);
-   float phase=fract(uTime*(.11+.15*hash(id+7.))+h);
-   vec2 q=cell-vec2(.22*sin(uTime*.7+h*20.),phase-.5);
-   float ring=1.-smoothstep(.025,.085,abs(length(q)-(.08+.10*hash(id+3.))));
-   alpha=active*ring*(.15+.45*(1.-phase));`);
- if(settings.steam)makeLayer('steam',clamp(settings.steamIntensity??45,0,100)/100,'#e4e9e7',
-  `vec2 p=vUv*vec2(13.,7.);float t=uTime;
-   float n=noise(p+vec2(sin(t*.07+p.y)*.18,-t*.10))*.65+noise(p*2.6+vec2(t*.035,-t*.17))*.35;
-   alpha=smoothstep(.40,.75,n)*(.15+.4*noise(p*.5-vec2(0.,t*.035)));`);
+ // 10: distinct animated bubble rings and soft rising steam plumes.
+ // The fallback covers the lower hemisphere when no explicit mask has been drawn.
+ const hasMask=name=>mask(name).length>=3;
+ const makeSourceLayer=(name,opacity,color,shader)=>{
+  const maskTexture=texture(name),geometry=new THREE.SphereGeometry(120,96,48);
+  const material=new THREE.ShaderMaterial({
+   uniforms:{uTime:{value:0},uMask:{value:maskTexture},uOpacity:{value:opacity},uColor:{value:new THREE.Color(color)},uHasMask:{value:hasMask(name)?1:0}},
+   vertexShader:`precision highp float;varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+   fragmentShader:`precision highp float;varying vec2 vUv;uniform sampler2D uMask;uniform float uTime,uOpacity,uHasMask;uniform vec3 uColor;
+    float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+    float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y);}
+    void main(){float alpha=0.;${shader}
+     float region=mix(smoothstep(.52,.44,vUv.y),texture2D(uMask,vUv).r,uHasMask);
+     gl_FragColor=vec4(uColor,clamp(alpha*region*uOpacity,0.,.85));}`,
+   side:THREE.BackSide,transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending
+  });
+  const mesh=new THREE.Mesh(geometry,material);mesh.layers.enableAll();mesh.renderOrder=22;scene.add(mesh);
+  resources.push({mesh,geometry,material,maskTexture});
+  updates.push((time,camera)=>{material.uniforms.uTime.value=time*.001;camera.getWorldPosition(mesh.position)});
+ };
+ if(settings.bubbles)makeSourceLayer('bubbles',clamp(settings.bubbleIntensity??50,0,100)/100,'#d4f2ff',
+  `vec2 grid=vec2(92.,44.);vec2 uv=vec2(fract(vUv.x),vUv.y);
+   vec2 id=floor(uv*grid);float h=hash(id);float spawn=step(.72,h);
+   float speed=.10+.12*hash(id+17.);float age=fract(uTime*speed+hash(id+3.));
+   vec2 local=fract(uv*grid)-.5;
+   vec2 center=vec2(.18*sin(uTime*.45+h*10.),.5-age);
+   float radius=.095+.13*hash(id+11.);
+   float d=length((local-center)*vec2(1.,1.1));
+   float ring=1.-smoothstep(.012,.045,abs(d-radius));
+   float core=(1.-smoothstep(.0,.08,d))*.24;
+   alpha=spawn*(ring*.72+core)*(.55+.45*(1.-age));`);
+ if(settings.steam)makeSourceLayer('steam',clamp(settings.steamIntensity??45,0,100)/100,'#e8eff0',
+  `vec2 p=vUv*vec2(11.,8.);float t=uTime;
+   float drift=sin(p.y*1.8+t*.22)*.32;
+   float n=noise(p*1.2+vec2(drift,-t*.13))*.6+noise(p*3.3+vec2(-t*.07,-t*.31))*.4;
+   float body=smoothstep(.32,.67,n);
+   float slow=noise(p*.42+vec2(t*.018,-t*.05));
+   alpha=body*(.22+.52*slow);`);
  // 11: transparent time-of-day grading; avoids pretending to replace daytime skies.
  if(settings.timeOfDay){
   const stage=clamp(settings.dayPhase??65,0,100)/100;
