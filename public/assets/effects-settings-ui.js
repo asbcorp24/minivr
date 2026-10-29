@@ -12,7 +12,6 @@ const groups={
  sunRays:['sunIntensity','sunYaw','sunPitch'],
  moon:['moonYaw','moonPitch','moonIntensity'],
  fireflies:['fireflyDensity'],
- water:['waterYaw','waterPitch','waterRadius'],
  moonPath:['moonPathWidth','moonHorizon','moonBottom']
 };
 function refresh(){
@@ -23,10 +22,10 @@ function refresh(){
  const particles=select('particles')!=='none';
  for(const n of ['density','speed','wind','opacity'])show(n,particles);
  show('moonPath',checked('moon'));
- const waterActive=checked('water'),moonActive=checked('moon'),sunActive=checked('sunRays');
+ const waterActive=checked('moon')&&checked('moonPath'),moonActive=checked('moon'),sunActive=checked('sunRays');
  const tool=mode?.value||'water';
  const tools=mode?.options||[];
- for(const option of tools){option.disabled=(option.value==='sun'&&!sunActive)||(option.value==='moon'&&!moonActive)||(['water','polygon'].includes(option.value)&&!waterActive)}
+ for(const option of tools){option.disabled=(option.value==='sun'&&!sunActive)||(option.value==='moon'&&!moonActive)||(option.value==='polygon'&&!waterActive)}
  if(mode?.selectedOptions[0]?.disabled){const available=Array.from(tools).find(o=>!o.disabled);if(available)mode.value=available.value}
  const anyTool=sunActive||moonActive||waterActive;
  if(map)map.hidden=!anyTool;
