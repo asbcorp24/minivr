@@ -1,7 +1,7 @@
 (()=>{'use strict';
 const canvas=document.getElementById('effect-map'),form=canvas?.closest('form');if(!canvas||!form)return;
 const ctx=canvas.getContext('2d'),mode=document.getElementById('effect-map-mode'),hint=document.getElementById('effect-map-hint');
-const names={sun:['sunYaw','sunPitch'],water:['waterYaw','waterPitch']};
+const names={sun:['sunYaw','sunPitch'],moon:['moonYaw','moonPitch'],water:['waterYaw','waterPitch']};
 const field=name=>form.elements.namedItem(name);
 const number=name=>Number(field(name)?.value)||0;
 const set=(name,value)=>{if(field(name)){field(name).value=String(Math.round(value*10)/10);field(name).dispatchEvent(new Event('change',{bubbles:true}))}};
@@ -26,6 +26,7 @@ function draw(){
  for(let i=1;i<6;i++){ctx.beginPath();ctx.moveTo(i*canvas.width/6,0);ctx.lineTo(i*canvas.width/6,canvas.height);ctx.stroke()}
  for(let i=1;i<4;i++){ctx.beginPath();ctx.moveTo(0,i*canvas.height/4);ctx.lineTo(canvas.width,i*canvas.height/4);ctx.stroke()}
  if(polygon.length){ctx.save();ctx.beginPath();polygon.forEach((p,i)=>{const xy=normalize(p[0],p[1]);if(i===0)ctx.moveTo(xy.x,xy.y);else ctx.lineTo(xy.x,xy.y)});if(polygon.length>=3){ctx.closePath();ctx.fillStyle='rgba(64,190,255,.25)';ctx.fill()}ctx.strokeStyle='#36caff';ctx.lineWidth=3;ctx.stroke();for(const p of polygon){const xy=normalize(p[0],p[1]);ctx.beginPath();ctx.arc(xy.x,xy.y,4,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill()}ctx.restore()}
+ marker(number('moonYaw'),number('moonPitch'),'#d5e5ff','☾ Луна');
  marker(number('sunYaw'),number('sunPitch'),'#ffd66a','☀ Солнце');
  marker(number('waterYaw'),number('waterPitch'),'#55c9ff','◉ Вода',number('waterRadius'));
 }
@@ -42,9 +43,9 @@ const angle=v=>v*Math.PI/180;
 canvas.addEventListener('pointerdown',e=>{if(mode.value==='polygon'){if(polygon.length<80){const p=read(e);polygon.push([Math.round(p.yaw*10)/10,Math.round(p.pitch*10)/10]);savePolygon();draw()}return}dragging=true;anchor=read(e);canvas.setPointerCapture(e.pointerId);const [yaw,pitch]=names[mode.value];set(yaw,anchor.yaw);set(pitch,anchor.pitch);draw()});
 canvas.addEventListener('pointermove',e=>{if(dragging&&mode.value!=='polygon')apply(e)});
 const finish=()=>{dragging=false;anchor=null};canvas.addEventListener('pointerup',finish);canvas.addEventListener('pointercancel',finish);
-form.addEventListener('input',e=>{if(['sunYaw','sunPitch','waterYaw','waterPitch','waterRadius'].includes(e.target.name))draw()});
+form.addEventListener('input',e=>{if(['sunYaw','sunPitch','moonYaw','moonPitch','waterYaw','waterPitch','waterRadius'].includes(e.target.name))draw()});
 document.getElementById('effect-map-file')?.addEventListener('change',e=>{const file=e.target.files?.[0];if(!file)return;const url=URL.createObjectURL(file);image.onload=()=>{loaded=true;draw();URL.revokeObjectURL(url)};image.src=url});
 if(canvas.dataset.src){image.onload=()=>{loaded=true;draw()};image.onerror=()=>{hint.textContent='Предпросмотр недоступен: выберите изображение для отображения.'};image.src=canvas.dataset.src}
-hint.textContent='Солнце: щелчок. Круг воды: нажать и протянуть. Контур воды: добавляйте вершины по границе; минимум 3 точки. Маска работает для ряби.';
+hint.textContent='Солнце и Луна: щелчок. Круг воды: нажать и протянуть. Контур воды: добавляйте вершины по границе; минимум 3 точки. Маска работает для ряби.';
 draw();
 })();
