@@ -33,7 +33,23 @@ export function createEnvironment(scene,settings={}){
   updates.push((time,camera)=>{material.uniforms.uTime.value=time*.001;camera.getWorldPosition(mesh.position)});
  };
  if(settings.liveWater)makeLayer('water',clamp(settings.waterShimmer??35,0,100)/100,'#9ab9cf',
-  `vec2 p=vUv*vec2(210.,90.);float n=noise(vec2(p.x*.23+uTime*.15,p.y*.35));float wave=sin(p.y*1.7+sin(p.x*.4+uTime*.3)*1.5+uTime*.65);float sparkle=smoothstep(.58,.82,n*.55+wave*.23+.25);alpha=.035+.45*sparkle;`);
+  `// Multi-scale, non-periodic microfacets: drifting streaks, occasional pin glints.
+   vec2 uv=vec2(fract(vUv.x),vUv.y);
+   float t=uTime;
+   vec2 a=uv*vec2(430.,135.);
+   float warp=noise(a*.025+vec2(t*.018,-t*.009))-.5;
+   vec2 q=a+vec2(warp*13.,noise(a*.055-vec2(t*.012,t*.006))*7.);
+   float large=noise(q*.11+vec2(t*.036,t*.008));
+   float medium=noise(q*.38+vec2(-t*.11,t*.028));
+   float fine=noise(q*1.7+vec2(t*.21,-t*.04));
+   float broken=noise(q*.76+vec2(-t*.07,t*.09));
+   float band=smoothstep(.47,.76,large*.49+medium*.38+fine*.13);
+   float glint=smoothstep(.72,.92,medium*.38+fine*.44+broken*.18);
+   float pin=smoothstep(.86,.97,fine*.48+broken*.35+large*.17);
+   float envelope=.48+.52*noise(uv*vec2(15.,8.)+vec2(t*.006,0.));
+   alpha=(.018+band*.22+glint*.33+pin*.34)*envelope;
+   alpha*=.8+.2*sin(t*.23+large*8.);
+  `);
  if(settings.clouds)makeLayer('sky',clamp(settings.cloudDensity??35,0,100)/100,'#c7d1d9',
   `vec2 p=vUv*vec2(9.,5.);float n=noise(p+vec2(uTime*.009,0.))* .6+noise(p*2.7+vec2(uTime*.018,0.))*.4;alpha=smoothstep(.34,.67,n)*.58;`);
  if(settings.stars){
