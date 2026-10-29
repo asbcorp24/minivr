@@ -30,7 +30,7 @@
 <div style="margin:16px 0;padding:14px;border:1px solid #36738d;border-radius:14px;background:#0b1e29;color:#eaf5fa">
 <strong>Визуальный редактор областей 360°</strong>
 <p style="opacity:.75">Выберите инструмент и отметьте нужное место прямо на панораме. Углы и радиус сохраняются в полях ниже.</p>
-<label>Инструмент <select id="effect-map-mode"><option value="sun">☀ Положение солнца</option><option value="water">◉ Центр и радиус воды</option><option value="polygon">✎ Контур воды (точками)</option></select></label>
+<label>Инструмент <select id="effect-map-mode"><option value="sun">☀ Положение солнца</option><option value="moon">☾ Положение луны</option><option value="water">◉ Центр и радиус воды</option><option value="polygon">✎ Контур воды (точками)</option></select></label>
 <input type="hidden" name="waterPolygon" value="<?=htmlspecialchars(json_encode($savedEffects['waterPolygon']??[],JSON_UNESCAPED_UNICODE),ENT_QUOTES)?>"><div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0"><button type="button" id="effect-map-undo">Отменить точку</button><button type="button" id="effect-map-clear">Очистить контур</button></div><canvas id="effect-map" width="960" height="480" data-src="<?=htmlspecialchars($existing['image']??'',ENT_QUOTES)?>" style="display:block;width:100%;height:auto;aspect-ratio:2/1;border-radius:10px;touch-action:none;cursor:crosshair;background:#14232b"></canvas>
 <small id="effect-map-hint" style="display:block;margin-top:8px;opacity:.75"></small>
 </div><p>Углы в градусах: горизонталь −180…180, вертикаль −90…90. Настройте направление эффекта на панораме.</p>
