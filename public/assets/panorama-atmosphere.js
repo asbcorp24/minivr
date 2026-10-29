@@ -53,7 +53,7 @@ export function createAtmosphere(scene,settings={}){
      const idx=(k*segments+j)*3;
      const az=Math.atan2(point.z,-point.x)*180/Math.PI,el=Math.asin(THREE.MathUtils.clamp(point.y/r,-1,1))*180/Math.PI;
      const visible=inside(unwrap(az),el);
-     verts[idx]=visible?point.x:0;verts[idx+1]=visible?point.y:0;verts[idx+2]=visible?point.z:0;
+     verts[idx]=visible?point.x:10000;verts[idx+1]=visible?point.y:10000;verts[idx+2]=visible?point.z:10000;
     }
    }
    geo.attributes.position.needsUpdate=true;
