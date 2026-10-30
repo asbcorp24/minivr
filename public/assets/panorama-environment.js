@@ -68,7 +68,7 @@ export function createEnvironment(scene,settings={}){
   resources.push({mesh,geometry,material,maskTexture});
   updates.push((time,camera)=>{material.uniforms.uTime.value=time*.001;camera.getWorldPosition(mesh.position)});
  };
- if(settings.riverFlow)flowLayer('river',clamp(settings.riverIntensity??65,0,100)/100,clamp(settings.riverSpeed??1,0.1,5),'#b9dce6',
+ if(settings.riverFlow)flowLayer('river',clamp(settings.riverIntensity??65,0,100)/100*clamp(settings.riverOpacity??100,0,100)/100,clamp(settings.riverSpeed??1,0.1,5),'#b9dce6',
   `vec2 p=uv*vec2(190.,110.);
    float bend=(noise(p*.045+vec2(t*.08,0.))-.5)*5.;
    p.y+=bend;
@@ -78,7 +78,7 @@ export function createEnvironment(scene,settings={}){
    float bands=smoothstep(.54,.85,streak*.72+fine*.28);
    float ripple=pow(max(0.,sin(p.x*.28+noise(p*.04)*6.)),12.)*.12;
    alpha=.055+bands*.48+ripple;`);
- if(settings.waterfallFlow)flowLayer('waterfall',clamp(settings.waterfallIntensity??75,0,100)/100,clamp(settings.waterfallSpeed??1.4,0.1,5),'#d4f1f6',
+ if(settings.waterfallFlow)flowLayer('waterfall',clamp(settings.waterfallIntensity??75,0,100)/100*clamp(settings.waterfallOpacity??100,0,100)/100,clamp(settings.waterfallSpeed??1.4,0.1,5),'#d4f1f6',
   `vec2 p=uv*vec2(240.,130.);
    float warp=(noise(vec2(p.x*.08,p.y*.025-t*.06))-.5)*8.;
    float stream=noise(vec2((p.x+warp)*.18,p.y*.018-t*.13));
