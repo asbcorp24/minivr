@@ -7,7 +7,7 @@ const number=name=>Number(field(name)?.value)||0;
 const set=(name,value)=>{if(field(name)){field(name).value=String(Math.round(value*10)/10);field(name).dispatchEvent(new Event('change',{bubbles:true}))}};
 let image=new Image(),loaded=false,dragging=false,anchor=null;
 const masksField=field('effectMasks'),lampsField=field('effectLamps');
-let masks={water:[],sky:[],light:[],vegetation:[],bubbles:[],steam:[],floating:[]},lamps=[];try{Object.assign(masks,JSON.parse(masksField?.value||'{}'));lamps=JSON.parse(lampsField?.value||'[]')}catch(_){}
+let masks={river:[],waterfall:[],water:[],sky:[],light:[],vegetation:[],bubbles:[],steam:[],floating:[]},lamps=[];try{Object.assign(masks,JSON.parse(masksField?.value||'{}'));lamps=JSON.parse(lampsField?.value||'[]')}catch(_){}
 const saveLayers=()=>{if(masksField)masksField.value=JSON.stringify(masks);if(lampsField)lampsField.value=JSON.stringify(lamps)};
 const current=()=>mode.value.startsWith('mask-')?masks[mode.value.slice(5)]:mode.value==='lamp'?lamps:polygon;
 const polygonField=field('waterPolygon');let polygon=[];try{const parsed=JSON.parse(polygonField?.value||'[]');if(Array.isArray(parsed))polygon=parsed.filter(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)).slice(0,80)}catch(_){}
@@ -32,9 +32,9 @@ function draw(){
  if(polygon.length){ctx.save();ctx.beginPath();polygon.forEach((p,i)=>{const xy=normalize(p[0],p[1]);if(i===0)ctx.moveTo(xy.x,xy.y);else ctx.lineTo(xy.x,xy.y)});if(polygon.length>=3){ctx.closePath();ctx.fillStyle='rgba(64,190,255,.25)';ctx.fill()}ctx.strokeStyle='#36caff';ctx.lineWidth=3;ctx.stroke();for(const p of polygon){const xy=normalize(p[0],p[1]);ctx.beginPath();ctx.arc(xy.x,xy.y,4,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill()}ctx.restore()}
  for(const [name,points] of Object.entries(masks)){
   if(!Array.isArray(points)||!points.length)continue;
-  const colors={water:'#4cc9ff',sky:'#a6d2ff',light:'#ffd178',vegetation:'#8ce3a1',bubbles:'#9be7fa',steam:'#e3e7ee',floating:'#e6b46a'};
+  const colors={river:'#50e0e6',waterfall:'#d4faff',water:'#4cc9ff',sky:'#a6d2ff',light:'#ffd178',vegetation:'#8ce3a1',bubbles:'#9be7fa',steam:'#e3e7ee',floating:'#e6b46a'};
   ctx.save();ctx.beginPath();points.forEach((p,i)=>{const xy=normalize(p[0],p[1]);if(i)ctx.lineTo(xy.x,xy.y);else ctx.moveTo(xy.x,xy.y)});
-  if(points.length>=3){ctx.closePath();ctx.fillStyle=({water:'rgba(76,201,255,.22)',sky:'rgba(166,210,255,.18)',light:'rgba(255,209,120,.22)',vegetation:'rgba(140,227,161,.20)',bubbles:'rgba(155,231,250,.20)',steam:'rgba(227,231,238,.20)',floating:'rgba(230,180,106,.20)'})[name];ctx.fill()}
+  if(points.length>=3){ctx.closePath();ctx.fillStyle=({river:'rgba(80,224,230,.24)',waterfall:'rgba(212,250,255,.25)',water:'rgba(76,201,255,.22)',sky:'rgba(166,210,255,.18)',light:'rgba(255,209,120,.22)',vegetation:'rgba(140,227,161,.20)',bubbles:'rgba(155,231,250,.20)',steam:'rgba(227,231,238,.20)',floating:'rgba(230,180,106,.20)'})[name];ctx.fill()}
   ctx.strokeStyle=colors[name];ctx.lineWidth=2;ctx.stroke();ctx.restore();
  }
  for(const [yaw,pitch] of lamps)marker(yaw,pitch,'#ffca76','✦ Фонарь');
