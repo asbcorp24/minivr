@@ -6,7 +6,7 @@ const names={sun:['sunYaw','sunPitch'],moon:['moonYaw','moonPitch']};
 const field=name=>form.elements.namedItem(name);
 const number=name=>Number(field(name)?.value)||0;
 const set=(name,value)=>{if(field(name)){field(name).value=String(Math.round(value*10)/10);field(name).dispatchEvent(new Event('change',{bubbles:true}))}};
-let image=new Image(),loaded=false,dragging=false,anchor=null,previewArrow=null;
+let image=new Image(),loaded=false,dragging=false,anchor=null,previewArrow=null,editingArrow=-1,editingEnd=-1;
 const arrowsField=field('effectFlowArrows');let flowArrows={river:[],waterfall:[]};try{const saved=JSON.parse(arrowsField?.value||'{}');for(const kind of ['river','waterfall'])if(Array.isArray(saved[kind]))flowArrows[kind]=saved[kind]}catch(_){}
 const saveArrows=()=>{if(arrowsField)arrowsField.value=JSON.stringify(flowArrows)};
 const masksField=field('effectMasks'),lampsField=field('effectLamps');
@@ -53,12 +53,14 @@ function apply(e){
  draw();
 }
 const angle=v=>v*Math.PI/180;
-canvas.addEventListener('pointerdown',e=>{if(mode.value==='polygon'||mode.value.startsWith('mask-')||mode.value==='lamp'){const points=current();if(points.length<(mode.value==='lamp'?20:80)){const p=read(e);points.push([Math.round(p.yaw*10)/10,Math.round(p.pitch*10)/10]);savePolygon();saveLayers();draw()}return}dragging=true;anchor=read(e);canvas.setPointerCapture(e.pointerId);const [yaw,pitch]=names[mode.value]||[];if(yaw&&pitch){set(yaw,anchor.yaw);set(pitch,anchor.pitch)}draw()});
-canvas.addEventListener('pointermove',e=>{if(dragging&&mode.value.startsWith('direction-')){const p=read(e);previewArrow=[anchor.yaw,anchor.pitch,p.yaw,p.pitch];draw()}else if(dragging&&names[mode.value])apply(e)});
-const finish=()=>{if(dragging&&previewArrow&&mode.value.startsWith('direction-')){const kind=mode.value.slice(10),a=previewArrow;if(flowArrows[kind].length<40&&Math.hypot(a[2]-a[0],a[3]-a[1])>.5){flowArrows[kind].push(a.map(v=>Math.round(v*10)/10));saveArrows()}}previewArrow=null;dragging=false;anchor=null;draw()};canvas.addEventListener('pointerup',finish);canvas.addEventListener('pointercancel',finish);
+canvas.addEventListener('pointerdown',e=>{if(mode.value==='polygon'||mode.value.startsWith('mask-')||mode.value==='lamp'){const points=current();if(points.length<(mode.value==='lamp'?20:80)){const p=read(e);points.push([Math.round(p.yaw*10)/10,Math.round(p.pitch*10)/10]);savePolygon();saveLayers();draw()}return}dragging=true;anchor=read(e);editingArrow=-1;editingEnd=-1;
+if(mode.value.startsWith('direction-')){const kind=mode.value.slice(10),rect=canvas.getBoundingClientRect(),px=(e.clientX-rect.left)*canvas.width/rect.width,py=(e.clientY-rect.top)*canvas.height/rect.height;let best=16*16;flowArrows[kind].forEach((a,i)=>{for(let end=0;end<2;end++){const q=normalize(a[end*2],a[end*2+1]),d=(q.x-px)**2+(q.y-py)**2;if(d<best){best=d;editingArrow=i;editingEnd=end}}});}
+canvas.setPointerCapture(e.pointerId);const [yaw,pitch]=names[mode.value]||[];if(yaw&&pitch){set(yaw,anchor.yaw);set(pitch,anchor.pitch)}draw()});
+canvas.addEventListener('pointermove',e=>{if(dragging&&mode.value.startsWith('direction-')){const p=read(e);if(editingArrow>=0){const kind=mode.value.slice(10),a=flowArrows[kind][editingArrow];a[editingEnd*2]=Math.round(p.yaw*10)/10;a[editingEnd*2+1]=Math.round(p.pitch*10)/10;saveArrows()}else previewArrow=[anchor.yaw,anchor.pitch,p.yaw,p.pitch];draw()}else if(dragging&&names[mode.value])apply(e)});
+const finish=()=>{if(dragging&&previewArrow&&mode.value.startsWith('direction-')){const kind=mode.value.slice(10),a=previewArrow;if(flowArrows[kind].length<40&&Math.hypot(a[2]-a[0],a[3]-a[1])>.5){flowArrows[kind].push(a.map(v=>Math.round(v*10)/10));saveArrows()}}previewArrow=null;editingArrow=-1;editingEnd=-1;dragging=false;anchor=null;draw()};canvas.addEventListener('pointerup',finish);canvas.addEventListener('pointercancel',finish);
 form.addEventListener('input',e=>{if(['sunYaw','sunPitch','moonYaw','moonPitch','riverDirection','waterfallDirection'].includes(e.target.name))draw()});
 document.getElementById('effect-map-file')?.addEventListener('change',e=>{const file=e.target.files?.[0];if(!file)return;const url=URL.createObjectURL(file);image.onload=()=>{loaded=true;draw();URL.revokeObjectURL(url)};image.src=url});
 if(canvas.dataset.src){image.onload=()=>{loaded=true;draw()};image.onerror=()=>{hint.textContent='Предпросмотр недоступен: выберите изображение для отображения.'};image.src=canvas.dataset.src}
-hint.textContent='Для сложного течения нарисуйте несколько стрелок в разных частях маски (до 40). Отмена удаляет последнюю стрелку, очистка — все стрелки выбранного эффекта. Выберите слой: контуры рисуются точками (от 3 вершин), фонари добавляются одиночными точками. Отмена и очистка работают с выбранным слоем.';
+hint.textContent='Для сложного течения нарисуйте несколько стрелок в разных частях маски (до 40). Перетаскивайте круглые концы стрелок, чтобы исправить направление; Отмена удаляет последнюю стрелку, очистка — все стрелки выбранного эффекта. Выберите слой: контуры рисуются точками (от 3 вершин), фонари добавляются одиночными точками. Отмена и очистка работают с выбранным слоем.';
 draw();
 })();
