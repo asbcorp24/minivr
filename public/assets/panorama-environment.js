@@ -64,7 +64,32 @@ export function createEnvironment(scene,settings={}){
    fragmentShader:`precision highp float;varying vec2 vUv;uniform sampler2D uMask;uniform float uTime,uOpacity,uSpeed,uDirection,uArrowCount;uniform vec4 uArrows[40];uniform vec3 uColor;
     float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
     float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y);}
-    void main(){float alpha=0.;float t=uTime*uSpeed;vec2 uv=vec2(fract(vUv.x),vUv.y);vec2 axis=vec2(cos(uDirection),-sin(uDirection));if(uArrowCount>0.5){vec2 sum=vec2(0.);float total=0.;for(int i=0;i<40;i++){if(float(i)>=uArrowCount)break;vec4 a=uArrows[i];vec2 d=uv-a.xy;d.x=fract(d.x+.5)-.5;float weight=1./(.001+dot(d,d)*80.);sum+=a.zw*weight;total+=weight;}if(total>0.)axis=normalize(sum/total+vec2(.00001));}vec2 flowUV=vec2(dot(uv,axis),dot(uv,vec2(-axis.y,axis.x))); ${fragment}
+    void main(){float alpha=0.;float t=uTime*uSpeed;vec2 uv=vec2(fract(vUv.x),vUv.y);vec2 axis=vec2(cos(uDirection),-sin(uDirection));
+     // Build a smooth local velocity field from all arrows, then backtrace
+     // texture coordinates through that field. This moves patterns along curves
+     // instead of merely rotating the texture at each pixel.
+     vec2 flowAt=uv;float stepTime=mod(t,120.)*.0025;
+     for(int step=0;step<5;step++){
+       vec2 sum=vec2(0.);float total=0.;
+       for(int i=0;i<40;i++){
+         if(float(i)>=uArrowCount)break;
+         vec4 a=uArrows[i];vec2 d=flowAt-a.xy;d.x=fract(d.x+.5)-.5;
+         float weight=1./(.0005+dot(d,d)*160.);
+         sum+=a.zw*weight;total+=weight;
+       }
+       vec2 velocity=axis;
+       if(total>0.)velocity=normalize(sum/total+vec2(.000001));
+       flowAt-=velocity*(stepTime/5.);
+       flowAt.x=fract(flowAt.x);
+       flowAt.y=clamp(flowAt.y,0.,1.);
+     }
+     vec2 flowUV=vec2(flowAt.x,flowAt.y);
+     vec2 localAxis=axis;vec2 sum=vec2(0.);float total=0.;
+     for(int i=0;i<40;i++){if(float(i)>=uArrowCount)break;vec4 a=uArrows[i];vec2 d=uv-a.xy;d.x=fract(d.x+.5)-.5;float w=1./(.0005+dot(d,d)*160.);sum+=a.zw*w;total+=w;}
+     if(total>0.)localAxis=normalize(sum/total+vec2(.000001));
+     // Motion comes from backtraced coordinates; orientation is local.
+     vec2 oriented=vec2(dot(flowUV,localAxis),dot(flowUV,vec2(-localAxis.y,localAxis.x)));
+     flowUV=oriented; ${fragment}
      float region=texture2D(uMask,vUv).r;gl_FragColor=vec4(uColor,clamp(alpha*region*uOpacity,0.,.78));}`,
    side:THREE.BackSide,transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending
   });
@@ -76,20 +101,20 @@ export function createEnvironment(scene,settings={}){
   `vec2 p=flowUV*vec2(190.,110.);
    float bend=(noise(p*.045+vec2(t*.08,0.))-.5)*5.;
    p.y+=bend;
-   p.x+=t*4.5;
-   float streak=noise(vec2(p.x*.65,p.y*.075)+vec2(t*.6,0.));
-   float fine=noise(vec2(p.x*2.2,p.y*.3)+vec2(t*1.8,0.));
+   // Motion is supplied by the arrow-driven backtraced UV field.
+   float streak=noise(vec2(p.x*.65,p.y*.075)+vec2(0.,0.));
+   float fine=noise(vec2(p.x*2.2,p.y*.3)+vec2(0.,0.));
    float bands=smoothstep(.54,.85,streak*.72+fine*.28);
    float ripple=pow(max(0.,sin(p.x*.28+noise(p*.04)*6.)),12.)*.12;
    alpha=.055+bands*.48+ripple;`,Number(settings.riverDirection??0));
  if(settings.waterfallFlow)flowLayer('waterfall',clamp(settings.waterfallIntensity??75,0,100)/100*clamp(settings.waterfallOpacity??100,0,100)/100,clamp(settings.waterfallSpeed??1.4,0.1,5),'#d4f1f6',
   `vec2 p=vec2(flowUV.y,-flowUV.x)*vec2(240.,130.);
-   float warp=(noise(vec2(p.x*.08,p.y*.025+t*.06))-.5)*8.;
-   float stream=noise(vec2((p.x+warp)*.18,p.y*.018+t*.13));
-   float spray=noise(vec2(p.x*1.8,p.y*.7+t*7.));
-   float strands=pow(max(0.,sin(p.x*.9+warp+p.y*.08+t*.9)),8.);
+   float warp=(noise(vec2(p.x*.08,p.y*.025))-.5)*8.;
+   float stream=noise(vec2((p.x+warp)*.18,p.y*.018));
+   float spray=noise(vec2(p.x*1.8,p.y*.7));
+   float strands=pow(max(0.,sin(p.x*.9+warp+p.y*.08)),8.);
    float foam=smoothstep(.58,.84,spray)*.35;
-   float falling=noise(vec2(p.x*.36,p.y*.08+t*1.5));
+   float falling=noise(vec2(p.x*.36,p.y*.08));
    alpha=.16+stream*.42+strands*.52+foam+falling*.22;`,Number(settings.waterfallDirection??90));
  if(settings.clouds)makeLayer('sky',clamp(settings.cloudDensity??35,0,100)/100,'#c7d1d9',
   `vec2 p=vUv*vec2(9.,5.);float n=noise(p+vec2(uTime*.009,0.))* .6+noise(p*2.7+vec2(uTime*.018,0.))*.4;alpha=smoothstep(.34,.67,n)*.58;`);
