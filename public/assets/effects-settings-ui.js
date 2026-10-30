@@ -13,7 +13,7 @@ const groups={
  moon:['moonVisible','moonYaw','moonPitch','moonIntensity'],
  fireflies:['fireflyDensity'],
  moonPath:['moonPathWidth','moonHorizon','moonBottom'],
- riverFlow:['riverIntensity','riverSpeed'],waterfallFlow:['waterfallIntensity','waterfallSpeed'],liveWater:['waterShimmer'],clouds:['cloudDensity'],stars:['starDensity'],lightBeams:['beamIntensity'],lampGlow:['lampIntensity'],windLeaves:['leafDensity'],bubbles:['bubbleIntensity'],steam:['steamIntensity'],timeOfDay:['dayPhase'],floatingLeaves:['floatingDensity']
+ riverFlow:['riverIntensity','riverSpeed','riverOpacity'],waterfallFlow:['waterfallIntensity','waterfallSpeed','waterfallOpacity'],liveWater:['waterShimmer'],clouds:['cloudDensity'],stars:['starDensity'],lightBeams:['beamIntensity'],lampGlow:['lampIntensity'],windLeaves:['leafDensity'],bubbles:['bubbleIntensity'],steam:['steamIntensity'],timeOfDay:['dayPhase'],floatingLeaves:['floatingDensity']
 };
 function refresh(){
  for(const [key,fields] of Object.entries(groups)){
