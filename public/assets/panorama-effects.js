@@ -6,10 +6,10 @@ export function createPanoramaEffects(scene,settings){
  const wind=THREE.MathUtils.clamp(Number(settings?.wind)||0,-8,8);
  const opacity=THREE.MathUtils.clamp(Number(settings?.opacity??80)/100,.1,1);
  const mobile=matchMedia('(max-width: 800px)').matches;
- const count=type==='none'||density===0?0:Math.max(type==='birds'?(mobile?8:12):type==='insects'?(mobile?25:40):1,Math.round(density*(type==='rain'?8:type==='snow'?5:type==='dust'?7:type==='insects'?3:type==='birds'?.4:3)*(mobile?.6:1)));
+ const count=type==='none'||density===0?0:Math.max(type==='birds'?(mobile?8:12):type==='insects'?(mobile?25:40):1,Math.round(density*(type==='rain'?8:type==='snow'?5:type==='dust'?9:type==='insects'?3:type==='birds'?.4:3)*(mobile?.6:1)));
  if(!count)return {update(){},dispose(){}};
  const positions=new Float32Array(count*3),velocities=new Float32Array(count),drift=new Float32Array(count),colors=new Float32Array(count*3),sizes=new Float32Array(count);
- const layerDepths=type==='birds'?[9,14,19]:type==='insects'?[3,5,8]:[5,11,20],layerSpeed=[1.22,1,.72];
+ const layerDepths=type==='birds'?[9,14,19]:type==='insects'?[3,5,8]:type==='dust'?[2.5,5,9]:[5,11,20],layerSpeed=[1.22,1,.72];
  const randomize=i=>{
   const layer=i%3,depth=layerDepths[layer],angle=Math.random()*Math.PI*2,radius=depth*(.55+Math.random()*.45);
   positions[i*3]=Math.cos(angle)*radius;
@@ -18,7 +18,7 @@ export function createPanoramaEffects(scene,settings){
   velocities[i]=(.35+Math.random()*.85)*layerSpeed[layer];
   drift[i]=Math.random()*6.28;
   sizes[i]=(.65+Math.random()*.65)*(layer===0?1.12:layer===2?.78:1);
-  const palette=type==='birds'?['#101923','#263744','#44505a']:type==='insects'?['#f7db77','#f4eecc','#c8e99b']:type==='dust'?['#e6d9b7','#f0e6d1','#b9c3c1']:type==='leaves'?['#bd6a22','#e7b454','#a94a21','#a4a04d']:type==='snow'?['#ffffff','#e7f5ff']:['#a5c8e5','#d4e9f9'];
+  const palette=type==='birds'?['#101923','#263744','#44505a']:type==='insects'?['#f7db77','#f4eecc','#c8e99b']:type==='dust'?['#fff4d9','#e8e3d7','#c6d7e1']:type==='leaves'?['#bd6a22','#e7b454','#a94a21','#a4a04d']:type==='snow'?['#ffffff','#e7f5ff']:['#a5c8e5','#d4e9f9'];
   const color=new THREE.Color(palette[Math.floor(Math.random()*palette.length)]);
   colors[i*3]=color.r;colors[i*3+1]=color.g;colors[i*3+2]=color.b;
  };
@@ -26,8 +26,8 @@ export function createPanoramaEffects(scene,settings){
  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(positions,3));geo.setAttribute('color',new THREE.BufferAttribute(colors,3));geo.setAttribute('aSize',new THREE.BufferAttribute(sizes,1));
  const mat=new THREE.ShaderMaterial({
  uniforms:{uTime:{value:0},uRatio:{value:Math.min(devicePixelRatio||1,2)},uOpacity:{value:opacity},uWind:{value:wind}},
- vertexShader:'attribute vec3 color;attribute float aSize;uniform float uRatio;varying vec3 vColor;varying float vFade;void main(){vColor=color;vec4 mv=modelViewMatrix*vec4(position,1.0);float d=max(1.0,-mv.z);vFade=smoothstep(1.0,3.0,d)*(1.0-smoothstep(22.0,31.0,d));gl_Position=projectionMatrix*mv;gl_PointSize=clamp('+ (type==='rain'?'13.0':type==='snow'?'24.0':type==='dust'?'9.0':type==='insects'?'58.0':type==='birds'?'210.0':'31.0') +'*aSize*uRatio*8.0/d,3.0,'+(type==='birds'?'115.0':type==='insects'?'45.0':'35.0')+');}',
- fragmentShader:'precision mediump float;varying vec3 vColor;varying float vFade;uniform float uTime;uniform float uOpacity;void main(){vec2 p=gl_PointCoord*2.0-1.0;float a=0.0;'+(type==='rain'?'a=(1.0-smoothstep(.07,.20,abs(p.x+p.y*.17)))*(1.0-smoothstep(.7,1.0,abs(p.y)))*.6;':type==='snow'?'a=(1.0-smoothstep(.25,.95,length(p)))*.85;':type==='dust'?'a=(1.0-smoothstep(.1,.92,length(p)))*.38;':type==='insects'?'float wing=abs(p.y-.25*sin(uTime*24.0+p.x*4.0));float body=1.0-smoothstep(.08,.25,length(p*vec2(1.4,1.0)));float wings=(1.0-smoothstep(.06,.17,wing))* (1.0-smoothstep(.55,.88,abs(p.x)));a=max(body,wings*.68);':type==='birds'?'float flap=sin(uTime*5.0);float wings=abs(p.y-(.08+.35*abs(p.x))*flap);a=(1.0-smoothstep(.045,.13,wings))*(1.0-smoothstep(.65,.92,abs(p.x)));a=max(a,1.0-smoothstep(.06,.18,length(p*vec2(2.8,1.0))));':'float t=uTime*.6;mat2 r=mat2(cos(t),-sin(t),sin(t),cos(t));vec2 q=r*p;a=(1.0-smoothstep(.55,.85,length(vec2(q.x*1.2,q.y*.8))))*.9;')+'if(a<.015)discard;gl_FragColor=vec4(vColor,a*vFade*uOpacity);}',
+ vertexShader:'attribute vec3 color;attribute float aSize;uniform float uRatio;varying vec3 vColor;varying float vFade;void main(){vColor=color;vec4 mv=modelViewMatrix*vec4(position,1.0);float d=max(1.0,-mv.z);vFade=smoothstep(1.0,3.0,d)*(1.0-smoothstep(22.0,31.0,d));gl_Position=projectionMatrix*mv;gl_PointSize=clamp('+ (type==='rain'?'13.0':type==='snow'?'24.0':type==='dust'?'28.0':type==='insects'?'58.0':type==='birds'?'210.0':'31.0') +'*aSize*uRatio*8.0/d,3.0,'+(type==='birds'?'115.0':type==='insects'?'45.0':type==='dust'?'28.0':'35.0')+');}',
+ fragmentShader:'precision mediump float;varying vec3 vColor;varying float vFade;uniform float uTime;uniform float uOpacity;void main(){vec2 p=gl_PointCoord*2.0-1.0;float a=0.0;'+(type==='rain'?'a=(1.0-smoothstep(.07,.20,abs(p.x+p.y*.17)))*(1.0-smoothstep(.7,1.0,abs(p.y)))*.6;':type==='snow'?'a=(1.0-smoothstep(.25,.95,length(p)))*.85;':type==='dust'?'float r=length(p);float halo=1.0-smoothstep(.12,.95,r);float core=1.0-smoothstep(.02,.32,r);a=(halo*.42+core*.42)*(.78+.22*sin(uTime*1.4+p.x*13.0));':type==='insects'?'float wing=abs(p.y-.25*sin(uTime*24.0+p.x*4.0));float body=1.0-smoothstep(.08,.25,length(p*vec2(1.4,1.0)));float wings=(1.0-smoothstep(.06,.17,wing))* (1.0-smoothstep(.55,.88,abs(p.x)));a=max(body,wings*.68);':type==='birds'?'float flap=sin(uTime*5.0);float wings=abs(p.y-(.08+.35*abs(p.x))*flap);a=(1.0-smoothstep(.045,.13,wings))*(1.0-smoothstep(.65,.92,abs(p.x)));a=max(a,1.0-smoothstep(.06,.18,length(p*vec2(2.8,1.0))));':'float t=uTime*.6;mat2 r=mat2(cos(t),-sin(t),sin(t),cos(t));vec2 q=r*p;a=(1.0-smoothstep(.55,.85,length(vec2(q.x*1.2,q.y*.8))))*.9;')+'if(a<.015)discard;gl_FragColor=vec4(vColor,a*vFade*uOpacity);}',
  transparent:true,depthWrite:false,depthTest:type!=='birds'&&type!=='insects'
  });
  const particles=new THREE.Points(geo,mat);particles.frustumCulled=false;particles.layers.enableAll();particles.renderOrder=12;scene.add(particles);
