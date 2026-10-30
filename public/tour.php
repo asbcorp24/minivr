@@ -6,6 +6,11 @@ if(!$tour){http_response_code(404);exit('Tour not found');}
 $q=$db->prepare("SELECT s.*,p.title panorama_title,p.description,p.image,p.preview,p.projection,p.stereo FROM tour_scenes s JOIN panoramas p ON p.id=s.panorama_id WHERE s.tour_id=? AND p.published=1 ORDER BY s.sort_order,s.id");$q->execute([$id]);$scenes=$q->fetchAll();
 if(!$scenes){http_response_code(404);exit('Tour has no scenes');}
 $start=$scenes[0];if(!empty($tour['start_scene_id']))foreach($scenes as $x)if((int)$x['id']===(int)$tour['start_scene_id']){$start=$x;break;}
+// Direct-launch link: bypass the tour landing page and open its configured start scene.
+if(isset($_GET['start']) && $_GET['start']==='1'){
+ header('Location: /viewer.php?id='.(int)$start['panorama_id'].'&tour='.(int)$id.'&scene='.(int)$start['id'].'&immersive=1',true,302);
+ exit;
+}
 $cover=$tour['cover']?:($start['preview']?:$start['image']);
 $modes=[];foreach($scenes as $x){$modes[strtoupper($x['projection'])]=1;$modes[strtoupper($x['stereo'])]=1;}
 ?>
