@@ -84,8 +84,9 @@ export function createEnvironment(scene,settings={}){
    float stream=noise(vec2((p.x+warp)*.18,p.y*.018-t*.13));
    float spray=noise(vec2(p.x*1.8,p.y*.7-t*7.));
    float strands=pow(max(0.,sin(p.x*.9+warp+p.y*.08-t*.9)),8.);
-   float foam=smoothstep(.68,.92,spray)*.24;
-   alpha=.08+stream*.28+strands*.45+foam;`);
+   float foam=smoothstep(.58,.84,spray)*.35;
+   float falling=noise(vec2(p.x*.36,p.y*.08-t*1.5));
+   alpha=.16+stream*.42+strands*.52+foam+falling*.22;`);
  if(settings.clouds)makeLayer('sky',clamp(settings.cloudDensity??35,0,100)/100,'#c7d1d9',
   `vec2 p=vUv*vec2(9.,5.);float n=noise(p+vec2(uTime*.009,0.))* .6+noise(p*2.7+vec2(uTime*.018,0.))*.4;alpha=smoothstep(.34,.67,n)*.58;`);
  if(settings.stars){
