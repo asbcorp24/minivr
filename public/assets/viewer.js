@@ -25,6 +25,29 @@ if(new URLSearchParams(location.search).has('effects_debug')){
 let projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'mono';
 const tour=Number(root.dataset.tour||0),backUrl=root.dataset.back||'/';let hotspotData=JSON.parse(document.querySelector('#hotspots-data')?.textContent||'[]');
 const tourData=JSON.parse(document.querySelector('#tour-data')?.textContent||'{"scenes":[],"current":-1}');
+// Guided tour: each scene has its own duration; 0 disables automatic advance.
+let tourTimer=null,tourDeadline=0,tourPaused=false;
+function currentTourDuration(){
+ const item=tourData.scenes[tourData.current];
+ const override=item?.duration_seconds;
+ const fallback=Number(effectSettings.tourDuration??30);
+ return Math.max(0,Math.min(3600,Number(override===null||override===undefined?fallback:override)||0));
+}
+const tourButton=document.createElement('button');
+tourButton.type='button';tourButton.id='tour-autoplay';tourButton.style.cssText='background:#153849;color:white;border:1px solid #43849d;border-radius:8px;padding:7px 10px;cursor:pointer';
+tourButton.addEventListener('click',()=>{tourPaused=!tourPaused;resetTourTimer()});
+function resetTourTimer(){
+ if(tourTimer){clearTimeout(tourTimer);tourTimer=null}
+ const duration=currentTourDuration();
+ const next=tourData.current+1<tourData.scenes.length;
+ tourButton.textContent=tourPaused?'▶ Продолжить экскурсию':'⏸ Авто: '+duration+' с';
+ tourButton.title='Автоматический переход к следующей панораме';
+ if(!tour||!next||!duration||tourPaused)return;
+ tourDeadline=Date.now()+duration*1000;
+ tourTimer=setTimeout(()=>{tourTimer=null;if(!tourPaused&&document.visibilityState==='visible')goScene(tourData.current+1);else resetTourTimer()},duration*1000);
+}
+if(tour&&tourData.scenes.length>1){document.querySelector('#controls')?.prepend(tourButton);resetTourTimer()}
+document.addEventListener('visibilitychange',()=>{if(tour&&document.visibilityState==='visible')resetTourTimer();else if(tourTimer){clearTimeout(tourTimer);tourTimer=null}});
 const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1100);
 effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.xr.enabled=true;root.appendChild(renderer.domElement);
@@ -204,6 +227,8 @@ async function switchSceneInPlace(url){
  effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();try{effectSettings=JSON.parse(next.dataset.effects||'{}')}catch(e){effectSettings={}}effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);root.dataset.effects=next.dataset.effects||'{}';
  const nextTour=JSON.parse(doc.querySelector('#tour-data')?.textContent||'{}');
  tourData.current=nextTour.current??-1;
+ resetTourTimer();
+ window.dispatchEvent(new CustomEvent('minivr:scene-music',{detail:{trackId:Number(next.dataset.musicTrack||0)}}));
  hotspotData=JSON.parse(doc.querySelector('#hotspots-data')?.textContent||'[]');
  for(const obj of hotspotObjects){scene.remove(obj);obj.material.map?.dispose();obj.material.dispose()}
  hotspotObjects.length=0;activeHotspot=null;
