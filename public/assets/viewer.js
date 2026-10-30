@@ -9,6 +9,19 @@ import VREffect from '/assets/vendor/three/effects/VREffect.js';
 import VRControls from '/assets/vendor/three/controls/VRControls.js';
 
 const root=document.querySelector('#viewer');
+const immersiveLaunch=new URLSearchParams(location.search).get('immersive')==='1';
+if(immersiveLaunch){
+ document.documentElement.classList.add('minivr-immersive-launch');
+ const immersiveCss=document.createElement('style');
+ immersiveCss.textContent='.minivr-immersive-launch #top{display:none!important}.minivr-immersive-launch #viewer{position:fixed!important;inset:0!important;width:100vw!important;height:100dvh!important}';
+ document.head.appendChild(immersiveCss);
+ // Browsers normally prohibit requestFullscreen without a user gesture.
+ // Try once on arrival; otherwise activate on the first intentional click.
+ const requestFullscreen=()=>{if(!document.fullscreenElement&&document.documentElement.requestFullscreen)document.documentElement.requestFullscreen().catch(()=>{});};
+ document.addEventListener('pointerdown',requestFullscreen,{once:true,capture:true});
+ requestFullscreen();
+}
+
 let effectSettings={};try{effectSettings=JSON.parse(root.dataset.effects||'{}')}catch(e){}
 let effectSystem=null,atmosphereSystem=null,moonSystem=null,environmentSystem=null,lastEffectTime=0;
 // Opt-in diagnostics: /viewer.php?id=...&effects_debug=1
@@ -159,7 +172,7 @@ const panelW=2.6,panelH=.42,panelGeo=new THREE.ShapeGeometry(roundedRectShape(pa
 const panel=new THREE.Mesh(panelGeo,new THREE.MeshBasicMaterial({color:0x1a1a1a,opacity:0,transparent:true,side:THREE.DoubleSide,depthTest:false}));panel.position.set(0,0,-1.5);panel.renderOrder=100;hud.add(panel);
 const panelBorderGeo=new THREE.ShapeGeometry(roundedRectShape(panelW+.02,panelH+.02,.09));panelBorderGeo.translate(-(panelW+.02)/2,-(panelH+.02)/2,0);const panelBorder=new THREE.Mesh(panelBorderGeo,new THREE.MeshBasicMaterial({color:0xffffff,opacity:0,transparent:true,side:THREE.DoubleSide,depthTest:false}));panelBorder.position.z=-.001;panel.add(panelBorder);
 function hudButton(label,x,type,action,base=0x2a2a2a,hover=0x444444){const g=new THREE.Group(),m=new THREE.Mesh(new THREE.CircleGeometry(.08,32),new THREE.MeshBasicMaterial({color:base,opacity:.9,transparent:true,depthTest:false}));m.userData={interactive:true,type,action,baseColor:base,hoverColor:hover};g.add(m);const ring=new THREE.Mesh(new THREE.RingGeometry(.078,.082,32),new THREE.MeshBasicMaterial({color:0xffffff,opacity:.15,transparent:true,depthTest:false}));ring.position.z=.001;g.add(ring);const cv=document.createElement('canvas');cv.width=cv.height=64;const c=cv.getContext('2d');c.fillStyle='#fff';c.font='40px Arial';c.textAlign='center';c.textBaseline='middle';c.fillText(label,32,32);const lm=new THREE.Mesh(new THREE.PlaneGeometry(.1,.1),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));lm.position.z=.002;g.add(lm);g.position.set(x,0,.01);g.renderOrder=125;panel.add(g);interactive.push(m);return g}
-function goScene(i){const s=tourData.scenes[i];if(s)navigate('/viewer.php?id='+s.panorama_id+'&tour='+tour+'&scene='+s.id)}
+function goScene(i){const s=tourData.scenes[i];if(s)navigate('/viewer.php?id='+s.panorama_id+'&tour='+tour+'&scene='+s.id+(immersiveLaunch?'&immersive=1':''))}
 async function exitViewer(){if(renderer.xr.isPresenting){const session=renderer.xr.getSession();if(session)await session.end()}if(legacyCardboard&&legacyVRDisplay){try{await legacyVREffect.exitPresent()}catch{}}navigate(backUrl)}
 const menuGroup=new THREE.Group(),infoGroup=new THREE.Group(),contentGroup=new THREE.Group();hud.add(menuGroup,infoGroup,contentGroup);menuGroup.visible=infoGroup.visible=contentGroup.visible=false;
 function closePanels(except=null){if(except!==menuGroup)menuGroup.visible=false;if(except!==infoGroup)infoGroup.visible=false;if(except!==contentGroup){contentGroup.visible=false;clearGroup(contentGroup)}menuOpen=menuGroup.visible}
