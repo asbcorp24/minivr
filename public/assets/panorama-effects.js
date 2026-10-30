@@ -12,15 +12,31 @@ export function createPanoramaEffects(scene,settings){
  if(type==='birds'||type==='insects'){
   const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;
   const ctx=canvas.getContext('2d');ctx.clearRect(0,0,128,128);
-  if(type==='birds'){
-   ctx.fillStyle='#192632';
-   ctx.beginPath();ctx.moveTo(64,69);ctx.bezierCurveTo(46,44,22,38,5,49);ctx.bezierCurveTo(26,49,42,64,62,73);ctx.bezierCurveTo(78,62,99,46,123,49);ctx.bezierCurveTo(100,36,82,45,64,69);ctx.fill();
-   ctx.beginPath();ctx.ellipse(64,71,8,14,0,0,Math.PI*2);ctx.fill();
-  }else{
-   ctx.fillStyle='rgba(242,233,177,.72)';
-   ctx.beginPath();ctx.ellipse(44,54,22,12,-.45,0,Math.PI*2);ctx.ellipse(84,54,22,12,.45,0,Math.PI*2);ctx.fill();
-   ctx.fillStyle='#3d3724';ctx.beginPath();ctx.ellipse(64,69,7,18,0,0,Math.PI*2);ctx.fill();
+  // Redraw the wings every frame: rotating or scaling a static sprite does not flap wings.
+  function drawCreature(t){
+   ctx.clearRect(0,0,128,128);
+   if(type==='birds'){
+    const flap=Math.sin(t*8);
+    ctx.fillStyle='#192632';
+    ctx.beginPath();ctx.ellipse(64,72,7,13,0,0,Math.PI*2);ctx.fill();
+    for(const side of [-1,1]){
+     ctx.beginPath();ctx.moveTo(64+side*3,69);
+     ctx.quadraticCurveTo(64+side*27,52-flap*15,64+side*58,53-flap*28);
+     ctx.quadraticCurveTo(64+side*43,65-flap*9,64+side*7,78);
+     ctx.closePath();ctx.fill();
+    }
+   }else{
+    const flap=Math.sin(t*39);
+    ctx.fillStyle='rgba(238,231,183,.66)';
+    for(const side of [-1,1]){
+     ctx.save();ctx.translate(64,66);ctx.scale(side,1);
+     ctx.beginPath();ctx.ellipse(15,(-9-flap*8),20,Math.max(2,8+flap*5),-.35,0,Math.PI*2);ctx.fill();
+     ctx.restore();
+    }
+    ctx.fillStyle='#3d3724';ctx.beginPath();ctx.ellipse(64,69,5,16,0,0,Math.PI*2);ctx.fill();
+   }
   }
+  drawCreature(0);
   const texture=new THREE.CanvasTexture(canvas);
   const group=new THREE.Group();group.layers.enableAll();scene.add(group);
   const objects=[];
@@ -37,10 +53,11 @@ export function createPanoramaEffects(scene,settings){
    group.add(sprite);
    objects.push({sprite,material,phase:Math.random()*6.283,velocity:.4+Math.random()*.8,distance,altitude,size});
   }
-  let last=0;
+  let last=0,lastWingFrame=-1;
   return {
    update(time,camera){
     const dt=last?Math.min(.05,(time-last)/1000):0;last=time;
+    const frame=Math.floor(time/33);if(frame!==lastWingFrame){lastWingFrame=frame;drawCreature(time*.001);texture.needsUpdate=true;}
     if(camera)camera.getWorldPosition(group.position);
     objects.forEach((o,i)=>{
      const p=o.sprite.position,t=time*.001,phase=o.phase;
@@ -48,8 +65,8 @@ export function createPanoramaEffects(scene,settings){
      p.y=o.altitude+Math.sin(t*(type==='birds'?.8:2.4)+phase)*o.size*(type==='birds'?.22:.8);
      p.z+=Math.cos(t*.65+phase)*dt*(type==='birds'?.65:.38);
      if(p.x>o.distance*1.3)p.x=-o.distance*1.3;
-     if(type==='birds')o.sprite.scale.y=o.size*(.75+.28*Math.sin(t*5+phase));
-     else o.sprite.material.rotation=Math.sin(t*6+phase)*.22;
+     if(type==='birds')o.sprite.rotation=0;
+     else o.sprite.material.rotation=Math.sin(t*3+phase)*.14;
     });
    },
    dispose(){scene.remove(group);objects.forEach(o=>o.material.dispose());texture.dispose()}
