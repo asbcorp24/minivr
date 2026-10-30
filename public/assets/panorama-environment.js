@@ -52,15 +52,19 @@ export function createEnvironment(scene,settings={}){
   `);
  // Flow effects are confined to user-drawn panorama masks; never animate the whole image.
  const flowLayer=(name,intensity,speed,color,fragment,direction=0)=>{
+  const arrows=Array.isArray(settings.flowArrows?.[name])?settings.flowArrows[name].slice(0,40):[];
+  const vectors=new Float32Array(40*4);let n=0;
+  for(const a of arrows){if(!Array.isArray(a)||a.length!==4||!a.every(Number.isFinite))continue;const [x1,y1,x2,y2]=a;const dx=(x2-x1)/360,dy=-(y2-y1)/180;const length=Math.hypot(dx,dy);if(length<.001)continue;vectors.set([(x1+x2+360)/720,(180-y1-y2)/360,dx/length,dy/length],n*4);n++;}
+
   if(mask(name).length<3)return;
   const maskTexture=texture(name),geometry=new THREE.SphereGeometry(99,96,48);
   const material=new THREE.ShaderMaterial({
-   uniforms:{uTime:{value:0},uMask:{value:maskTexture},uOpacity:{value:intensity},uSpeed:{value:speed},uDirection:{value:direction*Math.PI/180},uColor:{value:new THREE.Color(color)}},
+   uniforms:{uTime:{value:0},uMask:{value:maskTexture},uOpacity:{value:intensity},uSpeed:{value:speed},uDirection:{value:direction*Math.PI/180},uArrowCount:{value:n},uArrows:{value:Array.from({length:40},(_,i)=>new THREE.Vector4(...vectors.slice(i*4,i*4+4)))},uColor:{value:new THREE.Color(color)}},
    vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-   fragmentShader:`precision highp float;varying vec2 vUv;uniform sampler2D uMask;uniform float uTime,uOpacity,uSpeed,uDirection;uniform vec3 uColor;
+   fragmentShader:`precision highp float;varying vec2 vUv;uniform sampler2D uMask;uniform float uTime,uOpacity,uSpeed,uDirection,uArrowCount;uniform vec4 uArrows[40];uniform vec3 uColor;
     float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
     float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y);}
-    void main(){float alpha=0.;float t=uTime*uSpeed;vec2 uv=vec2(fract(vUv.x),vUv.y);vec2 axis=vec2(cos(uDirection),-sin(uDirection));vec2 flowUV=vec2(dot(uv,axis),dot(uv,vec2(-axis.y,axis.x))); ${fragment}
+    void main(){float alpha=0.;float t=uTime*uSpeed;vec2 uv=vec2(fract(vUv.x),vUv.y);vec2 axis=vec2(cos(uDirection),-sin(uDirection));if(uArrowCount>0.5){vec2 sum=vec2(0.);float total=0.;for(int i=0;i<40;i++){if(float(i)>=uArrowCount)break;vec4 a=uArrows[i];vec2 d=uv-a.xy;d.x=fract(d.x+.5)-.5;float weight=1./(.001+dot(d,d)*80.);sum+=a.zw*weight;total+=weight;}if(total>0.)axis=normalize(sum/total+vec2(.00001));}vec2 flowUV=vec2(dot(uv,axis),dot(uv,vec2(-axis.y,axis.x))); ${fragment}
      float region=texture2D(uMask,vUv).r;gl_FragColor=vec4(uColor,clamp(alpha*region*uOpacity,0.,.78));}`,
    side:THREE.BackSide,transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending
   });
