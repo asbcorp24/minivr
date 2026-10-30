@@ -48,6 +48,26 @@ function resetTourTimer(){
 }
 if(tour&&tourData.scenes.length>1){document.querySelector('#controls')?.prepend(tourButton);resetTourTimer()}
 document.addEventListener('visibilitychange',()=>{if(tour&&document.visibilityState==='visible')resetTourTimer();else if(tourTimer){clearTimeout(tourTimer);tourTimer=null}});
+// Desktop-only tour scene rail: lightweight DOM, no additional WebGL resources.
+const tourRail=document.createElement('nav');
+tourRail.id='minivr-tour-rail';
+tourRail.setAttribute('aria-label','Панорамы экскурсии');
+tourRail.style.cssText='position:fixed;right:clamp(12px,2vw,28px);top:50%;transform:translateY(-50%);z-index:800;display:flex;flex-direction:column;align-items:center;gap:11px;padding:15px 11px;border:1px solid rgba(255,255,255,.18);border-radius:28px;background:rgba(12,29,42,.52);backdrop-filter:blur(14px);box-shadow:0 8px 32px #0004;max-height:75vh;overflow-y:auto;scrollbar-width:thin';
+const railStyle=document.createElement('style');
+railStyle.textContent='#minivr-tour-rail button{appearance:none;position:relative;width:12px;height:12px;min-height:12px;border-radius:50%;border:2px solid rgba(230,246,255,.75);background:rgba(255,255,255,.28);cursor:pointer;transition:transform .2s,background .2s,box-shadow .2s;padding:0}#minivr-tour-rail button:hover,#minivr-tour-rail button:focus-visible{transform:scale(1.3);background:#8defff;outline:none;box-shadow:0 0 0 5px #78eaff35}#minivr-tour-rail button[aria-current="step"]{width:15px;height:15px;min-height:15px;background:#85efff;border-color:#fff;box-shadow:0 0 0 5px #67d9ff35,0 0 14px #67d9ff}#minivr-tour-rail button::before{content:attr(data-label);position:absolute;right:calc(100% + 20px);top:50%;transform:translateY(-50%) translateX(5px);opacity:0;pointer-events:none;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis;color:white;background:#112b3deF;border:1px solid #ffffff35;border-radius:9px;padding:8px 12px;font:13px system-ui;transition:opacity .15s,transform .15s}#minivr-tour-rail button:hover::before,#minivr-tour-rail button:focus-visible::before{opacity:1;transform:translateY(-50%) translateX(0)}@media(max-width:767px){#minivr-tour-rail{display:none!important}}';
+document.head.appendChild(railStyle);
+function syncTourRail(){
+ const desktop=window.innerWidth>=768&&!cardboard&&!legacyCardboard&&!(typeof renderer!=='undefined'&&renderer.xr.isPresenting);
+ tourRail.style.display=desktop?'flex':'none';
+ for(const [i,button] of Array.from(tourRail.querySelectorAll('button')).entries()){
+  if(i===tourData.current){button.setAttribute('aria-current','step');button.setAttribute('aria-label','Текущая панорама: '+(tourData.scenes[i]?.title||'Панорама '+(i+1)))}else{button.removeAttribute('aria-current');button.setAttribute('aria-label','Перейти: '+(tourData.scenes[i]?.title||'Панорама '+(i+1)))}
+ }
+}
+if(tour&&tourData.scenes.length>1){
+ tourData.scenes.forEach((item,i)=>{const b=document.createElement('button');b.type='button';b.dataset.label=(i+1)+'. '+(item.title||'Панорама '+(i+1));b.title=b.dataset.label;b.addEventListener('click',()=>goScene(i));tourRail.appendChild(b)});
+ document.body.appendChild(tourRail);
+ window.addEventListener('resize',syncTourRail);requestAnimationFrame(syncTourRail);
+}
 const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1100);
 effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);
 let renderer;
