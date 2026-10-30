@@ -8,6 +8,53 @@ export function createPanoramaEffects(scene,settings){
  const mobile=matchMedia('(max-width: 800px)').matches;
  const count=type==='none'||density===0?0:Math.max(type==='birds'?(mobile?8:12):type==='insects'?(mobile?25:40):1,Math.round(density*(type==='rain'?8:type==='snow'?5:type==='dust'?9:type==='insects'?3:type==='birds'?.4:3)*(mobile?.6:1)));
  if(!count)return {update(){},dispose(){}};
+ // Birds and insects use textured sprites instead of GL_POINTS: mobile GPUs often clamp point size.
+ if(type==='birds'||type==='insects'){
+  const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;
+  const ctx=canvas.getContext('2d');ctx.clearRect(0,0,128,128);
+  if(type==='birds'){
+   ctx.fillStyle='#192632';
+   ctx.beginPath();ctx.moveTo(64,69);ctx.bezierCurveTo(46,44,22,38,5,49);ctx.bezierCurveTo(26,49,42,64,62,73);ctx.bezierCurveTo(78,62,99,46,123,49);ctx.bezierCurveTo(100,36,82,45,64,69);ctx.fill();
+   ctx.beginPath();ctx.ellipse(64,71,8,14,0,0,Math.PI*2);ctx.fill();
+  }else{
+   ctx.fillStyle='rgba(242,233,177,.72)';
+   ctx.beginPath();ctx.ellipse(44,54,22,12,-.45,0,Math.PI*2);ctx.ellipse(84,54,22,12,.45,0,Math.PI*2);ctx.fill();
+   ctx.fillStyle='#3d3724';ctx.beginPath();ctx.ellipse(64,69,7,18,0,0,Math.PI*2);ctx.fill();
+  }
+  const texture=new THREE.CanvasTexture(canvas);
+  const group=new THREE.Group();group.layers.enableAll();scene.add(group);
+  const objects=[];
+  const total=Math.min(type==='birds'?28:130,Math.max(type==='birds'?8:22,Math.round(density*(type==='birds'?.23:1.15)*(mobile?.7:1))));
+  for(let i=0;i<total;i++){
+   const material=new THREE.SpriteMaterial({map:texture,transparent:true,opacity:opacity*(type==='birds'?.95:.9),depthTest:false,depthWrite:false});
+   const sprite=new THREE.Sprite(material);sprite.layers.enableAll();sprite.renderOrder=30;
+   const distance=type==='birds'?12+Math.random()*15:3+Math.random()*7;
+   const angle=Math.random()*Math.PI*2;
+   const altitude=type==='birds'?2+Math.random()*7:-2+Math.random()*6;
+   const size=(type==='birds'?2.3:.33)*(.65+Math.random()*.75);
+   sprite.position.set(Math.cos(angle)*distance,altitude,Math.sin(angle)*distance);
+   sprite.scale.set(size*(type==='birds'?1.7:1),size,1);
+   group.add(sprite);
+   objects.push({sprite,material,phase:Math.random()*6.283,velocity:.4+Math.random()*.8,distance,altitude,size});
+  }
+  let last=0;
+  return {
+   update(time,camera){
+    const dt=last?Math.min(.05,(time-last)/1000):0;last=time;
+    if(camera)camera.getWorldPosition(group.position);
+    objects.forEach((o,i)=>{
+     const p=o.sprite.position,t=time*.001,phase=o.phase;
+     p.x+=dt*speed*(type==='birds'?1.5:.5)*o.velocity+dt*wind*.15;
+     p.y=o.altitude+Math.sin(t*(type==='birds'?.8:2.4)+phase)*o.size*(type==='birds'?.22:.8);
+     p.z+=Math.cos(t*.65+phase)*dt*(type==='birds'?.65:.38);
+     if(p.x>o.distance*1.3)p.x=-o.distance*1.3;
+     if(type==='birds')o.sprite.scale.y=o.size*(.75+.28*Math.sin(t*5+phase));
+     else o.sprite.material.rotation=Math.sin(t*6+phase)*.22;
+    });
+   },
+   dispose(){scene.remove(group);objects.forEach(o=>o.material.dispose());texture.dispose()}
+  };
+ }
  const positions=new Float32Array(count*3),velocities=new Float32Array(count),drift=new Float32Array(count),colors=new Float32Array(count*3),sizes=new Float32Array(count);
  const layerDepths=type==='birds'?[9,14,19]:type==='insects'?[3,5,8]:type==='dust'?[2.5,5,9]:[5,11,20],layerSpeed=[1.22,1,.72];
  const randomize=i=>{
