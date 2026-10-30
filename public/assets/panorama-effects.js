@@ -10,21 +10,48 @@ export function createPanoramaEffects(scene,settings){
  if(!count)return {update(){},dispose(){}};
  // Birds and insects use textured sprites instead of GL_POINTS: mobile GPUs often clamp point size.
  if(type==='birds'||type==='insects'){
-  const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;
+  const canvas=document.createElement('canvas');canvas.width=type==='birds'?256:128;canvas.height=type==='birds'?256:128;
   const ctx=canvas.getContext('2d');ctx.clearRect(0,0,128,128);
   // Redraw the wings every frame: rotating or scaling a static sprite does not flap wings.
+  if(type==='birds')ctx.scale(2,2);
   function drawCreature(t){
    ctx.clearRect(0,0,128,128);
    if(type==='birds'){
-    const flap=Math.sin(t*8);
-    ctx.fillStyle='#192632';
-    ctx.beginPath();ctx.ellipse(64,72,7,13,0,0,Math.PI*2);ctx.fill();
+    // Canvas silhouette of a swallow-like bird seen from below: head, beak,
+    // tapered body, forked tail, articulated wings and separated flight feathers.
+    const flap=Math.sin(t*6.5);
+    const lift=flap*24;
+    ctx.fillStyle='#273440';
+    // Forked tail behind the body
+    ctx.beginPath();ctx.moveTo(59,77);ctx.lineTo(49,105);ctx.lineTo(61,92);
+    ctx.lineTo(64,87);ctx.lineTo(67,92);ctx.lineTo(79,105);ctx.lineTo(69,77);ctx.closePath();ctx.fill();
+    // Wings: broad shoulder, swept outer wing and five tapered primary feathers
     for(const side of [-1,1]){
-     ctx.beginPath();ctx.moveTo(64+side*3,69);
-     ctx.quadraticCurveTo(64+side*27,52-flap*15,64+side*58,53-flap*28);
-     ctx.quadraticCurveTo(64+side*43,65-flap*9,64+side*7,78);
-     ctx.closePath();ctx.fill();
+     ctx.save();ctx.translate(64,67);ctx.scale(side,1);
+     ctx.beginPath();ctx.moveTo(3,0);
+     ctx.bezierCurveTo(13,-8,25,-15-lift*.3,39,-16-lift*.65);
+     ctx.bezierCurveTo(47,-19-lift*.8,53,-21-lift,60,-20-lift);
+     ctx.quadraticCurveTo(56,-12-lift*.9,51,-10-lift*.82);
+     ctx.lineTo(57,-8-lift*.7);ctx.lineTo(46,-5-lift*.6);
+     ctx.lineTo(52,-1-lift*.46);ctx.lineTo(40,0-lift*.4);
+     ctx.lineTo(43,5-lift*.3);ctx.lineTo(32,3-lift*.2);
+     ctx.lineTo(35,9-lift*.15);ctx.lineTo(23,6);
+     ctx.quadraticCurveTo(13,10,4,9);ctx.closePath();ctx.fill();
+     // Subtle secondary feather structure
+     ctx.strokeStyle='rgba(125,137,145,.32)';ctx.lineWidth=1;
+     for(let j=0;j<4;j++){
+      const x=23+j*8;
+      ctx.beginPath();ctx.moveTo(x,-8-lift*(.3+j*.12));
+      ctx.lineTo(x+4,1-lift*(.22+j*.1));ctx.stroke();
+     }
+     ctx.restore();
     }
+    // Streamlined body, neck and small head
+    ctx.fillStyle='#1d2934';
+    ctx.beginPath();ctx.moveTo(64,54);ctx.bezierCurveTo(55,58,57,77,61,85);
+    ctx.quadraticCurveTo(64,91,67,85);ctx.bezierCurveTo(71,76,73,58,64,54);ctx.fill();
+    ctx.beginPath();ctx.arc(64,55,5.2,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.moveTo(61.5,52);ctx.lineTo(64,45);ctx.lineTo(66.5,52);ctx.fill();
    }else{
     const flap=Math.sin(t*39);
     ctx.fillStyle='rgba(238,231,183,.66)';
