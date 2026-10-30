@@ -65,8 +65,7 @@ export function createPanoramaEffects(scene,settings){
      p.y=o.altitude+Math.sin(t*(type==='birds'?.8:2.4)+phase)*o.size*(type==='birds'?.22:.8);
      p.z+=Math.cos(t*.65+phase)*dt*(type==='birds'?.65:.38);
      if(p.x>o.distance*1.3)p.x=-o.distance*1.3;
-     if(type==='birds')o.sprite.rotation=0;
-     else o.sprite.material.rotation=Math.sin(t*3+phase)*.14;
+     if(type==='insects')o.material.rotation=Math.sin(t*3+phase)*.14;
     });
    },
    dispose(){scene.remove(group);objects.forEach(o=>o.material.dispose());texture.dispose()}
