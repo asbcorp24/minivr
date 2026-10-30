@@ -35,7 +35,7 @@ function draw(){
   const colors={river:'#50e0e6',waterfall:'#d4faff',water:'#4cc9ff',sky:'#a6d2ff',light:'#ffd178',vegetation:'#8ce3a1',bubbles:'#9be7fa',steam:'#e3e7ee',floating:'#e6b46a'};
   ctx.save();ctx.beginPath();points.forEach((p,i)=>{const xy=normalize(p[0],p[1]);if(i)ctx.lineTo(xy.x,xy.y);else ctx.moveTo(xy.x,xy.y)});
   if(points.length>=3){ctx.closePath();ctx.fillStyle=({river:'rgba(80,224,230,.24)',waterfall:'rgba(212,250,255,.25)',water:'rgba(76,201,255,.22)',sky:'rgba(166,210,255,.18)',light:'rgba(255,209,120,.22)',vegetation:'rgba(140,227,161,.20)',bubbles:'rgba(155,231,250,.20)',steam:'rgba(227,231,238,.20)',floating:'rgba(230,180,106,.20)'})[name];ctx.fill()}
-  ctx.strokeStyle=colors[name];ctx.lineWidth=2;ctx.stroke();ctx.restore();
+  ctx.strokeStyle=colors[name];ctx.lineWidth=2;ctx.stroke();for(let i=0;i<points.length;i++){const xy=normalize(points[i][0],points[i][1]);ctx.beginPath();ctx.arc(xy.x,xy.y,5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle=colors[name];ctx.lineWidth=2;ctx.stroke();}ctx.restore();
  }
  for(const [yaw,pitch] of lamps)marker(yaw,pitch,'#ffca76','✦ Фонарь');
  marker(number('moonYaw'),number('moonPitch'),'#d5e5ff','☾ Луна');
