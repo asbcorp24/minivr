@@ -1,6 +1,7 @@
 (()=>{'use strict';
 const canvas=document.getElementById('effect-map'),form=canvas?.closest('form');if(!canvas||!form)return;
 const ctx=canvas.getContext('2d'),mode=document.getElementById('effect-map-mode'),hint=document.getElementById('effect-map-hint');
+const directions={river:'riverDirection',waterfall:'waterfallDirection'};
 const names={sun:['sunYaw','sunPitch'],moon:['moonYaw','moonPitch']};
 const field=name=>form.elements.namedItem(name);
 const number=name=>Number(field(name)?.value)||0;
@@ -37,6 +38,7 @@ function draw(){
   if(points.length>=3){ctx.closePath();ctx.fillStyle=({river:'rgba(80,224,230,.24)',waterfall:'rgba(212,250,255,.25)',water:'rgba(76,201,255,.22)',sky:'rgba(166,210,255,.18)',light:'rgba(255,209,120,.22)',vegetation:'rgba(140,227,161,.20)',bubbles:'rgba(155,231,250,.20)',steam:'rgba(227,231,238,.20)',floating:'rgba(230,180,106,.20)'})[name];ctx.fill()}
   ctx.strokeStyle=colors[name];ctx.lineWidth=2;ctx.stroke();for(let i=0;i<points.length;i++){const xy=normalize(points[i][0],points[i][1]);ctx.beginPath();ctx.arc(xy.x,xy.y,5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle=colors[name];ctx.lineWidth=2;ctx.stroke();}ctx.restore();
  }
+ for(const kind of ['river','waterfall']){const pts=masks[kind];if(!Array.isArray(pts)||pts.length<3)continue;const center=pts.reduce((a,p)=>[a[0]+p[0]/pts.length,a[1]+p[1]/pts.length],[0,0]);const c=normalize(...center);const theta=number(directions[kind])*Math.PI/180;const dx=Math.cos(theta)*42,dy=Math.sin(theta)*42;ctx.save();ctx.strokeStyle=kind==='river'?'#00f0f4':'#ffffff';ctx.fillStyle=ctx.strokeStyle;ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(c.x-dx*.5,c.y-dy*.5);ctx.lineTo(c.x+dx*.5,c.y+dy*.5);ctx.stroke();const x=c.x+dx*.5,y=c.y+dy*.5;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-Math.cos(theta-.55)*17,y-Math.sin(theta-.55)*17);ctx.lineTo(x-Math.cos(theta+.55)*17,y-Math.sin(theta+.55)*17);ctx.closePath();ctx.fill();ctx.restore();}
  for(const [yaw,pitch] of lamps)marker(yaw,pitch,'#ffca76','✦ Фонарь');
  marker(number('moonYaw'),number('moonPitch'),'#d5e5ff','☾ Луна');
  marker(number('sunYaw'),number('sunPitch'),'#ffd66a','☀ Солнце');
@@ -49,11 +51,11 @@ function apply(e){
 }
 const angle=v=>v*Math.PI/180;
 canvas.addEventListener('pointerdown',e=>{if(mode.value==='polygon'||mode.value.startsWith('mask-')||mode.value==='lamp'){const points=current();if(points.length<(mode.value==='lamp'?20:80)){const p=read(e);points.push([Math.round(p.yaw*10)/10,Math.round(p.pitch*10)/10]);savePolygon();saveLayers();draw()}return}dragging=true;anchor=read(e);canvas.setPointerCapture(e.pointerId);const [yaw,pitch]=names[mode.value]||[];if(yaw&&pitch){set(yaw,anchor.yaw);set(pitch,anchor.pitch)}draw()});
-canvas.addEventListener('pointermove',e=>{if(dragging&&names[mode.value])apply(e)});
+canvas.addEventListener('pointermove',e=>{if(dragging&&mode.value.startsWith('direction-')){const p=read(e),rect=canvas.getBoundingClientRect();const dx=(p.yaw-anchor.yaw)/360*rect.width,dy=-(p.pitch-anchor.pitch)/180*rect.height;if(Math.hypot(dx,dy)>5)set(directions[mode.value.slice(10)],Math.atan2(dy,dx)*180/Math.PI);draw()}else if(dragging&&names[mode.value])apply(e)});
 const finish=()=>{dragging=false;anchor=null};canvas.addEventListener('pointerup',finish);canvas.addEventListener('pointercancel',finish);
-form.addEventListener('input',e=>{if(['sunYaw','sunPitch','moonYaw','moonPitch'].includes(e.target.name))draw()});
+form.addEventListener('input',e=>{if(['sunYaw','sunPitch','moonYaw','moonPitch','riverDirection','waterfallDirection'].includes(e.target.name))draw()});
 document.getElementById('effect-map-file')?.addEventListener('change',e=>{const file=e.target.files?.[0];if(!file)return;const url=URL.createObjectURL(file);image.onload=()=>{loaded=true;draw();URL.revokeObjectURL(url)};image.src=url});
 if(canvas.dataset.src){image.onload=()=>{loaded=true;draw()};image.onerror=()=>{hint.textContent='Предпросмотр недоступен: выберите изображение для отображения.'};image.src=canvas.dataset.src}
-hint.textContent='Выберите слой: контуры рисуются точками (от 3 вершин), фонари добавляются одиночными точками. Отмена и очистка работают с выбранным слоем.';
+hint.textContent='Для направления выберите стрелку и протяните мышью/пальцем от начала к концу течения. Выберите слой: контуры рисуются точками (от 3 вершин), фонари добавляются одиночными точками. Отмена и очистка работают с выбранным слоем.';
 draw();
 })();
