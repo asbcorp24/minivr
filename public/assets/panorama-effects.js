@@ -31,7 +31,7 @@ export function createPanoramaEffects(scene,settings){
    const distance=type==='birds'?12+Math.random()*15:3+Math.random()*7;
    const angle=Math.random()*Math.PI*2;
    const altitude=type==='birds'?2+Math.random()*7:-2+Math.random()*6;
-   const size=(type==='birds'?2.3:.33)*(.65+Math.random()*.75);
+   const size=(type==='birds'?2.3:.12)*(.65+Math.random()*.75);
    sprite.position.set(Math.cos(angle)*distance,altitude,Math.sin(angle)*distance);
    sprite.scale.set(size*(type==='birds'?1.7:1),size,1);
    group.add(sprite);
