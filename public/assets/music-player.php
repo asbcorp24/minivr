@@ -1,6 +1,6 @@
 <?php
 /** Shared public player. Include near closing body tag. */
-$miniVrTracks=db()->query("SELECT title,artist,file_path FROM music_tracks WHERE is_active=1 ORDER BY sort_order,id")->fetchAll();
+$miniVrTracks=db()->query("SELECT id,title,artist,file_path FROM music_tracks WHERE is_active=1 ORDER BY sort_order,id")->fetchAll();
 if($miniVrTracks): ?>
 <style>
 #music-player{position:fixed;z-index:1000;right:12px;bottom:12px;display:flex;align-items:center;gap:8px;max-width:calc(100vw - 24px);padding:9px 12px;background:#071824ee;border:1px solid #36738d;border-radius:16px;color:white;box-shadow:0 12px 36px #0009;font:13px system-ui;backdrop-filter:blur(12px)}
