@@ -50,7 +50,30 @@ if(tour&&tourData.scenes.length>1){document.querySelector('#controls')?.prepend(
 document.addEventListener('visibilitychange',()=>{if(tour&&document.visibilityState==='visible')resetTourTimer();else if(tourTimer){clearTimeout(tourTimer);tourTimer=null}});
 const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1100);
 effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);
-const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.xr.enabled=true;root.appendChild(renderer.domElement);
+let renderer;
+try{
+ renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'default',preserveDrawingBuffer:false});
+ renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
+ renderer.xr.enabled=true;
+ root.appendChild(renderer.domElement);
+ renderer.domElement.addEventListener('webglcontextlost',event=>{
+  event.preventDefault();
+  console.warn('MiniVR: WebGL context lost; waiting for browser restoration');
+  let notice=document.getElementById('minivr-webgl-notice');
+  if(!notice){notice=document.createElement('div');notice.id='minivr-webgl-notice';notice.style.cssText='position:absolute;z-index:9999;inset:20px auto auto 20px;padding:16px;background:#172631;color:white;border-radius:10px;max-width:380px';root.appendChild(notice)}
+  notice.textContent='Графический контекст потерян. Закройте другие 3D-вкладки и дождитесь восстановления.';
+ },false);
+ renderer.domElement.addEventListener('webglcontextrestored',()=>{
+  document.getElementById('minivr-webgl-notice')?.remove();
+  console.info('MiniVR: WebGL context restored');
+ },false);
+}catch(error){
+ console.error('MiniVR: WebGL initialization failed',error);
+ const notice=document.createElement('div');notice.style.cssText='padding:24px;background:#182e3b;color:#fff;max-width:600px;margin:30px auto;border-radius:12px';
+ notice.textContent='Не удалось запустить 3D-просмотр: WebGL заблокирован браузером. Закройте другие вкладки с 3D, перезапустите браузер и проверьте аппаратное ускорение.';
+ root.appendChild(notice);
+ throw error;
+}
 let cardboard=false,lon=0,lat=0,down=false,x0=0,y0=0,lon0=0,lat0=0,orientation=false,leftMesh,rightMesh;
 const cardboardStereo=new THREE.StereoCamera();cardboardStereo.eyeSep=.064;
 const legacyVREffect=new VREffect(renderer);const legacyVRControls=new VRControls(camera);let legacyVRDisplay=null,legacyCardboard=false;
