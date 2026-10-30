@@ -79,7 +79,7 @@ export function createEnvironment(scene,settings={}){
    float ripple=pow(max(0.,sin(p.x*.28+noise(p*.04)*6.)),12.)*.12;
    alpha=.055+bands*.48+ripple;`,Number(settings.riverDirection??0));
  if(settings.waterfallFlow)flowLayer('waterfall',clamp(settings.waterfallIntensity??75,0,100)/100*clamp(settings.waterfallOpacity??100,0,100)/100,clamp(settings.waterfallSpeed??1.4,0.1,5),'#d4f1f6',
-  `vec2 p=flowUV*vec2(240.,130.);
+  `vec2 p=vec2(flowUV.y,-flowUV.x)*vec2(240.,130.);
    float warp=(noise(vec2(p.x*.08,p.y*.025+t*.06))-.5)*8.;
    float stream=noise(vec2((p.x+warp)*.18,p.y*.018+t*.13));
    float spray=noise(vec2(p.x*1.8,p.y*.7+t*7.));
