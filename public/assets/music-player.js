@@ -18,6 +18,14 @@ audio.addEventListener('play',()=>{wantsPlay=true;toggle.textContent='❚❚';sa
 audio.addEventListener('pause',()=>{toggle.textContent='▶';save()});
 audio.addEventListener('timeupdate',()=>{if(Math.floor(audio.currentTime)%3===0)save()});
 window.addEventListener('pagehide',save);
-load(index,!!state.playing,Number(state.time)||0);
+const initialTrack=Number(document.querySelector('#viewer')?.dataset.musicTrack||0);
+const selectedIndex=initialTrack?tracks.findIndex(t=>Number(t.id)===initialTrack):-1;
+load(selectedIndex>=0?selectedIndex:index,selectedIndex>=0?true:!!state.playing,selectedIndex>=0?0:Number(state.time)||0);
+window.addEventListener('minivr:scene-music',e=>{
+ const trackId=Number(e.detail?.trackId||0);
+ const i=tracks.findIndex(t=>Number(t.id)===trackId);
+ if(i>=0){if(i!==index)load(i,true,0);else{audio.currentTime=0;audio.play().catch(()=>{})}}
+ else{audio.pause();wantsPlay=false;toggle.textContent='▶'}
+});
 if(state.playing){const retry=()=>{if(wantsPlay&&audio.paused)audio.play().catch(()=>{});document.removeEventListener('pointerdown',retry)};document.addEventListener('pointerdown',retry,{once:true})}
 })();
