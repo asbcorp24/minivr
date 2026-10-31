@@ -284,14 +284,36 @@ export function createEnvironment(scene,settings={}){
    float body=smoothstep(.32,.67,n);
    float slow=noise(p*.42+vec2(t*.018,-t*.05));
    alpha=body*(.22+.52*slow);`);
- // 11: transparent time-of-day grading; avoids pretending to replace daytime skies.
+ // Time of day: animated, camera-centred color grading with sunrise/sunset warmth.
  if(settings.timeOfDay){
-  const stage=clamp(settings.dayPhase??65,0,100)/100;
-  const warm=Math.exp(-Math.pow((stage-.48)/.19,2));
-  const dark=THREE.MathUtils.smoothstep(stage,.58,1);
-  const color=new THREE.Color('#f8aa67').lerp(new THREE.Color('#20395b'),dark);
-  makeLayer('all',Math.max(.05,.18*warm+.55*dark),color,
-   `alpha=.55;`);
+  const initial=clamp(settings.dayPhase??65,0,100)/100;
+  const cycle=!!settings.dayCycle,seconds=clamp(settings.dayCycleSeconds??180,30,3600);
+  const geometry=new THREE.SphereGeometry(98,48,24);
+  const material=new THREE.ShaderMaterial({
+   uniforms:{uPhase:{value:initial}},
+   vertexShader:'varying vec3 vDir;void main(){vDir=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+   fragmentShader:`precision mediump float;varying vec3 vDir;uniform float uPhase;
+    void main(){
+     float phase=fract(uPhase);
+     float night=smoothstep(.46,.73,phase)*(1.-smoothstep(.91,1.,phase));
+     float dusk=exp(-pow((phase-.48)/.14,2.));
+     float dawn=exp(-pow((phase-.94)/.085,2.));
+     float horizon=1.-smoothstep(-.12,.45,normalize(vDir).y);
+     vec3 color=mix(vec3(.95,.43,.18),vec3(.045,.09,.23),night);
+     color=mix(color,vec3(1.,.56,.24),dawn);
+     float opacity=clamp(.24*dusk+.63*night+.27*dawn,0.,.72);
+     opacity*=.7+.3*horizon;
+     gl_FragColor=vec4(color,opacity);
+    }`,
+   side:THREE.BackSide,transparent:true,depthTest:false,depthWrite:false,blending:THREE.NormalBlending
+  });
+  const layer=new THREE.Mesh(geometry,material);layer.layers.enableAll();layer.renderOrder=8;scene.add(layer);resources.push({mesh:layer,geometry,material});
+  let started=null;
+  updates.push((time,camera)=>{
+   if(started===null)started=time;
+   material.uniforms.uPhase.value=cycle?initial+(time-started)/1000/seconds:initial;
+   camera.getWorldPosition(layer.position);
+  });
  }
  // 12: slowly drifting isolated leaves, limited to a user-drawn water region.
  if(settings.floatingLeaves)makeLayer('floating',clamp(settings.floatingDensity??40,0,100)/100,'#c7a16b',
