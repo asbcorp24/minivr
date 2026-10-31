@@ -400,7 +400,8 @@ function updateDayGrade(time){
  const blueShift=night*.16;
  renderer.domElement.style.filter=`brightness(${brightness.toFixed(3)}) saturate(${saturate.toFixed(3)}) sepia(${sepia.toFixed(3)}) hue-rotate(${(blueShift*180).toFixed(1)}deg)`;
 }
-renderer.setAnimationLoop((time)=>{\n updateDayGrade(time);
+renderer.setAnimationLoop((time)=>{
+ updateDayGrade(time);
  tiledPanorama?.update();
  effectSystem?.update(time,camera);atmosphereSystem?.update(time,camera);moonSystem?.update(time,camera);environmentSystem?.update(time,camera);
  if(getViewerMode()===ViewerMode.DESKTOP&&!down&&!orientation&&effectSettings.rotation){
