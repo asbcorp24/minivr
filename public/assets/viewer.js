@@ -292,7 +292,7 @@ async function switchSceneInPlace(url){
  projection=next.dataset.projection||'360';stereoMode=next.dataset.stereo||'mono';
  if(tiledPanorama){tiledPanorama.dispose();tiledPanorama=null;}
  installPanorama(texture);
- effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();dayCycleStarted=null;dayGradeLast=-1;try{effectSettings=JSON.parse(next.dataset.effects||'{}')}catch(e){effectSettings={}}effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);root.dataset.effects=next.dataset.effects||'{}';
+ effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();dayCycleStarted=null;dayGradeLast=-1;dayPhaseOverride=null;try{effectSettings=JSON.parse(next.dataset.effects||'{}')}catch(e){effectSettings={}}timeEnabled.checked=!!effectSettings.timeOfDay;effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);root.dataset.effects=next.dataset.effects||'{}';
  const nextTour=JSON.parse(doc.querySelector('#tour-data')?.textContent||'{}');
  tourData.current=nextTour.current??-1;
  resetTourTimer();
@@ -383,15 +383,18 @@ function syncHudPose(){
 let dayCycleStarted=null,dayGradeLast=-1,dayPhaseOverride=null;
 const timePreview=document.createElement('div');
 timePreview.id='minivr-time-preview';
-timePreview.style.cssText='position:fixed;left:12px;bottom:18px;z-index:1200;background:rgba(9,18,30,.82);border:1px solid rgba(180,210,240,.4);border-radius:12px;padding:10px 12px;color:#fff;font:13px system-ui;min-width:190px;box-shadow:0 4px 18px #0005';
-timePreview.innerHTML='<div style="margin-bottom:6px">🕒 <span id="minivr-phase-label">Время суток</span></div><input id="minivr-phase-slider" aria-label="Время суток" type="range" min="0" max="100" value="0" style="width:100%;accent-color:#ffb568"><div style="font-size:11px;opacity:.8">День · Закат · Ночь · Рассвет</div>';
+timePreview.style.cssText='position:fixed;left:12px;bottom:18px;z-index:2147483000;background:rgba(9,18,30,.82);border:1px solid rgba(180,210,240,.4);border-radius:12px;padding:10px 12px;color:#fff;font:13px system-ui;min-width:190px;box-shadow:0 4px 18px #0005';
+timePreview.innerHTML='<label style="display:flex;align-items:center;gap:7px;margin-bottom:6px"><input type="checkbox" id="minivr-time-enabled" style="accent-color:#ffb568"> 🕒 <span id="minivr-phase-label">Время суток</span></label><input id="minivr-phase-slider" aria-label="Время суток" type="range" min="0" max="100" value="0" style="width:100%;accent-color:#ffb568"><div style="font-size:11px;opacity:.8">День · Закат · Ночь · Рассвет</div>';
 document.body.appendChild(timePreview);
 const timeSlider=timePreview.querySelector('#minivr-phase-slider'),timeLabel=timePreview.querySelector('#minivr-phase-label');
-timeSlider.addEventListener('input',()=>{dayPhaseOverride=Number(timeSlider.value)/100;dayCycleStarted=null;dayGradeLast=-1;});
+const timeEnabled=timePreview.querySelector('#minivr-time-enabled');
+timeEnabled.checked=!!effectSettings.timeOfDay;
+timeEnabled.addEventListener('change',()=>{effectSettings.timeOfDay=timeEnabled.checked;dayCycleStarted=null;dayGradeLast=-1;});
+timeSlider.addEventListener('input',()=>{effectSettings.timeOfDay=true;timeEnabled.checked=true;dayPhaseOverride=Number(timeSlider.value)/100;dayCycleStarted=null;dayGradeLast=-1;});
 timeSlider.addEventListener('change',()=>{if(effectSettings.dayCycle){effectSettings.dayPhase=Number(timeSlider.value);dayPhaseOverride=null;dayCycleStarted=null;}});
 
 function updateDayGrade(time){
- timePreview.style.display=effectSettings.timeOfDay?'block':'none';
+ timePreview.style.display=getViewerMode()===ViewerMode.DESKTOP?'block':'none';
  if(!effectSettings.timeOfDay){if(renderer.domElement.style.filter)renderer.domElement.style.filter='';dayCycleStarted=null;return;}
  if(dayCycleStarted===null)dayCycleStarted=time;
  if(time-dayGradeLast<100)return;
