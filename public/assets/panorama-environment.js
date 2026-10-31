@@ -151,13 +151,64 @@ export function createEnvironment(scene,settings={}){
   geometry.setAttribute('aSize',new THREE.BufferAttribute(sizes,1));
   const material=new THREE.ShaderMaterial({
    uniforms:{uTime:{value:0},uOpacity:{value:.45+.55*density}},
-   vertexShader:`precision mediump float;attribute float aPhase;attribute float aSize;uniform float uTime;varying float vAlpha;void main(){vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;gl_PointSize=clamp(aSize*2.2,1.,5.);vAlpha=.62+.25*sin(uTime*(.35+fract(aPhase)*.6)+aPhase);}`,
+   vertexShader:`precision mediump float;attribute float aPhase;attribute float aSize;uniform float uTime;varying float vAlpha;void main(){vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;gl_PointSize=clamp(aSize*2.2,1.,5.);vAlpha=clamp(.52+.30*sin(uTime*(1.1+fract(aPhase)*2.5)+aPhase)+.18*sin(uTime*4.7+aPhase*2.3),.08,1.);}`,
    fragmentShader:`precision mediump float;uniform float uOpacity;varying float vAlpha;void main(){vec2 d=gl_PointCoord-.5;float r=length(d);float alpha=(1.-smoothstep(.05,.5,r))*vAlpha*uOpacity;if(alpha<.01)discard;gl_FragColor=vec4(.83,.9,1.,alpha);}`,
    transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending
   });
   const stars=new THREE.Points(geometry,material);stars.layers.enableAll();stars.frustumCulled=false;scene.add(stars);
   resources.push({mesh:stars,geometry,material,maskTexture:skyMask});
-  updates.push((time,camera)=>{material.uniforms.uTime.value=time*.001;camera.getWorldPosition(stars.position)});
+
+  // Rare satellite passes and shooting stars; keep all motion on the sky sphere.
+  const direction=(yaw,pitch)=>{const a=THREE.MathUtils.degToRad(yaw),b=THREE.MathUtils.degToRad(pitch);return new THREE.Vector3(Math.cos(b)*Math.cos(a),Math.sin(b),-Math.cos(b)*Math.sin(a));};
+  const isSky=(yaw,pitch)=>{const x=Math.max(0,Math.min(511,Math.floor((yaw+180)/360*512))),y=Math.max(0,Math.min(255,Math.floor((90-pitch)/180*256)));return maskPixels[(y*512+x)*4]>127;};
+  const satellite=new THREE.Sprite(new THREE.SpriteMaterial({color:0xe1efff,transparent:true,opacity:0,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending}));
+  satellite.scale.set(.5,.5,1);satellite.layers.enableAll();scene.add(satellite);resources.push({mesh:satellite,material:satellite.material});
+  const meteorGeometry=new THREE.BufferGeometry();
+  meteorGeometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
+  const meteorMaterial=new THREE.LineBasicMaterial({color:0xaedaff,transparent:true,opacity:0,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending});
+  const meteor=new THREE.Line(meteorGeometry,meteorMaterial);meteor.layers.enableAll();scene.add(meteor);resources.push({mesh:meteor,geometry:meteorGeometry,material:meteorMaterial});
+  let nextEvent=12+rand()*15,active=null;
+  updates.push((time,camera)=>{
+   const t=time*.001;
+   material.uniforms.uTime.value=t;
+   camera.getWorldPosition(stars.position);
+   camera.getWorldPosition(satellite.position);
+   camera.getWorldPosition(meteor.position);
+   satellite.material.opacity=0;meteorMaterial.opacity=0;
+   if(!active&&t>=nextEvent){
+    const kind=rand()<.65?'meteor':'satellite';
+    for(let attempt=0;attempt<30;attempt++){
+     const yaw=rand()*320-160,pitch=12+rand()*55;
+     if(isSky(yaw,pitch)&&isSky(yaw+8,pitch-4)){
+      active={kind,start:t,yaw,pitch,dx:(rand()<.5?-1:1)*(kind==='meteor'?18:30),dy:kind==='meteor'?-9:2,duration:kind==='meteor'?.9+rand()*.65:12+rand()*10};
+      break;
+     }
+    }
+    if(!active)nextEvent=t+10;
+   }
+   if(active){
+    const p=(t-active.start)/active.duration;
+    if(p>=1){active=null;nextEvent=t+20+rand()*40;}
+    else{
+     const yaw=active.yaw+active.dx*p,pitch=active.pitch+active.dy*p;
+     if(isSky(yaw,pitch)){
+      const fade=Math.min(1,p*7,(1-p)*7);
+      if(active.kind==='satellite'){
+       satellite.position.copy(camera.position).addScaledVector(direction(yaw,pitch),79);
+       satellite.material.opacity=.65*fade;
+      }else{
+       const tailYaw=active.yaw+active.dx*Math.max(0,p-.17),tailPitch=active.pitch+active.dy*Math.max(0,p-.17);
+       const a=direction(yaw,pitch).multiplyScalar(79),b=direction(tailYaw,tailPitch).multiplyScalar(79);
+       meteorGeometry.attributes.position.setXYZ(0,a.x,a.y,a.z);
+       meteorGeometry.attributes.position.setXYZ(1,b.x,b.y,b.z);
+       meteorGeometry.attributes.position.needsUpdate=true;
+       meteorMaterial.opacity=.9*fade;
+      }
+     }
+    }
+   }
+  });
+
  }
  if(settings.lightBeams)makeLayer('light',clamp(settings.beamIntensity??40,0,100)/100,'#ffe6b5',
   `float center=(${Number(settings.sunYaw||0).toFixed(2)}+180.)/360.;float dx=abs(fract(vUv.x-center+.5)-.5);float rays=pow(max(0.,sin(dx*390.+sin(vUv.y*13.)*1.5)),14.);float cone=exp(-dx*dx*150.)*smoothstep(.1,.65,vUv.y);alpha=(.12+rays*.38)*cone;`);
