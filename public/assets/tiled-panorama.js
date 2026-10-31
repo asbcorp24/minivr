@@ -1,6 +1,6 @@
 import * as THREE from '/assets/vendor/three/three.module.js';
 /* Independent tiled panorama layer. Never modifies Cardboard renderer or eye cameras. */
-export async function createTiledPanorama({url,scene,camera,renderer}){
+export async function createTiledPanorama({url,scene,camera,renderer,mirror=false}){
  const response=await fetch(url,{credentials:'same-origin'});if(!response.ok)throw Error('Tiles manifest HTTP '+response.status);
  const manifest=await response.json();if(manifest.projection!=='360'||!Array.isArray(manifest.levels)||!manifest.levels.length)throw Error('Invalid tile manifest');
  const base=url.slice(0,url.lastIndexOf('/')+1),group=new THREE.Group();scene.add(group);
@@ -11,7 +11,7 @@ export async function createTiledPanorama({url,scene,camera,renderer}){
   const segments=12,g=new THREE.BufferGeometry(),positions=[],uvs=[],indices=[];
   for(let j=0;j<=segments;j++)for(let i=0;i<=segments;i++){
    const u=u0+(u1-u0)*i/segments,v=v0+(v1-v0)*j/segments;
-   const theta=u*Math.PI*2,phi=v*Math.PI;
+   const theta=(mirror?1-u:u)*Math.PI*2,phi=v*Math.PI;
    positions.push(-500*Math.cos(theta)*Math.sin(phi),500*Math.cos(phi),500*Math.sin(theta)*Math.sin(phi));
    uvs.push(i/segments,1-j/segments);
   }
@@ -38,7 +38,7 @@ export async function createTiledPanorama({url,scene,camera,renderer}){
   const idx=Math.max(0,Math.min(manifest.levels.length-1,Math.floor(Math.log2(75/Math.max(10,fov)))+1));
   const level=manifest.levels[idx];camera.updateMatrixWorld(true);
   const direction=new THREE.Vector3();camera.getWorldDirection(direction);
-  const angle=Math.atan2(direction.z,-direction.x),u=((angle/(Math.PI*2))%1+1)%1;
+  const angle=Math.atan2(direction.z,-direction.x),u0=((angle/(Math.PI*2))%1+1)%1,u=mirror?1-u0:u0;
   const v=Math.acos(THREE.MathUtils.clamp(direction.y,-1,1))/Math.PI;
   const x=Math.floor(u*level.width/manifest.tileSize),y=Math.floor(v*level.height/manifest.tileSize);
   for(let dy=-1;dy<=1;dy++)for(let dx=-2;dx<=2;dx++){
