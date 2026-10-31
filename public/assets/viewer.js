@@ -405,15 +405,20 @@ function updateDayGrade(time){
  if(document.activeElement!==timeSlider)timeSlider.value=String(Math.round(phase*100));
  timeLabel.textContent=phase<.35?'День':phase<.60?'Закат':phase<.88?'Ночь':'Рассвет';
  const smooth=(a,b,x)=>{const t=THREE.MathUtils.clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
- const night=smooth(.47,.72,phase)*(1-smooth(.86,.99,phase));
- const sunset=Math.exp(-Math.pow((phase-.48)/.115,2));
- const sunrise=Math.exp(-Math.pow((phase-.94)/.075,2));
+ // Day: neutral. Sunset/dawn: warm amber. Night: dark, desaturated moonlit blue.
+ // The former hue rotation acted on the original RGB colors and produced unnatural hues.
+ const night=smooth(.43,.68,phase)*(1-smooth(.86,.99,phase));
+ const sunset=Math.exp(-Math.pow((phase-.47)/.115,2));
+ const sunrise=Math.exp(-Math.pow((phase-.965)/.065,2));
  const warmth=Math.max(sunset,sunrise);
- const brightness=1-.79*night-.23*warmth;
- const saturate=1-.52*night+.30*warmth;
- const sepia=Math.min(.85,.70*warmth);
- const blueShift=night*.16;
- renderer.domElement.style.filter=`brightness(${brightness.toFixed(3)}) saturate(${saturate.toFixed(3)}) sepia(${sepia.toFixed(3)}) hue-rotate(${(blueShift*180).toFixed(1)}deg)`;
+ const brightness=1-.68*night-.16*warmth;
+ const contrast=1+.16*night+.04*warmth;
+ const saturation=1-.52*night+.14*warmth;
+ // First convert the photograph toward a neutral sepia basis, then shift
+ // that basis into blue for moonlight. This is more stable than rotating raw colors.
+ const sepia=Math.min(1,.92*night+.48*warmth);
+ const hue=night*178-warmth*(1-night)*10;
+ renderer.domElement.style.filter=`brightness(${brightness.toFixed(3)}) contrast(${contrast.toFixed(3)}) saturate(${saturation.toFixed(3)}) sepia(${sepia.toFixed(3)}) hue-rotate(${hue.toFixed(1)}deg)`;
 }
 renderer.setAnimationLoop((time)=>{
  updateDayGrade(time);
