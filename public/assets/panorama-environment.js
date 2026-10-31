@@ -247,7 +247,7 @@ export function createEnvironment(scene,settings={}){
       const smooth=(a,b,x)=>{const q=THREE.MathUtils.clamp((x-a)/(b-a),0,1);return q*q*(3-2*q);};
       lampFactor=smooth(.34,.65,phase)*(1-smooth(.87,.995,phase));
      }
-     material.opacity=Math.min(1,opacity*lampFactor*(.96+.04*Math.sin(time*.0014+yaw))*(kind==='pool'?1.25:1));
+     material.opacity=settings.timeOfDay&&settings._externalLampOverlay?0:Math.min(1,opacity*lampFactor*(.96+.04*Math.sin(time*.0014+yaw))*(kind==='pool'?1.25:1));
     });
    };
    makeSprite(haloTexture,85,intensity*.72,'pool');
