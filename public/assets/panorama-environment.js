@@ -230,7 +230,7 @@ export function createEnvironment(scene,settings={}){
   for(const [yaw,pitch] of lamps){
    const a=THREE.MathUtils.degToRad(yaw),b=THREE.MathUtils.degToRad(pitch);
    const direction=new THREE.Vector3(Math.cos(b)*Math.cos(a),Math.sin(b),-Math.cos(b)*Math.sin(a));
-   const makeSprite=(map,scale,opacity)=>{
+   const makeSprite=(map,scale,opacity,kind='glow')=>{
     const material=new THREE.SpriteMaterial({map,color:0xffffff,transparent:true,depthTest:false,depthWrite:false,opacity,blending:THREE.AdditiveBlending});
     const sprite=new THREE.Sprite(material);
     sprite.position.copy(direction).multiplyScalar(90);
@@ -243,13 +243,14 @@ export function createEnvironment(scene,settings={}){
      if(settings.timeOfDay){
       const start=clamp(settings.dayPhase??65,0,100)/100;
       const seconds=clamp(settings.dayCycleSeconds??180,30,3600);
-      const phase=((start+(settings.dayCycle?time*.001/seconds:0))%1+1)%1;
+      const phase=Number.isFinite(settings._liveDayPhase)?settings._liveDayPhase:((start+(settings.dayCycle?time*.001/seconds:0))%1+1)%1;
       const smooth=(a,b,x)=>{const q=THREE.MathUtils.clamp((x-a)/(b-a),0,1);return q*q*(3-2*q);};
       lampFactor=smooth(.34,.65,phase)*(1-smooth(.87,.995,phase));
      }
-     material.opacity=opacity*lampFactor*(.96+.04*Math.sin(time*.0014+yaw));
+     material.opacity=Math.min(1,opacity*lampFactor*(.96+.04*Math.sin(time*.0014+yaw))*(kind==='pool'?1.25:1));
     });
    };
+   makeSprite(haloTexture,85,intensity*.72,'pool');
    makeSprite(haloTexture,38,intensity*.85);
    makeSprite(coreTexture,13,Math.min(1,intensity*1.3));
   }
