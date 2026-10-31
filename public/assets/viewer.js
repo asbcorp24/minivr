@@ -227,8 +227,20 @@ function activate(o){if(o?.userData?.action)return o.userData.action();const h=o
 document.querySelector('#hotspot-close').onclick=()=>document.querySelector('#hotspot-modal').classList.remove('open');
 for(let i=0;i<2;i++){const ctl=renderer.xr.getController(i);const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-1)]),new THREE.LineBasicMaterial({color:0x66eeff}));line.scale.z=4;ctl.add(line);ctl.addEventListener('select',()=>{raycaster.setFromXRController(ctl);activate(raycaster.intersectObjects(pickables(),false)[0]?.object)});scene.add(ctl)}
 
+// Desktop wheel and mobile two-finger pinch zoom (perspective FOV, no texture resampling).
+const zoomMin=30,zoomMax=95,activeTouches=new Map();
+let pinchDistance=0,pinchFov=75;
+const canZoom=()=>!cardboard&&!legacyCardboard&&!renderer.xr.isPresenting;
+function setZoom(fov){if(!canZoom())return;camera.fov=THREE.MathUtils.clamp(fov,zoomMin,zoomMax);camera.updateProjectionMatrix();}
+renderer.domElement.style.touchAction='none';
+renderer.domElement.addEventListener('wheel',e=>{if(!canZoom())return;e.preventDefault();setZoom(camera.fov+Math.sign(e.deltaY)*Math.min(9,Math.abs(e.deltaY)*.035));},{passive:false});
+renderer.domElement.addEventListener('pointerdown',e=>{if(e.pointerType!=='touch')return;activeTouches.set(e.pointerId,[e.clientX,e.clientY]);if(activeTouches.size===2){const [a,b]=[...activeTouches.values()];pinchDistance=Math.hypot(a[0]-b[0],a[1]-b[1]);pinchFov=camera.fov;down=false;moved=true;}});
+renderer.domElement.addEventListener('pointermove',e=>{if(!activeTouches.has(e.pointerId))return;activeTouches.set(e.pointerId,[e.clientX,e.clientY]);if(activeTouches.size===2&&pinchDistance>0){const [a,b]=[...activeTouches.values()],distance=Math.hypot(a[0]-b[0],a[1]-b[1]);if(distance>0)setZoom(pinchFov*pinchDistance/distance);down=false;moved=true;}});
+const releaseTouch=e=>{activeTouches.delete(e.pointerId);if(activeTouches.size<2)pinchDistance=0;};
+renderer.domElement.addEventListener('pointerup',releaseTouch);
+renderer.domElement.addEventListener('pointercancel',releaseTouch);
 let moved=false;renderer.domElement.addEventListener('pointerdown',e=>{down=true;moved=false;x0=e.clientX;y0=e.clientY;lon0=lon;lat0=lat});
-addEventListener('pointerup',e=>{if(down&&!moved&&!cardboard&&!renderer.xr.isPresenting){const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);activate(raycaster.intersectObjects(hotspotObjects,false)[0]?.object)}down=false});addEventListener('pointermove',e=>{if(down&&(Math.abs(e.clientX-x0)>5||Math.abs(e.clientY-y0)>5))moved=true;if(down&&!orientation){lon=lon0+(x0-e.clientX)*.12;lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}});
+addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboard&&!renderer.xr.isPresenting){const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);activate(raycaster.intersectObjects(hotspotObjects,false)[0]?.object)}down=false});addEventListener('pointermove',e=>{if(down&&(Math.abs(e.clientX-x0)>5||Math.abs(e.clientY-y0)>5))moved=true;if(down&&activeTouches.size<2&&!orientation){lon=lon0+(x0-e.clientX)*.12;lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}});
 
 
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}addEventListener('resize',resize);resize();
