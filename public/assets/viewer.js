@@ -292,7 +292,7 @@ async function switchSceneInPlace(url){
  projection=next.dataset.projection||'360';stereoMode=next.dataset.stereo||'mono';
  if(tiledPanorama){tiledPanorama.dispose();tiledPanorama=null;}
  installPanorama(texture);
- effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();try{effectSettings=JSON.parse(next.dataset.effects||'{}')}catch(e){effectSettings={}}effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);root.dataset.effects=next.dataset.effects||'{}';
+ effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();dayCycleStarted=null;dayGradeLast=-1;try{effectSettings=JSON.parse(next.dataset.effects||'{}')}catch(e){effectSettings={}}effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);root.dataset.effects=next.dataset.effects||'{}';
  const nextTour=JSON.parse(doc.querySelector('#tour-data')?.textContent||'{}');
  tourData.current=nextTour.current??-1;
  resetTourTimer();
@@ -378,7 +378,29 @@ function syncHudPose(){
  const head=mode===ViewerMode.WEBXR?renderer.xr.getCamera(camera):camera;
  head.updateMatrixWorld(true);head.getWorldPosition(hud.position);head.getWorldQuaternion(hud.quaternion);hud.scale.setScalar(1);
 }
-renderer.setAnimationLoop((time)=>{
+// Visible day/night grading on the actual panorama canvas, including tiled panoramas.
+// The atmospheric sphere alone was too subtle and could be hidden by render ordering.
+let dayCycleStarted=null,dayGradeLast=-1;
+function updateDayGrade(time){
+ if(!effectSettings.timeOfDay){if(renderer.domElement.style.filter)renderer.domElement.style.filter='';dayCycleStarted=null;return;}
+ if(dayCycleStarted===null)dayCycleStarted=time;
+ if(time-dayGradeLast<100)return;
+ dayGradeLast=time;
+ const initial=THREE.MathUtils.clamp(Number(effectSettings.dayPhase??65),0,100)/100;
+ const duration=THREE.MathUtils.clamp(Number(effectSettings.dayCycleSeconds??180),30,3600);
+ const phase=((initial+(effectSettings.dayCycle?(time-dayCycleStarted)/1000/duration:0))%1+1)%1;
+ const smooth=(a,b,x)=>{const t=THREE.MathUtils.clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
+ const night=smooth(.47,.72,phase)*(1-smooth(.86,.99,phase));
+ const sunset=Math.exp(-Math.pow((phase-.48)/.115,2));
+ const sunrise=Math.exp(-Math.pow((phase-.94)/.075,2));
+ const warmth=Math.max(sunset,sunrise);
+ const brightness=1-.64*night-.12*warmth;
+ const saturate=1-.35*night+.18*warmth;
+ const sepia=Math.min(.5,.38*warmth);
+ const blueShift=night*.16;
+ renderer.domElement.style.filter=`brightness(${brightness.toFixed(3)}) saturate(${saturate.toFixed(3)}) sepia(${sepia.toFixed(3)}) hue-rotate(${(blueShift*180).toFixed(1)}deg)`;
+}
+renderer.setAnimationLoop((time)=>{\n updateDayGrade(time);
  tiledPanorama?.update();
  effectSystem?.update(time,camera);atmosphereSystem?.update(time,camera);moonSystem?.update(time,camera);environmentSystem?.update(time,camera);
  if(getViewerMode()===ViewerMode.DESKTOP&&!down&&!orientation&&effectSettings.rotation){
