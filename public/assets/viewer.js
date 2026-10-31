@@ -134,7 +134,7 @@ function geometry(aspect=16/9){
 }
 function sourceAspect(source){const im=source.image;if(!im?.width||!im?.height)return 16/9;let w=im.width,h=im.height;if(stereoMode==='sbs')w/=2;else if(stereoMode==='tb')h/=2;return w/h}
 function makeEye(source,eye){
- const g=geometry(sourceAspect(source)),m=new THREE.MeshBasicMaterial({map:eyeTexture(source,eye),side:projection==='flat'?THREE.FrontSide:THREE.BackSide});
+ const g=geometry(sourceAspect(source));if(effectSettings.mirrorHorizontal){const uv=g.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}const m=new THREE.MeshBasicMaterial({map:eyeTexture(source,eye),side:projection==='flat'?THREE.FrontSide:THREE.BackSide});
  const mesh=new THREE.Mesh(g,m);
  if(projection==='flat'){mesh.position.set(3.2,0,0);mesh.rotation.y=-Math.PI/2;}
  else if(projection==='180')mesh.rotation.y=Math.PI/2;
@@ -144,7 +144,7 @@ function installPanorama(source){
  source.colorSpace=THREE.SRGBColorSpace;
  const previous=[...new Set([leftMesh,rightMesh].filter(Boolean))];
  if(stereoMode==='mono'){
-  const mesh=new THREE.Mesh(geometry(sourceAspect(source)),new THREE.MeshBasicMaterial({map:source,side:projection==='flat'?THREE.FrontSide:THREE.BackSide}));
+  const g=geometry(sourceAspect(source));if(effectSettings.mirrorHorizontal){const uv=g.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}const mesh=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:source,side:projection==='flat'?THREE.FrontSide:THREE.BackSide}));
   if(projection==='flat'){mesh.position.set(3.2,0,0);mesh.rotation.y=-Math.PI/2;}else if(projection==='180')mesh.rotation.y=Math.PI/2;
   mesh.layers.set(0);scene.add(mesh);leftMesh=rightMesh=mesh;
  }else{leftMesh=makeEye(source,'left');rightMesh=makeEye(source,'right');source.dispose()}
@@ -156,7 +156,7 @@ let tiledPanorama=null;
 async function loadInitialPanorama(){
  if(projection==='360'&&stereoMode==='mono'&&root.dataset.tiles){
   try{
-   tiledPanorama=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer});
+   tiledPanorama=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer,mirror:!!effectSettings.mirrorHorizontal});
    document.body.classList.remove('scene-loading');return;
   }catch(err){console.warn('Tile mode unavailable; falling back to original image',err)}
  }
