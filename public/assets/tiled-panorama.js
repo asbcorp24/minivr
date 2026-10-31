@@ -4,7 +4,7 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
  const response=await fetch(url,{credentials:'same-origin'});if(!response.ok)throw Error('Tiles manifest HTTP '+response.status);
  const manifest=await response.json();if(manifest.projection!=='360'||!Array.isArray(manifest.levels)||!manifest.levels.length)throw Error('Invalid tile manifest');
  const base=url.slice(0,url.lastIndexOf('/')+1),group=new THREE.Group();scene.add(group);
- const loader=new THREE.TextureLoader(),tiles=new Map(),pending=new Set(),maxConcurrent=5;
+ const loader=new THREE.TextureLoader(),tiles=new Map(),pending=new Set(),maxConcurrent=8;
  const geometry=(level,x,y)=>{
   const cols=level.cols,rows=level.rows,sw=level.width,sh=level.height,ts=manifest.tileSize;
   const u0=x*ts/sw,u1=Math.min((x+1)*ts/sw,1),v0=y*ts/sh,v1=Math.min((y+1)*ts/sh,1);
@@ -35,16 +35,23 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
   if(performance.now()-last<160)return;last=performance.now();
   for(const [bx,by] of baseQueue)load(low,bx,by);
  const fov=camera.fov||75;
-  const idx=Math.max(0,Math.min(manifest.levels.length-1,Math.floor(Math.log2(75/Math.max(10,fov)))+1));
+  const idx=Math.max(0,Math.min(manifest.levels.length-1,Math.ceil(Math.log2(100/Math.max(10,fov)))+1));
   const level=manifest.levels[idx];camera.updateMatrixWorld(true);
   const direction=new THREE.Vector3();camera.getWorldDirection(direction);
   const angle=Math.atan2(direction.z,-direction.x),u0=((angle/(Math.PI*2))%1+1)%1,u=mirror?1-u0:u0;
   const v=Math.acos(THREE.MathUtils.clamp(direction.y,-1,1))/Math.PI;
   const x=Math.floor(u*level.width/manifest.tileSize),y=Math.floor(v*level.height/manifest.tileSize);
-  for(let dy=-1;dy<=1;dy++)for(let dx=-2;dx<=2;dx++){
+  // Cover the actual viewport, not a fixed 5x3 neighborhood.
+  const horizontalFov=2*Math.atan(Math.tan(THREE.MathUtils.degToRad(fov)*.5)*camera.aspect);
+  const horizontalTiles=Math.min(level.cols,Math.ceil(horizontalFov/(Math.PI*2)*level.cols*.6)+2);
+  const verticalTiles=Math.min(level.rows,Math.ceil(THREE.MathUtils.degToRad(fov)/Math.PI*level.rows*.6)+2);
+  const candidates=[];
+  for(let dy=-verticalTiles;dy<=verticalTiles;dy++)for(let dx=-horizontalTiles;dx<=horizontalTiles;dx++){
    const xx=((x+dx)%level.cols+level.cols)%level.cols,yy=y+dy;
-   if(yy>=0&&yy<level.rows)load(level,xx,yy);
+   if(yy>=0&&yy<level.rows)candidates.push([xx,yy,dx*dx+dy*dy]);
   }
+  candidates.sort((a,b)=>a[2]-b[2]);
+  for(const [xx,yy] of candidates)load(level,xx,yy);
   // Keep base layer permanently; remove distant high-resolution tiles to cap GPU memory.
   const now=performance.now();for(const [key,item] of tiles){
    if(item.level===0)continue;
