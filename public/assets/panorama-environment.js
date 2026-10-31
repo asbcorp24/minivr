@@ -239,7 +239,15 @@ export function createEnvironment(scene,settings={}){
     updates.push((time,camera)=>{
      camera.getWorldPosition(sprite.position);
      sprite.position.addScaledVector(direction,90);
-     material.opacity=opacity*(.96+.04*Math.sin(time*.0014+yaw));
+     let lampFactor=1;
+     if(settings.timeOfDay){
+      const start=clamp(settings.dayPhase??65,0,100)/100;
+      const seconds=clamp(settings.dayCycleSeconds??180,30,3600);
+      const phase=((start+(settings.dayCycle?time*.001/seconds:0))%1+1)%1;
+      const smooth=(a,b,x)=>{const q=THREE.MathUtils.clamp((x-a)/(b-a),0,1);return q*q*(3-2*q);};
+      lampFactor=smooth(.34,.65,phase)*(1-smooth(.87,.995,phase));
+     }
+     material.opacity=opacity*lampFactor*(.96+.04*Math.sin(time*.0014+yaw));
     });
    };
    makeSprite(haloTexture,38,intensity*.85);
