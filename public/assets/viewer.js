@@ -395,13 +395,14 @@ timeSlider.addEventListener('change',()=>{if(effectSettings.dayCycle){effectSett
 
 function updateDayGrade(time){
  timePreview.style.display=getViewerMode()===ViewerMode.DESKTOP?'block':'none';
- if(!effectSettings.timeOfDay){if(renderer.domElement.style.filter)renderer.domElement.style.filter='';dayCycleStarted=null;return;}
+ if(!effectSettings.timeOfDay){effectSettings._liveDayPhase=null;if(renderer.domElement.style.filter)renderer.domElement.style.filter='';dayCycleStarted=null;return;}
  if(dayCycleStarted===null)dayCycleStarted=time;
  if(time-dayGradeLast<100)return;
  dayGradeLast=time;
  const initial=THREE.MathUtils.clamp(Number(effectSettings.dayPhase??65),0,100)/100;
  const duration=THREE.MathUtils.clamp(Number(effectSettings.dayCycleSeconds??180),30,3600);
  const phase=dayPhaseOverride??(((initial+(effectSettings.dayCycle?(time-dayCycleStarted)/1000/duration:0))%1+1)%1);
+ effectSettings._liveDayPhase=phase;
  if(document.activeElement!==timeSlider)timeSlider.value=String(Math.round(phase*100));
  timeLabel.textContent=phase<.35?'День':phase<.60?'Закат':phase<.88?'Ночь':'Рассвет';
  const smooth=(a,b,x)=>{const t=THREE.MathUtils.clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
