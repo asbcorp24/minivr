@@ -421,6 +421,51 @@ function updateDayGrade(time){
  const hue=night*178-warmth*(1-night)*10;
  renderer.domElement.style.filter=`brightness(${brightness.toFixed(3)}) contrast(${contrast.toFixed(3)}) saturate(${saturation.toFixed(3)}) sepia(${sepia.toFixed(3)}) hue-rotate(${hue.toFixed(1)}deg)`;
 }
+// Lamp lighting is composited AFTER the panorama's CSS day/night grade.
+const lampOverlay=document.createElement('canvas');
+lampOverlay.id='minivr-lamp-lighting';
+lampOverlay.style.cssText='position:fixed;inset:0;width:100vw;height:100dvh;pointer-events:none;z-index:4';
+document.body.appendChild(lampOverlay);
+const lampContext=lampOverlay.getContext('2d');
+const lampVector=new THREE.Vector3();
+function renderUngradedLamps(){
+ const enabled=!!(effectSettings.timeOfDay&&effectSettings.lampGlow&&getViewerMode()===ViewerMode.DESKTOP);
+ effectSettings._externalLampOverlay=enabled;
+ lampOverlay.style.display=enabled?'block':'none';
+ if(!enabled||!lampContext)return;
+ const w=innerWidth,h=innerHeight,dpr=Math.min(devicePixelRatio||1,2);
+ if(lampOverlay.width!==Math.round(w*dpr)||lampOverlay.height!==Math.round(h*dpr)){lampOverlay.width=Math.round(w*dpr);lampOverlay.height=Math.round(h*dpr);}
+ lampContext.setTransform(dpr,0,0,dpr,0,0);
+ lampContext.clearRect(0,0,w,h);
+ const phase=Number(effectSettings._liveDayPhase);
+ if(!Number.isFinite(phase))return;
+ const smooth=(a,b,x)=>{const t=THREE.MathUtils.clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
+ const brightness=smooth(.34,.65,phase)*(1-smooth(.87,.995,phase));
+ if(brightness<=.001)return;
+ const lamps=Array.isArray(effectSettings.lamps)?effectSettings.lamps:[];
+ const strength=THREE.MathUtils.clamp(Number(effectSettings.lampIntensity??60)/100,0,1)*brightness;
+ camera.updateMatrixWorld(true);
+ for(const point of lamps.slice(0,20)){
+  if(!Array.isArray(point)||point.length!==2)continue;
+  const yaw=THREE.MathUtils.degToRad(Number(point[0])),pitch=THREE.MathUtils.degToRad(Number(point[1]));
+  if(!Number.isFinite(yaw)||!Number.isFinite(pitch))continue;
+  lampVector.set(Math.cos(pitch)*Math.cos(yaw),Math.sin(pitch),-Math.cos(pitch)*Math.sin(yaw));
+  lampVector.applyQuaternion(camera.quaternion.clone().invert());
+  if(lampVector.z>=-.01)continue;
+  const projected=lampVector.clone().project(camera);
+  const x=(projected.x+1)*w/2,y=(1-projected.y)*h/2;
+  if(x< -w||x>2*w||y< -h||y>2*h)continue;
+  const radius=Math.min(Math.max(w,h)*.55,Math.max(35,h*.24/(-lampVector.z)));
+  const glow=lampContext.createRadialGradient(x,y,0,x,y,radius);
+  glow.addColorStop(0,'rgba(255,239,174,'+(.62*strength).toFixed(3)+')');
+  glow.addColorStop(.09,'rgba(255,204,117,'+(.42*strength).toFixed(3)+')');
+  glow.addColorStop(.35,'rgba(255,169,82,'+(.17*strength).toFixed(3)+')');
+  glow.addColorStop(1,'rgba(255,145,64,0)');
+  lampContext.globalCompositeOperation='lighter';
+  lampContext.fillStyle=glow;lampContext.fillRect(x-radius,y-radius,radius*2,radius*2);
+ }
+ lampContext.globalCompositeOperation='source-over';
+}
 renderer.setAnimationLoop((time)=>{
  updateDayGrade(time);
  tiledPanorama?.update();
@@ -440,5 +485,6 @@ renderer.setAnimationLoop((time)=>{
  if(mode===ViewerMode.WEBXR){syncXREyes();updateGaze();renderer.render(scene,camera);return}
  if(mode===ViewerMode.CARDBOARD){updateCardboardGaze();if(legacyCardboard)legacyVREffect.render(scene,camera);else renderCardboard();return}
  renderer.render(scene,camera);
+ renderUngradedLamps();
 });
 setTimeout(()=>document.querySelector('#viewer-help')?.classList.add('hide'),4200);
