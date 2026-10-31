@@ -23,6 +23,7 @@ if(immersiveLaunch){
 }
 
 let effectSettings={};try{effectSettings=JSON.parse(root.dataset.effects||'{}')}catch(e){}
+effectSettings.timeOfDay=false;effectSettings.dayCycle=false;
 let effectSystem=null,atmosphereSystem=null,moonSystem=null,environmentSystem=null,lastEffectTime=0;
 // Opt-in diagnostics: /viewer.php?id=...&effects_debug=1
 if(new URLSearchParams(location.search).has('effects_debug')){
@@ -292,7 +293,7 @@ async function switchSceneInPlace(url){
  projection=next.dataset.projection||'360';stereoMode=next.dataset.stereo||'mono';
  if(tiledPanorama){tiledPanorama.dispose();tiledPanorama=null;}
  installPanorama(texture);
- effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();dayCycleStarted=null;dayGradeLast=-1;dayPhaseOverride=null;try{effectSettings=JSON.parse(next.dataset.effects||'{}')}catch(e){effectSettings={}}timeEnabled.checked=!!effectSettings.timeOfDay;effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);root.dataset.effects=next.dataset.effects||'{}';
+ effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();dayCycleStarted=null;dayGradeLast=-1;dayPhaseOverride=null;try{effectSettings=JSON.parse(next.dataset.effects||'{}');effectSettings.timeOfDay=false;effectSettings.dayCycle=false}catch(e){effectSettings={}}effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);root.dataset.effects=next.dataset.effects||'{}';
  const nextTour=JSON.parse(doc.querySelector('#tour-data')?.textContent||'{}');
  tourData.current=nextTour.current??-1;
  resetTourTimer();
@@ -379,95 +380,7 @@ function syncHudPose(){
  head.updateMatrixWorld(true);head.getWorldPosition(hud.position);head.getWorldQuaternion(hud.quaternion);hud.scale.setScalar(1);
 }
 // Visible day/night grading on the actual panorama canvas, including tiled panoramas.
-// The atmospheric sphere alone was too subtle and could be hidden by render ordering.
-let dayCycleStarted=null,dayGradeLast=-1,dayPhaseOverride=null;
-const timePreview=document.createElement('div');
-timePreview.id='minivr-time-preview';
-timePreview.style.cssText='position:fixed;left:12px;bottom:18px;z-index:2147483000;background:rgba(9,18,30,.82);border:1px solid rgba(180,210,240,.4);border-radius:12px;padding:10px 12px;color:#fff;font:13px system-ui;min-width:190px;box-shadow:0 4px 18px #0005';
-timePreview.innerHTML='<label style="display:flex;align-items:center;gap:7px;margin-bottom:6px"><input type="checkbox" id="minivr-time-enabled" style="accent-color:#ffb568"> 🕒 <span id="minivr-phase-label">Время суток</span></label><input id="minivr-phase-slider" aria-label="Время суток" type="range" min="0" max="100" value="0" style="width:100%;accent-color:#ffb568"><div style="font-size:11px;opacity:.8">День · Закат · Ночь · Рассвет</div>';
-document.body.appendChild(timePreview);
-const timeSlider=timePreview.querySelector('#minivr-phase-slider'),timeLabel=timePreview.querySelector('#minivr-phase-label');
-const timeEnabled=timePreview.querySelector('#minivr-time-enabled');
-timeEnabled.checked=!!effectSettings.timeOfDay;
-timeEnabled.addEventListener('change',()=>{effectSettings.timeOfDay=timeEnabled.checked;dayCycleStarted=null;dayGradeLast=-1;});
-timeSlider.addEventListener('input',()=>{effectSettings.timeOfDay=true;timeEnabled.checked=true;dayPhaseOverride=Number(timeSlider.value)/100;dayCycleStarted=null;dayGradeLast=-1;});
-timeSlider.addEventListener('change',()=>{if(effectSettings.dayCycle){effectSettings.dayPhase=Number(timeSlider.value);dayPhaseOverride=null;dayCycleStarted=null;}});
-
-function updateDayGrade(time){
- timePreview.style.display=getViewerMode()===ViewerMode.DESKTOP?'block':'none';
- if(!effectSettings.timeOfDay){effectSettings._liveDayPhase=null;if(renderer.domElement.style.filter)renderer.domElement.style.filter='';dayCycleStarted=null;return;}
- if(dayCycleStarted===null)dayCycleStarted=time;
- if(time-dayGradeLast<100)return;
- dayGradeLast=time;
- const initial=THREE.MathUtils.clamp(Number(effectSettings.dayPhase??65),0,100)/100;
- const duration=THREE.MathUtils.clamp(Number(effectSettings.dayCycleSeconds??180),30,3600);
- const phase=dayPhaseOverride??(((initial+(effectSettings.dayCycle?(time-dayCycleStarted)/1000/duration:0))%1+1)%1);
- effectSettings._liveDayPhase=phase;
- if(document.activeElement!==timeSlider)timeSlider.value=String(Math.round(phase*100));
- timeLabel.textContent=phase<.35?'День':phase<.60?'Закат':phase<.88?'Ночь':'Рассвет';
- const smooth=(a,b,x)=>{const t=THREE.MathUtils.clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
- // Day: neutral. Sunset/dawn: warm amber. Night: dark, desaturated moonlit blue.
- // The former hue rotation acted on the original RGB colors and produced unnatural hues.
- const night=smooth(.43,.68,phase)*(1-smooth(.86,.99,phase));
- const sunset=Math.exp(-Math.pow((phase-.47)/.115,2));
- const sunrise=Math.exp(-Math.pow((phase-.965)/.065,2));
- const warmth=Math.max(sunset,sunrise);
- const brightness=1-.68*night-.16*warmth;
- const contrast=1+.16*night+.04*warmth;
- const saturation=1-.52*night+.14*warmth;
- // First convert the photograph toward a neutral sepia basis, then shift
- // that basis into blue for moonlight. This is more stable than rotating raw colors.
- const sepia=Math.min(1,.92*night+.48*warmth);
- const hue=night*178-warmth*(1-night)*10;
- renderer.domElement.style.filter=`brightness(${brightness.toFixed(3)}) contrast(${contrast.toFixed(3)}) saturate(${saturation.toFixed(3)}) sepia(${sepia.toFixed(3)}) hue-rotate(${hue.toFixed(1)}deg)`;
-}
-// Lamp lighting is composited AFTER the panorama's CSS day/night grade.
-const lampOverlay=document.createElement('canvas');
-lampOverlay.id='minivr-lamp-lighting';
-lampOverlay.style.cssText='position:fixed;inset:0;width:100vw;height:100dvh;pointer-events:none;z-index:4';
-document.body.appendChild(lampOverlay);
-const lampContext=lampOverlay.getContext('2d');
-const lampVector=new THREE.Vector3();
-function renderUngradedLamps(){
- const enabled=!!(effectSettings.timeOfDay&&effectSettings.lampGlow&&getViewerMode()===ViewerMode.DESKTOP);
- effectSettings._externalLampOverlay=enabled;
- lampOverlay.style.display=enabled?'block':'none';
- if(!enabled||!lampContext)return;
- const w=innerWidth,h=innerHeight,dpr=Math.min(devicePixelRatio||1,2);
- if(lampOverlay.width!==Math.round(w*dpr)||lampOverlay.height!==Math.round(h*dpr)){lampOverlay.width=Math.round(w*dpr);lampOverlay.height=Math.round(h*dpr);}
- lampContext.setTransform(dpr,0,0,dpr,0,0);
- lampContext.clearRect(0,0,w,h);
- const phase=Number(effectSettings._liveDayPhase);
- if(!Number.isFinite(phase))return;
- const smooth=(a,b,x)=>{const t=THREE.MathUtils.clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
- const brightness=smooth(.34,.65,phase)*(1-smooth(.87,.995,phase));
- if(brightness<=.001)return;
- const lamps=Array.isArray(effectSettings.lamps)?effectSettings.lamps:[];
- const strength=THREE.MathUtils.clamp(Number(effectSettings.lampIntensity??60)/100,0,1)*brightness;
- camera.updateMatrixWorld(true);
- for(const point of lamps.slice(0,20)){
-  if(!Array.isArray(point)||point.length!==2)continue;
-  const yaw=THREE.MathUtils.degToRad(Number(point[0])),pitch=THREE.MathUtils.degToRad(Number(point[1]));
-  if(!Number.isFinite(yaw)||!Number.isFinite(pitch))continue;
-  lampVector.set(Math.cos(pitch)*Math.cos(yaw),Math.sin(pitch),-Math.cos(pitch)*Math.sin(yaw));
-  lampVector.applyQuaternion(camera.quaternion.clone().invert());
-  if(lampVector.z>=-.01)continue;
-  const projected=lampVector.clone().project(camera);
-  const x=(projected.x+1)*w/2,y=(1-projected.y)*h/2;
-  if(x< -w||x>2*w||y< -h||y>2*h)continue;
-  const radius=Math.min(Math.max(w,h)*.55,Math.max(35,h*.24/(-lampVector.z)));
-  const glow=lampContext.createRadialGradient(x,y,0,x,y,radius);
-  glow.addColorStop(0,'rgba(255,239,174,'+(.62*strength).toFixed(3)+')');
-  glow.addColorStop(.09,'rgba(255,204,117,'+(.42*strength).toFixed(3)+')');
-  glow.addColorStop(.35,'rgba(255,169,82,'+(.17*strength).toFixed(3)+')');
-  glow.addColorStop(1,'rgba(255,145,64,0)');
-  lampContext.globalCompositeOperation='lighter';
-  lampContext.fillStyle=glow;lampContext.fillRect(x-radius,y-radius,radius*2,radius*2);
- }
- lampContext.globalCompositeOperation='source-over';
-}
 renderer.setAnimationLoop((time)=>{
- updateDayGrade(time);
  tiledPanorama?.update();
  effectSystem?.update(time,camera);atmosphereSystem?.update(time,camera);moonSystem?.update(time,camera);environmentSystem?.update(time,camera);
  if(getViewerMode()===ViewerMode.DESKTOP&&!down&&!orientation&&effectSettings.rotation){
@@ -485,6 +398,5 @@ renderer.setAnimationLoop((time)=>{
  if(mode===ViewerMode.WEBXR){syncXREyes();updateGaze();renderer.render(scene,camera);return}
  if(mode===ViewerMode.CARDBOARD){updateCardboardGaze();if(legacyCardboard)legacyVREffect.render(scene,camera);else renderCardboard();return}
  renderer.render(scene,camera);
- renderUngradedLamps();
 });
 setTimeout(()=>document.querySelector('#viewer-help')?.classList.add('hide'),4200);
