@@ -380,23 +380,35 @@ function syncHudPose(){
 }
 // Visible day/night grading on the actual panorama canvas, including tiled panoramas.
 // The atmospheric sphere alone was too subtle and could be hidden by render ordering.
-let dayCycleStarted=null,dayGradeLast=-1;
+let dayCycleStarted=null,dayGradeLast=-1,dayPhaseOverride=null;
+const timePreview=document.createElement('div');
+timePreview.id='minivr-time-preview';
+timePreview.style.cssText='position:fixed;left:12px;bottom:18px;z-index:1200;background:rgba(9,18,30,.82);border:1px solid rgba(180,210,240,.4);border-radius:12px;padding:10px 12px;color:#fff;font:13px system-ui;min-width:190px;box-shadow:0 4px 18px #0005';
+timePreview.innerHTML='<div style="margin-bottom:6px">🕒 <span id="minivr-phase-label">Время суток</span></div><input id="minivr-phase-slider" aria-label="Время суток" type="range" min="0" max="100" value="0" style="width:100%;accent-color:#ffb568"><div style="font-size:11px;opacity:.8">День · Закат · Ночь · Рассвет</div>';
+document.body.appendChild(timePreview);
+const timeSlider=timePreview.querySelector('#minivr-phase-slider'),timeLabel=timePreview.querySelector('#minivr-phase-label');
+timeSlider.addEventListener('input',()=>{dayPhaseOverride=Number(timeSlider.value)/100;dayCycleStarted=null;dayGradeLast=-1;});
+timeSlider.addEventListener('change',()=>{if(effectSettings.dayCycle){effectSettings.dayPhase=Number(timeSlider.value);dayPhaseOverride=null;dayCycleStarted=null;}});
+
 function updateDayGrade(time){
+ timePreview.style.display=effectSettings.timeOfDay?'block':'none';
  if(!effectSettings.timeOfDay){if(renderer.domElement.style.filter)renderer.domElement.style.filter='';dayCycleStarted=null;return;}
  if(dayCycleStarted===null)dayCycleStarted=time;
  if(time-dayGradeLast<100)return;
  dayGradeLast=time;
  const initial=THREE.MathUtils.clamp(Number(effectSettings.dayPhase??65),0,100)/100;
  const duration=THREE.MathUtils.clamp(Number(effectSettings.dayCycleSeconds??180),30,3600);
- const phase=((initial+(effectSettings.dayCycle?(time-dayCycleStarted)/1000/duration:0))%1+1)%1;
+ const phase=dayPhaseOverride??(((initial+(effectSettings.dayCycle?(time-dayCycleStarted)/1000/duration:0))%1+1)%1);
+ if(document.activeElement!==timeSlider)timeSlider.value=String(Math.round(phase*100));
+ timeLabel.textContent=phase<.35?'День':phase<.60?'Закат':phase<.88?'Ночь':'Рассвет';
  const smooth=(a,b,x)=>{const t=THREE.MathUtils.clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
  const night=smooth(.47,.72,phase)*(1-smooth(.86,.99,phase));
  const sunset=Math.exp(-Math.pow((phase-.48)/.115,2));
  const sunrise=Math.exp(-Math.pow((phase-.94)/.075,2));
  const warmth=Math.max(sunset,sunrise);
- const brightness=1-.64*night-.12*warmth;
- const saturate=1-.35*night+.18*warmth;
- const sepia=Math.min(.5,.38*warmth);
+ const brightness=1-.79*night-.23*warmth;
+ const saturate=1-.52*night+.30*warmth;
+ const sepia=Math.min(.85,.70*warmth);
  const blueShift=night*.16;
  renderer.domElement.style.filter=`brightness(${brightness.toFixed(3)}) saturate(${saturate.toFixed(3)}) sepia(${sepia.toFixed(3)}) hue-rotate(${(blueShift*180).toFixed(1)}deg)`;
 }
