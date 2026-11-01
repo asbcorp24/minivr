@@ -39,7 +39,36 @@ if('serviceWorker' in navigator&&location.protocol==='https:'){
  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvent=e;promptInstall();});
  window.addEventListener('appinstalled',()=>{installEvent=null;localStorage.removeItem('minivr-install-dismissed-until');});
  if(/iPad|iPhone|iPod/.test(navigator.userAgent))window.addEventListener('load',()=>setTimeout(promptInstall,2500));
- // This is an in-app announcement, not a Web Push notification.
+
+ // Background push is opt-in and requires VAPID server configuration.
+ async function enablePush(){
+  const config=await fetch('/push.php',{cache:'no-store'}).then(r=>r.json());
+  if(!config.publicKey)throw Error('Push is not configured on the server');
+  const permission=await Notification.requestPermission();
+  if(permission!=='granted')return;
+  const registration=await navigator.serviceWorker.ready;
+  const b64=config.publicKey.replace(/-/g,'+').replace(/_/g,'/');
+  const bytes=Uint8Array.from(atob(b64.padEnd(Math.ceil(b64.length/4)*4,'=')),c=>c.charCodeAt(0));
+  const subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes});
+  const saved=await fetch('/push.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(subscription)});
+  if(!saved.ok)throw Error('Subscription could not be saved');
+  localStorage.setItem('minivr-push-opt-in','1');
+ }
+ if('PushManager' in window&&'Notification' in window&&'serviceWorker' in navigator){
+  window.addEventListener('load',async()=>{
+   if(Notification.permission==='denied'||localStorage.getItem('minivr-push-opt-in'))return;
+   try{
+    const cfg=await fetch('/push.php',{cache:'no-store'}).then(r=>r.json());
+    if(!cfg.publicKey)return;
+    setTimeout(()=>show({title:'Уведомления о новых панорамах',message:'Разрешить MiniVR присылать новости, даже когда приложение закрыто?',actions:[
+     {label:'Включить',primary:true,run:()=>enablePush().catch(err=>console.warn('MiniVR push:',err))},
+     {label:'Не сейчас',run:()=>localStorage.setItem('minivr-push-opt-in','later')}
+    ]}),5000);
+   }catch{}
+  });
+ }
+
+ // In-app announcements work independently of Web Push.
  const seenKey='minivr-known-panoramas-v1';
  async function checkNew(){
   if(document.visibilityState==='hidden')return;
