@@ -42,10 +42,10 @@ if('serviceWorker' in navigator&&location.protocol==='https:'){
 
  // Background push is opt-in and requires VAPID server configuration.
  async function enablePush(){
-  const config=await fetch('/push.php',{cache:'no-store'}).then(r=>r.json());
-  if(!config.publicKey)throw Error('Push is not configured on the server');
   const permission=await Notification.requestPermission();
   if(permission!=='granted')return;
+  const config=await fetch('/push.php',{cache:'no-store'}).then(r=>r.json());
+  if(!config.publicKey)throw Error('Push is not configured on the server');
   const registration=await navigator.serviceWorker.ready;
   const b64=config.publicKey.replace(/-/g,'+').replace(/_/g,'/');
   const bytes=Uint8Array.from(atob(b64.padEnd(Math.ceil(b64.length/4)*4,'=')),c=>c.charCodeAt(0));
