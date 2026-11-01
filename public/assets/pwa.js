@@ -26,6 +26,36 @@ if('serviceWorker' in navigator&&location.protocol==='https:'){
  }
  function close(){current?.remove();current=null;next();}
  function show(item){queue.push(item);next();}
+ function installFromButton(){
+  if(installed())return;
+  if(installEvent){
+   const event=installEvent;installEvent=null;
+   event.prompt().then(()=>event.userChoice).then(choice=>{
+    if(choice?.outcome==='dismissed')localStorage.setItem('minivr-install-dismissed-until',String(Date.now()+7*86400000));
+   }).catch(err=>console.warn('MiniVR install:',err));
+   return;
+  }
+  const ios=/iPad|iPhone|iPod/.test(navigator.userAgent);
+  show({title:'Установить MiniVR',message:ios?'В Safari нажмите «Поделиться» и выберите «На экран Домой».':'Откройте меню браузера (⋮) и выберите «Установить приложение» или «Добавить на главный экран». Если такого пункта нет, проверьте HTTPS и поддержку PWA браузером.',actions:[{label:'Понятно',primary:true}]});
+ }
+ function addInstallButtons(){
+  if(installed()||document.getElementById('minivr-install-button'))return;
+  const button=document.createElement('button');
+  button.id='minivr-install-button';button.type='button';
+  button.textContent='↓ Установить приложение';
+  button.setAttribute('aria-label','Установить MiniVR как приложение');
+  button.style.cssText='position:fixed;z-index:900;left:16px;bottom:16px;padding:12px 16px;border:1px solid #5abbd3;border-radius:14px;background:#07364b;color:#fff;font:600 14px system-ui,sans-serif;box-shadow:0 8px 24px #0008;cursor:pointer;max-width:calc(100vw - 32px)';
+  button.addEventListener('click',installFromButton);
+  document.body.appendChild(button);
+  const nav=document.getElementById('main-nav');
+  if(nav){
+   const link=document.createElement('a');link.href='#';link.textContent='↓ Установить';
+   link.addEventListener('click',e=>{e.preventDefault();installFromButton()});
+   nav.appendChild(link);
+  }
+ }
+ window.addEventListener('load',addInstallButtons);
+ window.addEventListener('appinstalled',()=>document.getElementById('minivr-install-button')?.remove());
  function promptInstall(){
   if(installed()||sessionStorage.getItem('minivr-install-dismissed')==='1')return;
   if(localStorage.getItem('minivr-install-dismissed-until')>Date.now())return;
