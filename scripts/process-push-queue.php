@@ -23,7 +23,7 @@ foreach($jobs as $job){
    $ok=$report->isSuccess();$expired=$report->isSubscriptionExpired();
    $state=$ok?'sent':($expired?'expired':($job['event_id']?'pending':'pending'));
    $q=$db->prepare("UPDATE push_deliveries SET status=?,attempts=attempts+1,next_attempt_at=? WHERE event_id=? AND endpoint=?");
-   $q->execute([$state,time()+min(86400,300*2**min(8,(int)$db->query('SELECT 1')->fetchColumn())),$job['event_id'],$job['endpoint']]);
+   $q->execute([$state,time()+900,$job['event_id'],$job['endpoint']]);
    if($expired){$q=$db->prepare('DELETE FROM push_subscriptions WHERE endpoint=?');$q->execute([$job['endpoint']]);}
    echo $job['panorama_id'].' '.($ok?'sent':'failed')."\n";
   }
