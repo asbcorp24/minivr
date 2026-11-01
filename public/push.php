@@ -1,12 +1,13 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/../src/db.php';
+require_once __DIR__.'/../src/push-config.php';
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 $db=db();
 $db->exec("CREATE TABLE IF NOT EXISTS push_subscriptions (endpoint TEXT PRIMARY KEY, subscription_json TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)");
 if($_SERVER['REQUEST_METHOD']==='GET'){
- $key=getenv('MINIVR_VAPID_PUBLIC_KEY')?:'';
+ $key=minivrPushConfig()['publicKey'];
  echo json_encode(['publicKey'=>$key],JSON_UNESCAPED_SLASHES);exit;
 }
 if($_SERVER['REQUEST_METHOD']!=='POST'){http_response_code(405);exit;}
