@@ -27,3 +27,18 @@ self.addEventListener('message',e=>{
   }catch(err){port?.postMessage({ok:false,error:String(err)})}
  })());
 });
+
+self.addEventListener('push',event=>{
+ let data={};try{data=event.data?.json()||{}}catch{}
+ const title=String(data.title||'MiniVR: новая панорама').slice(0,120);
+ const options={body:String(data.body||'Откройте новые VR-материалы').slice(0,200),icon:'/assets/icons/icon.svg',badge:'/assets/icons/icon.svg',tag:'minivr-panorama',data:{url:typeof data.url==='string'&&data.url.startsWith('/')&&!data.url.startsWith('//')?data.url:'/' }};
+ event.waitUntil(self.registration.showNotification(title,options));
+});
+self.addEventListener('notificationclick',event=>{
+ event.notification.close();
+ const url=new URL(event.notification.data?.url||'/',self.location.origin);
+ event.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(async windows=>{
+  for(const client of windows){if(new URL(client.url).origin===url.origin){await client.focus();await client.navigate(url.href);return;}}
+  return clients.openWindow(url.href);
+ }));
+});
