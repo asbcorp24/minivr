@@ -17,7 +17,8 @@ window.miniVrTagMp4=async function(blob){
  }
  const top=boxes(0,input.length),moov=top.find(x=>x.type==='moov');
  if(!moov)throw Error('MP4: отсутствует moov');
- if(top.some(x=>x.type==='moof'||x.type==='mfra'))throw Error('Фрагментированный MP4 пока не поддерживается');
+ const fragmented=top.some(x=>x.type==='moof');
+ if(top.some(x=>x.type==='mfra'))throw Error('MP4 с индексом mfra пока не поддерживается');
  if(moov.head!==8)throw Error('MP4: расширенный moov не поддерживается');
  const fastStart=top.some(x=>x.type==='mdat'&&x.p>moov.p);
  const moovChildren=boxes(moov.p+moov.head,moov.p+moov.size);
@@ -33,14 +34,14 @@ window.miniVrTagMp4=async function(blob){
  const uuid=new Uint8Array([0xff,0xcc,0x82,0x63,0xf8,0x55,0x4a,0x93,0x88,0x14,0x58,0x7a,0x02,0x52,0x1f,0xdd]);
  const payload=new TextEncoder().encode(xml),delta=8+16+payload.length;
  if(video.size+delta>0xffffffff||moov.size+delta>0xffffffff)throw Error('MP4: размер блока превышает 4 ГБ');
- if(top.some(x=>x.type==='sidx'||x.type==='tfra'))throw Error('MP4: индексированный контейнер не поддерживается');
+ if(top.some(x=>x.type==='sidx'&&x.p<video.p+video.size))throw Error('MP4: sidx перед moov пока не поддерживается');
  const output=new Uint8Array(input.length+delta);
  const insertion=video.p+video.size;
  output.set(input.subarray(0,insertion),0);
  const dv=new DataView(output.buffer);
  // All media bytes after the insertion shift by delta.
  // Chunk offsets are absolute positions, so rewrite them for fast-start MP4.
- if(fastStart){
+ if(fastStart&&!fragmented){
   const containers=new Set(['moov','trak','mdia','minf','stbl','edts','dinf','udta']);
   const patches=[];
   function scan(parent){
@@ -65,6 +66,24 @@ window.miniVrTagMp4=async function(blob){
    const pos=patch.pos+(patch.pos>=insertion?delta:0);
    if(patch.step===4)dv.setUint32(pos,Number(patch.value));
    else dv.setBigUint64(pos,patch.value);
+  }
+ }
+ if(fragmented){
+  // Fragment offsets in trun are relative to moof and remain unchanged.
+  // Explicit absolute base_data_offset in tfhd must shift with media bytes.
+  for(const moof of top.filter(x=>x.type==='moof')){
+   for(const traf of boxes(moof.p+moof.head,moof.p+moof.size).filter(x=>x.type==='traf')){
+    for(const tfhd of boxes(traf.p+traf.head,traf.p+traf.size).filter(x=>x.type==='tfhd')){
+     const flags=(input[tfhd.p+9]<<16)|(input[tfhd.p+10]<<8)|input[tfhd.p+11];
+     if(flags&1){
+      const pos=tfhd.p+tfhd.head+8;
+      if(pos+8>tfhd.p+tfhd.size)throw Error('MP4: повреждённый tfhd');
+      const old=view.getBigUint64(pos);
+      const next=old>=BigInt(insertion)?old+BigInt(delta):old;
+      dv.setBigUint64(pos+(pos>=insertion?delta:0),next);
+     }
+    }
+   }
   }
  }
  dv.setUint32(insertion,delta);output.set(new TextEncoder().encode('uuid'),insertion+4);
