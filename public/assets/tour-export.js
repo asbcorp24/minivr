@@ -68,11 +68,15 @@
   }
   if(!chunks.length)throw Error('Браузер не записал данные.');
   const ext=mime.includes('mp4')?'mp4':'webm';
-  const blob=new Blob(chunks,{type:mime});
+  let blob=new Blob(chunks,{type:mime});
+  if(ext==='mp4'){
+   status.textContent='Добавление метаданных 360° в MP4…';
+   blob=await window.miniVrTagMp4(blob);
+  }
   const url=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=url;a.download='minivr-tour-'+root.dataset.tour+'.'+ext;document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),60000);
-  status.textContent='Готово: '+ext.toUpperCase()+' ('+(blob.size/1048576).toFixed(1)+' МБ). Для YouTube 360° необходимы пространственные метаданные; этот браузерный экспорт их не добавляет.';
+  status.textContent='Готово: '+ext.toUpperCase()+' ('+(blob.size/1048576).toFixed(1)+' МБ). '+(ext==='mp4'?'Метаданные сферического видео 360° добавлены.':'WebM не содержит метаданных 360°; для YouTube требуется MP4.');
  }
  start.addEventListener('click',()=>render().catch(e=>{status.textContent='Ошибка: '+e.message;start.disabled=false;stop.disabled=true;}));
  stop.addEventListener('click',()=>{cancelled=true;status.textContent='Завершение записи…'});
