@@ -4,6 +4,7 @@
  const scenes=JSON.parse(root.dataset.scenes||'[]');
  const start=root.querySelector('#export-start'),stop=root.querySelector('#export-stop'),status=root.querySelector('#export-status');
  const quality=root.querySelector('#export-quality'),fpsField=root.querySelector('#export-fps'),fadeField=root.querySelector('#export-fade');
+ const music=root.querySelector('#export-music');
  const canvas=root.querySelector('canvas'),ctx=canvas.getContext('2d',{alpha:false});
  let recorder=null,cancelled=false;
  const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -20,6 +21,22 @@
   const mime=options.find(type=>MediaRecorder.isTypeSupported(type));
   if(!mime)throw Error('Браузер не поддерживает MP4 или WebM через MediaRecorder.');
   const stream=canvas.captureStream(fps);
+  let sound=null;
+  if(music&&music.value){
+   sound=new Audio(music.value);
+   sound.loop=true;
+   sound.crossOrigin='anonymous';
+   const ac=new AudioContext();
+   const src=ac.createMediaElementSource(sound);
+   const gain=ac.createGain();
+   gain.gain.value=Number(root.querySelector('#export-volume').value)/100;
+   const dest=ac.createMediaStreamDestination();
+   src.connect(gain);gain.connect(dest);
+   await ac.resume();
+   await sound.play();
+   dest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));
+   sound.context=ac;
+  }
   const chunks=[];
   recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:w>=3840?24000000:9000000});
   recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
@@ -45,6 +62,7 @@
   }finally{
    if(recorder.state!=='inactive')recorder.stop();
    await completed;
+   if(sound){sound.pause();await sound.context.close();}
    stream.getTracks().forEach(track=>track.stop());
    recorder=null;start.disabled=false;stop.disabled=true;
   }
