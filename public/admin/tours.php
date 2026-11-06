@@ -32,6 +32,9 @@ document.getElementById('tour-copy-link')?.addEventListener('click',async()=>{
 <label>Частота кадров<select id="export-fps"><option value="30">30 FPS</option><option value="24">24 FPS</option></select></label>
 <label>Переход между сценами<select id="export-fade"><option value="0">Без перехода</option><option value="1" selected>Плавный 1 с</option><option value="2">Плавный 2 с</option></select></label>
 </div>
+<?php $exportTracks=$db->query("SELECT title,artist,file_path FROM music_tracks WHERE is_active=1 ORDER BY sort_order,id")->fetchAll(); ?>
+<div class="form-columns"><label>Музыка для видео<select id="export-music"><option value="">Без музыки</option><?php foreach($exportTracks as $track):?><option value="<?=htmlspecialchars($track['file_path'],ENT_QUOTES,'UTF-8')?>"><?=htmlspecialchars($track['title'].' — '.$track['artist'])?></option><?php endforeach;?></select></label><label>Громкость музыки, %<input type="number" id="export-volume" value="70" min="0" max="100"></label></div>
+<p>Музыка повторяется до конца видео. Для YouTube используйте композиции с правами на публикацию.</p>
 <canvas width="960" height="480" style="width:100%;max-width:480px;aspect-ratio:2/1;background:#000;border-radius:10px"></canvas>
 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button class="btn" type="button" id="export-start">▶ СОЗДАТЬ ВИДЕО 360°</button><button class="btn" type="button" id="export-stop" disabled>■ ЗАВЕРШИТЬ</button></div>
 <p id="export-status" role="status" aria-live="polite">MP4 сохраняется, если браузер поддерживает его запись; иначе WebM. YouTube 360° требует пространственных метаданных, которые эта версия не добавляет.</p>
