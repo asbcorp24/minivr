@@ -39,6 +39,7 @@ window.miniVrTagMp4=async function(blob){
  const insertion=video.p+video.size;
  output.set(input.subarray(0,insertion),0);
  const dv=new DataView(output.buffer);
+ output.set(input.subarray(insertion),insertion+delta);
  // All media bytes after the insertion shift by delta.
  // Chunk offsets are absolute positions, so rewrite them for fast-start MP4.
  if(fastStart&&!fragmented){
@@ -88,7 +89,7 @@ window.miniVrTagMp4=async function(blob){
  }
  dv.setUint32(insertion,delta);output.set(new TextEncoder().encode('uuid'),insertion+4);
  output.set(uuid,insertion+8);output.set(payload,insertion+24);
- output.set(input.subarray(insertion),insertion+delta);
+
  dv.setUint32(video.p,video.size+delta);
  dv.setUint32(moov.p,moov.size+delta);
  // Verify the UUID box resides within the video track.
