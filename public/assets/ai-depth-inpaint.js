@@ -20,7 +20,7 @@ if(panel){
  const showResult=async url=>{resultImage=await loadImage(url);drawCompare(true);};
  const paintMask=()=>{
   if(!maskCanvas||!originalImage)return;
-  const ctx=maskCanvas.getContext('2d');ctx.drawImage(originalImage,0,0,1024,512);
+  const ctx=maskCanvas.getContext('2d');ctx.clearRect(0,0,1024,512);ctx.drawImage(originalImage,0,0,1024,512);
   const overlay=ctx.createImageData(1024,512);
   for(let i=0;i<maskPixels.length;i++)if(maskPixels[i]){overlay.data[i*4]=255;overlay.data[i*4+3]=125;}
   ctx.putImageData(overlay,0,0);
@@ -39,34 +39,34 @@ if(panel){
   if(high-low<18){maskPixels.fill(0);maskReady=true;paintMask();status.textContent='На карте глубины недостаточно контраста. Уточните маску вручную.';return;}
   const sensitivity=Number(panel.querySelector('[data-ai-depth-sensitivity]')?.value||65)/100;
   const cutoff=low+(high-low)*sensitivity;
-  const edgeThreshold=Math.max(7,(high-low)*.12);
-  // Prefer coherent near regions with depth discontinuities. Keep horizontal
-  // seam continuity by wrapping x when sampling neighboring pixels.
+  // Select complete near-depth regions, not depth discontinuity outlines.
+  // Depth maps represent distance, not semantic object classes.
+  // Exclude bottom-connected floor/ground only when it forms a large area;
+  // preserve smaller foreground objects even when they touch the bottom.
   const candidate=new Uint8Array(w*h);
-  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-   const i=y*w+x,v=depthValues[i];if(v<cutoff)continue;
-   const left=depthValues[y*w+(x+w-3)%w],right=depthValues[y*w+(x+3)%w];
-   const up=depthValues[Math.max(0,y-3)*w+x],down=depthValues[Math.min(h-1,y+3)*w+x];
-   const edge=Math.max(Math.abs(v-left),Math.abs(v-right),Math.abs(v-up),Math.abs(v-down));
-   candidate[i]=(v>=low+(high-low)*.82||edge>=edgeThreshold)?1:0;
-  }
-  // Retain connected foreground regions; discard isolated depth noise.
+  for(let i=0;i<candidate.length;i++)candidate[i]=depthValues[i]>=cutoff?1:0;
   const seen=new Uint8Array(w*h),queue=new Int32Array(w*h);
   maskPixels.fill(0);
   for(let start=0;start<w*h;start++){
    if(!candidate[start]||seen[start])continue;
-   let head=0,tail=1;queue[0]=start;seen[start]=1;
+   let head=0,tail=1,touchesBottom=false,top=h,bottom=0;
+   queue[0]=start;seen[start]=1;
    while(head<tail){
     const i=queue[head++],x=i%w,y=(i/w)|0;
-    const neighbors=[y*w+(x+w-1)%w,y*w+(x+1)%w];
-    if(y>0)neighbors.push(i-w);if(y<h-1)neighbors.push(i+w);
-    for(const j of neighbors)if(candidate[j]&&!seen[j]){seen[j]=1;queue[tail++]=j;}
+    if(y===h-1)touchesBottom=true;
+    if(y<top)top=y;if(y>bottom)bottom=y;
+    const left=y*w+(x+w-1)%w,right=y*w+(x+1)%w;
+    if(candidate[left]&&!seen[left]){seen[left]=1;queue[tail++]=left;}
+    if(candidate[right]&&!seen[right]){seen[right]=1;queue[tail++]=right;}
+    if(y>0&&candidate[i-w]&&!seen[i-w]){seen[i-w]=1;queue[tail++]=i-w;}
+    if(y<h-1&&candidate[i+w]&&!seen[i+w]){seen[i+w]=1;queue[tail++]=i+w;}
    }
-   if(tail>=32&&tail<w*h*.55)for(let k=0;k<tail;k++)maskPixels[queue[k]]=1;
+   const broadGround=touchesBottom&&tail>w*h*.12&&bottom-top>h*.15;
+   if(tail>=40&&!broadGround)for(let k=0;k<tail;k++)maskPixels[queue[k]]=1;
   }
-  // Expand by 2 pixels to cover antialiased foreground silhouettes.
+  // Small dilation covers anti-aliased silhouette edges. Wrap longitude.
   const expanded=maskPixels.slice();
-  for(let y=1;y<h-1;y++)for(let x=0;x<w;x++){
+  for(let y=2;y<h-2;y++)for(let x=0;x<w;x++){
    const i=y*w+x;if(!maskPixels[i])continue;
    for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)expanded[(y+dy)*w+(x+dx+w)%w]=1;
   }
