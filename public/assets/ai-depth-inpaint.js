@@ -1,4 +1,4 @@
-// Browser-side AI background generation using a real ONNX DeepFill v2 inpainting model.
+// Browser-side AI background generation using LaMa ONNX inpainting.
 // No image data is sent to an AI API; only the finished panorama is uploaded to MiniVR.
 const panel=document.querySelector('[data-ai-background]');
 if(panel){
@@ -55,22 +55,23 @@ if(panel){
   let session;
   try{
    if(!panel.dataset.depth)throw Error('Сначала сгенерируйте и сохраните карту глубины, затем обновите страницу.');
-   status.textContent='Загрузка ONNX Runtime и нейросети DeepFill v2…';
+   status.textContent='Загрузка ONNX Runtime и нейросети LaMa…';
    const ort=await import('https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0/dist/ort.bundle.min.mjs');
    ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0/dist/';
    ort.env.wasm.numThreads=1;
-   const model='https://huggingface.co/vooxyou/deepfillv2-inpainting/resolve/main/deepfillv2_quantized.onnx';
+   const model='/assets/models/lama_fp32.onnx';
+   const remoteModel='https://huggingface.co/edgetools/lama/resolve/main/lama_fp32.onnx';
    // Cache model bytes to avoid repeated downloads after the first generation.
    let bytes;
-   const cache=typeof caches!=='undefined'?await caches.open('minivr-inpaint-model-v1').catch(()=>null):null;
+   const cache=typeof caches!=='undefined'?await caches.open('minivr-lama-model-v1').catch(()=>null):null;
    let response=cache?await cache.match(model):null;
-   if(!response){response=await fetch(model);if(!response.ok)throw Error('Не удалось загрузить модель: HTTP '+response.status);if(cache)await cache.put(model,response.clone()).catch(()=>{});}
+   if(!response){response=await fetch(model).catch(()=>null);if(!response?.ok){response=await fetch(remoteModel);if(!response.ok)throw Error('Не удалось загрузить LaMa: HTTP '+response.status);}if(cache)await cache.put(model,response.clone()).catch(()=>{});}
    bytes=await response.arrayBuffer();
    try{
     session=await ort.InferenceSession.create(bytes,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
    }catch(error){
     if(/ExtractImagePatches|No Op registered|not implemented|unsupported/i.test(String(error))){
-     status.textContent='Эта версия DeepFill несовместима с ONNX Runtime Web. Переключаюсь на локальное заполнение фона…';
+     status.textContent='Модель LaMa не запустилась в ONNX Runtime Web. Переключаюсь на локальное заполнение фона…';
      await generateFallbackBackground();
      return;
     }
@@ -100,7 +101,8 @@ if(panel){
    // Preserve original unmasked pixels and blend the generated region at the boundary.
    const result=ctx.createImageData(w,h),out=result.data;
    const data=tensor.data;
-   let scale=1;for(let i=0;i<Math.min(2000,data.length);i++)if(data[i]>2){scale=255;break;}
+   // LaMa outputs RGB values in the 0..255 range (not 0..1).
+   const scale=255;
    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     const i=y*w+x;
     const a=mask[i] ? 1 : 0;
