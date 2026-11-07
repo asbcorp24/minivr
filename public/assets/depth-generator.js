@@ -4,12 +4,12 @@ if(panel){
  const button=panel.querySelector('[data-depth-generate]');
  const status=panel.querySelector('[data-depth-status]');
  const preview=panel.querySelector('[data-depth-preview]');
- const strength=panel.querySelector('[data-depth-strength]');
+ const strength=panel.closest('form').querySelector('[name="parallaxStrength"]');
  button.addEventListener('click',async()=>{
   button.disabled=true;
   try{
    status.textContent='Загрузка модели ИИ (первый запуск может занять несколько минут)…';
-   const {pipeline,RawImage,env}=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6');
+   const {pipeline,RawImage,env}=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm');
    env.allowLocalModels=false;
    const estimator=await pipeline('depth-estimation','onnx-community/depth-anything-v2-small',{device:'webgpu'}).catch(async()=>{
     status.textContent='WebGPU недоступен — запускаю обработку на CPU…';
