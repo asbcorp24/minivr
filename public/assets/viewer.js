@@ -436,8 +436,8 @@ renderer.setAnimationLoop((time)=>{
  if(mode===ViewerMode.CARDBOARD&&orientation)deviceOrientation.update();
  if(mode===ViewerMode.DESKTOP&&!orientation){
   const amount=parallaxDepthPixels&&effectSettings.parallaxEnabled ? Math.max(0,Math.min(100,Number(effectSettings.parallaxStrength)||0))/100 : 0;
-  const target=new THREE.Vector3(depthPointer.x*amount*.3,depthPointer.y*amount*.18,0);
-  depthCameraOffset.lerp(target,.08);camera.position.copy(depthCameraOffset);
+  const target=new THREE.Vector3(depthPointer.x*amount*2.8,depthPointer.y*amount*1.6,0);
+  depthCameraOffset.lerp(target,.14);camera.position.copy(depthCameraOffset);
  }
  if(mode===ViewerMode.DESKTOP&&!orientation){const phi=THREE.MathUtils.degToRad(90-lat),theta=THREE.MathUtils.degToRad(lon);camera.lookAt(500*Math.sin(phi)*Math.cos(theta),500*Math.cos(phi),500*Math.sin(phi)*Math.sin(theta))}
  if(mode===ViewerMode.WEBXR){syncXREyes();updateGaze();renderer.render(scene,camera);return}

@@ -11,7 +11,10 @@ $rawLamps=json_decode((string)($_POST['effectLamps']??'[]'),true);if(is_array($r
 <div data-depth-panel data-id="<?=(int)$editId?>" data-image="<?=htmlspecialchars($existing['image'],ENT_QUOTES)?>">
 <button type="button" data-depth-generate>Сгенерировать карту глубины в браузере (ИИ)</button>
 <p data-depth-status>Первый запуск загружает модель ИИ на устройство. Для генерации нужен интернет и современный браузер.</p>
-<?php if(!empty($savedEffects['parallaxDepth'])):?><p>Карта глубины уже сохранена.</p><?php endif;?>
+<?php if(!empty($savedEffects['parallaxDepth'])):?>
+<p><strong>Карта глубины уже сохранена и привязана к этой панораме.</strong> <a data-depth-download href="<?=htmlspecialchars($savedEffects['parallaxDepth'],ENT_QUOTES)?>" target="_blank" rel="noopener" download>Скачать PNG</a></p>
+<img data-depth-saved src="<?=htmlspecialchars($savedEffects['parallaxDepth'],ENT_QUOTES)?>" alt="Сохранённая карта глубины" style="width:100%;max-width:640px;aspect-ratio:2/1;object-fit:contain;border-radius:8px">
+<?php endif;?>
 <img data-depth-preview hidden alt="Предпросмотр карты глубины" style="width:100%;max-width:640px;aspect-ratio:2/1;object-fit:contain">
 <input type="hidden" data-depth-strength value="25">
 </div>
