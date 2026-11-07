@@ -414,6 +414,7 @@ function syncHudPose(){
 // Subtle desktop 2.5D movement; no positional offsets in device-orientation or VR modes.
 const depthPointer=new THREE.Vector2();
 const depthCameraOffset=new THREE.Vector3();
+let depthAutoPhase=0,depthAutoLastTime=0;
 renderer.domElement.addEventListener('pointermove',event=>{
  const bounds=renderer.domElement.getBoundingClientRect();
  if(!bounds.width||!bounds.height)return;
@@ -436,7 +437,14 @@ renderer.setAnimationLoop((time)=>{
  if(mode===ViewerMode.CARDBOARD&&orientation)deviceOrientation.update();
  if(mode===ViewerMode.DESKTOP&&!orientation){
   const amount=parallaxDepthPixels&&effectSettings.parallaxEnabled ? Math.max(0,Math.min(100,Number(effectSettings.parallaxStrength)||0))/100 : 0;
-  const target=new THREE.Vector3(depthPointer.x*amount*2.8,depthPointer.y*amount*1.6,0);
+  const autoEnabled=amount>0&&effectSettings.rotation&&effectSettings.parallaxAuto!==false;
+  const autoAmplitude=Math.max(0,Math.min(100,Number(effectSettings.parallaxAutoAmplitude??35)))/100;
+  const autoSpeed=Math.max(.1,Math.min(3,Number(effectSettings.parallaxAutoSpeed??.6)));
+  const autoDt=depthAutoLastTime?Math.min(.05,(time-depthAutoLastTime)/1000):0;
+  depthAutoLastTime=time;
+  if(autoEnabled)depthAutoPhase+=autoDt*autoSpeed*2*Math.PI/8;
+  const sway=autoEnabled?amount*autoAmplitude:0;
+  const target=new THREE.Vector3(depthPointer.x*amount*2.8+Math.sin(depthAutoPhase)*sway*2.8,depthPointer.y*amount*1.6+Math.sin(depthAutoPhase*.7)*sway*.8,Math.cos(depthAutoPhase)*sway*.8);
   depthCameraOffset.lerp(target,.14);camera.position.copy(depthCameraOffset);
  }
  if(mode===ViewerMode.DESKTOP&&!orientation){const phi=THREE.MathUtils.degToRad(90-lat),theta=THREE.MathUtils.degToRad(lon);camera.lookAt(500*Math.sin(phi)*Math.cos(theta),500*Math.cos(phi),500*Math.sin(phi)*Math.sin(theta))}
