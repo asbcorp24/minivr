@@ -4,6 +4,52 @@ const panel=document.querySelector('[data-ai-background]');
 if(panel){
  const button=panel.querySelector('[data-ai-generate]'),status=panel.querySelector('[data-ai-status]');
  const preview=panel.querySelector('[data-ai-preview]');
+ // Safe non-AI fallback: propagate neighboring background colors into the
+ // foreground mask. The original depth map and panorama remain unchanged.
+ async function generateFallbackBackground(){
+  const load=async url=>{const img=new Image();img.crossOrigin='anonymous';img.src=url;await img.decode();return img;};
+  const [photo,depth]=await Promise.all([load(panel.dataset.image),load(panel.dataset.depth)]);
+  const w=1024,h=512,c=document.createElement('canvas');c.width=w;c.height=h;
+  const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(photo,0,0,w,h);
+  const d=document.createElement('canvas');d.width=w;d.height=h;
+  const dc=d.getContext('2d',{willReadFrequently:true});dc.drawImage(depth,0,0,w,h);
+  const frame=ctx.getImageData(0,0,w,h),px=frame.data,dp=dc.getImageData(0,0,w,h).data;
+  const mask=new Uint8Array(w*h),known=new Uint8Array(w*h),frontier=[];
+  for(let i=0;i<known.length;i++){mask[i]=dp[i*4]>174?1:0;known[i]=mask[i]?0:1;}
+  for(let i=0;i<known.length;i++)if(!known[i]){
+   const x=i%w,y=(i/w)|0;
+   const n=[y*w+(x+w-1)%w,y*w+(x+1)%w];
+   if(y>0)n.push(i-w);if(y<h-1)n.push(i+w);
+   if(n.some(j=>known[j]))frontier.push(i);
+  }
+  let current=frontier;
+  for(let step=0;step<Math.max(w,h)&&current.length;step++){
+   const next=[];
+   for(const i of current){
+    if(known[i])continue;
+    const x=i%w,y=(i/w)|0,n=[y*w+(x+w-1)%w,y*w+(x+1)%w];
+    if(y>0)n.push(i-w);if(y<h-1)n.push(i+w);
+    let r=0,g=0,b=0,count=0;
+    for(const j of n)if(known[j]){r+=px[j*4];g+=px[j*4+1];b+=px[j*4+2];count++;}
+    if(!count)continue;
+    px[i*4]=r/count;px[i*4+1]=g/count;px[i*4+2]=b/count;
+    known[i]=2;
+    for(const j of n)if(!known[j])next.push(j);
+   }
+   for(const i of current)if(known[i]===2)known[i]=1;
+   current=next;
+  }
+  ctx.putImageData(frame,0,0);
+  preview.src=c.toDataURL('image/png');preview.hidden=false;
+  const blob=await new Promise(resolve=>c.toBlob(resolve,'image/png'));
+  if(!blob)throw Error('Не удалось создать PNG');
+  const form=new FormData();form.append('id',panel.dataset.id);form.append('background',blob,'background.png');
+  const response=await fetch('/admin/depth-background-upload.php',{method:'POST',body:form,credentials:'same-origin'});
+  const result=await response.json();
+  if(!response.ok||!result.ok)throw Error(result.error||'Ошибка сохранения');
+  const saved=panel.querySelector('[data-ai-saved]');if(saved)saved.src=result.url+'?v='+Date.now();
+  status.textContent='Создан и сохранён приближённый фон без ИИ: текущая ONNX-модель несовместима. Обновите просмотр.';
+ }
  button?.addEventListener('click',async()=>{
   button.disabled=true;
   let session;
@@ -20,7 +66,16 @@ if(panel){
    let response=cache?await cache.match(model):null;
    if(!response){response=await fetch(model);if(!response.ok)throw Error('Не удалось загрузить модель: HTTP '+response.status);if(cache)await cache.put(model,response.clone()).catch(()=>{});}
    bytes=await response.arrayBuffer();
-   session=await ort.InferenceSession.create(bytes,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
+   try{
+    session=await ort.InferenceSession.create(bytes,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
+   }catch(error){
+    if(/ExtractImagePatches|No Op registered|not implemented|unsupported/i.test(String(error))){
+     status.textContent='Эта версия DeepFill несовместима с ONNX Runtime Web. Переключаюсь на локальное заполнение фона…';
+     await generateFallbackBackground();
+     return;
+    }
+    throw error;
+   }
    status.textContent='Подготовка маски по карте глубины…';
    const load=async url=>{const img=new Image();img.crossOrigin='anonymous';img.src=url;await img.decode();return img;};
    const [photo,depth]=await Promise.all([load(panel.dataset.image),load(panel.dataset.depth)]);
