@@ -380,7 +380,7 @@ function installMicroMotion(material,band,count){
   shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`
 #ifdef USE_MAP
   vec2 windUv = vMapUv;
-  float windMask = texture2D(foliageWindMask,windUv).r;
+  float windMask = texture2D(foliageWindMask,windUv).${manualFoliageMaskImage?'a':'r'};
   windMask = smoothstep(0.025, 0.32, windMask);
   float phaseA = microMotionTime*1.3 + windUv.y*34.0 + sin(windUv.x*38.0);
   float phaseB = microMotionTime*.8 + windUv.x*51.0;
