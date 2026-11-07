@@ -104,6 +104,46 @@ if(panel){
   return result;
  };
 
+ // Automatically derive five depth-group masks and transparent 2:1 PNG layers.
+ // No separate AI invocation is needed for segmentation.
+ const buildDepthLayers=async()=>{
+  if(!panel.dataset.depth)throw Error('Сначала сохраните карту глубины');
+  const count=Math.max(2,Math.min(10,Number(panel.dataset.groups)||5));
+  const [photo,depthImage]=await Promise.all([loadImage(panel.dataset.image),loadImage(panel.dataset.depth)]);
+  const w=1024,h=512,canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(photo,0,0,w,h);
+  const original=ctx.getImageData(0,0,w,h).data;
+  ctx.clearRect(0,0,w,h);ctx.drawImage(depthImage,0,0,w,h);
+  const depths=ctx.getImageData(0,0,w,h).data;
+  const form=new FormData();form.append('id',panel.dataset.id);
+  const outputs=[];
+  for(let group=0;group<count;group++){
+   const center=(group+.5)/count,soft=.25/count;
+   const frame=ctx.createImageData(w,h);
+   for(let i=0;i<w*h;i++){
+    const d=depths[i*4]/255,dist=Math.abs(d-center);
+    const alpha=Math.max(0,Math.min(1,(.5/count+soft-dist)/soft));
+    const k=i*4;frame.data[k]=original[k];frame.data[k+1]=original[k+1];frame.data[k+2]=original[k+2];frame.data[k+3]=Math.round(alpha*255);
+   }
+   ctx.putImageData(frame,0,0);
+   const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+   if(!blob)throw Error('Не удалось создать PNG слоя '+(group+1));
+   form.append('layers[]',blob,'layer_'+(group+1)+'.png');
+   outputs.push(URL.createObjectURL(blob));
+  }
+  try{
+   status.textContent='Сохраняю '+count+' слоёв глубины…';
+   const response=await fetch('/admin/depth-layers-upload.php',{method:'POST',body:form,credentials:'same-origin'});
+   const result=await response.json();
+   if(!response.ok||!result.ok)throw Error(result.error||'Ошибка сохранения слоёв');
+   status.textContent='Сохранено '+count+' слоёв PNG. Маски построены автоматически по карте глубины.';
+  }finally{for(const url of outputs)URL.revokeObjectURL(url);}
+ };
+ panel.querySelector('[data-ai-generate-layers]')?.addEventListener('click',async event=>{
+  const btn=event.currentTarget;btn.disabled=true;
+  try{await buildDepthLayers();}catch(err){console.error(err);status.textContent='Ошибка слоёв: '+err.message;}
+  finally{btn.disabled=false;}
+ });
  const bar=panel.querySelector('[data-ai-progress]'),percent=panel.querySelector('[data-ai-percent]');
  const setProgress=(value,label)=>{
   const n=Math.max(0,Math.min(100,Math.round(value)));
