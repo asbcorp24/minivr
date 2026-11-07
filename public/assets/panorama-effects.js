@@ -1,6 +1,6 @@
 import * as THREE from '/assets/vendor/three/three.module.js';
 export function createPanoramaEffects(scene,settings){
- let type=['rain','snow','leaves','insects','dust','birds'].includes(settings?.particles)?settings.particles:'none';
+ let type=['rain','snow','leaves','insects','dust','birds','bubbles'].includes(settings?.particles)?settings.particles:'none';
  const density=Math.max(0,Math.min(100,Number(settings?.density)||0));
  const speed=Math.max(.1,Math.min(4,Number(settings?.speed)||1));
  const wind=THREE.MathUtils.clamp(Number(settings?.wind)||0,-8,8);
@@ -124,6 +124,56 @@ export function createPanoramaEffects(scene,settings){
     }
    },
    dispose(){scene.remove(group);flakes.forEach(f=>f.material.dispose());textures.forEach(t=>t.dispose());}
+  };
+ }
+ // Aquarium bubbles: translucent circular rims, highlights and upward buoyancy.
+ if(type==='bubbles'){
+  const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;
+  const c=canvas.getContext('2d');c.translate(64,64);
+  const glow=c.createRadialGradient(-12,-15,4,0,0,51);
+  glow.addColorStop(0,'rgba(215,244,255,.18)');
+  glow.addColorStop(.72,'rgba(174,224,247,.045)');
+  glow.addColorStop(.87,'rgba(184,236,255,.20)');
+  glow.addColorStop(1,'rgba(204,246,255,0)');
+  c.fillStyle=glow;c.beginPath();c.arc(0,0,51,0,Math.PI*2);c.fill();
+  c.lineWidth=3;c.strokeStyle='rgba(204,241,255,.67)';
+  c.beginPath();c.arc(0,0,44,0,Math.PI*2);c.stroke();
+  c.lineWidth=5;c.strokeStyle='rgba(255,255,255,.88)';
+  c.beginPath();c.arc(-3,-3,38,3.7,4.75);c.stroke();
+  c.lineWidth=2;c.strokeStyle='rgba(144,212,245,.55)';
+  c.beginPath();c.arc(4,4,41,.15,1.25);c.stroke();
+  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
+  const group=new THREE.Group();group.layers.enableAll();scene.add(group);
+  const bubbles=[];const total=Math.min(mobile?140:320,Math.max(1,Math.round(density*(mobile?1.5:3.1))));
+  for(let i=0;i<total;i++){
+   const distance=3+Math.random()*14,angle=Math.random()*Math.PI*2;
+   const size=(.055+Math.pow(Math.random(),2)*.25)*(distance/8);
+   const material=new THREE.SpriteMaterial({map:texture,transparent:true,opacity:opacity*(.65+Math.random()*.35),depthWrite:false,depthTest:true});
+   const sprite=new THREE.Sprite(material);sprite.layers.enableAll();sprite.renderOrder=13;
+   const originX=Math.cos(angle)*distance,originZ=Math.sin(angle)*distance;
+   const startY=-10+Math.random()*21;
+   sprite.position.set(originX,startY,originZ);sprite.scale.set(size,size,1);group.add(sprite);
+   bubbles.push({sprite,material,size,originX,originZ,phase:Math.random()*Math.PI*2,velocity:.5+Math.random()*1.2});
+  }
+  let last=0;
+  return {
+   update(time,camera){
+    const dt=last?Math.min(.05,(time-last)/1000):0;last=time;
+    if(camera)camera.getWorldPosition(group.position);
+    const t=time*.001;
+    for(const b of bubbles){
+     const p=b.sprite.position;
+     p.y+=dt*speed*b.velocity*1.6;
+     p.x+=dt*speed*(wind*.15+Math.sin(t*1.6+b.phase)*.12);
+     p.z+=dt*Math.cos(t*1.1+b.phase)*.08;
+     const wobble=1+.06*Math.sin(t*2.7+b.phase);
+     b.sprite.scale.set(b.size*wobble,b.size/wobble,1);
+     if(p.y>11||Math.abs(p.x)>23||Math.abs(p.z)>23){
+      p.set(b.originX+(Math.random()-.5)*1.5,-11-Math.random()*2,b.originZ+(Math.random()-.5)*1.5);
+     }
+    }
+   },
+   dispose(){scene.remove(group);bubbles.forEach(b=>b.material.dispose());texture.dispose();}
   };
  }
  // Birds and insects use textured sprites instead of GL_POINTS: mobile GPUs often clamp point size.
