@@ -268,8 +268,34 @@ function installAiBackground(){
 // Original 2:1 panorama and longitude seam are preserved.
 let hybridMeshes=[];
 function clearHybridMeshes(){
+ microMotionMaterials.length=0;
  for(const mesh of hybridMeshes){scene.remove(mesh);mesh.geometry.dispose();mesh.material.map?.dispose();mesh.material.dispose();}
  hybridMeshes=[];
+}
+// Subtle depth-aware vertex motion. Uses the existing depth-group geometry:
+// no AI inference, extra textures, or CPU geometry uploads per frame.
+const microMotionMaterials=[];
+function installMicroMotion(material,band,count){
+ if(effectSettings.parallaxMicroMotion===false||new URLSearchParams(location.search).get('micro_motion')==='0')return;
+ if(band<count-2)return; // Higher depth values correspond to nearer surfaces.
+ const phase={value:0},strength={value:THREE.MathUtils.clamp(Number(effectSettings.parallaxMicroMotionStrength??25),0,100)/100};
+ material.onBeforeCompile=shader=>{
+  shader.uniforms.microMotionTime=phase;
+  shader.uniforms.microMotionStrength=strength;
+  shader.vertexShader='uniform float microMotionTime;\nuniform float microMotionStrength;\n'+shader.vertexShader;
+  shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
+    // Smooth low-frequency movement with a spatially varying amplitude.
+    // Position-based phase is continuous across the longitude seam.
+    float microSpatial = sin(position.x * 0.31 + position.z * 0.17)
+                       * sin(position.y * 0.24 - position.z * 0.13);
+    float microWave = sin(microMotionTime * 0.73 + position.x * 0.18 + position.y * 0.11)
+                    + 0.4 * sin(microMotionTime * 1.09 - position.z * 0.21);
+    float microPoleFade = clamp(1.0 - abs(normalize(position).y), 0.0, 1.0);
+    transformed += normal * (microSpatial * microWave * microPoleFade * microMotionStrength * 0.055);
+  `);
+ };
+ material.customProgramCacheKey=()=> 'minivr-micro-motion-v1';
+ microMotionMaterials.push({material,phase});
 }
 function makeHybridDepthGroups(source){
  const count=Math.max(2,Math.min(10,Number(effectSettings.parallaxGroups)||5));
@@ -299,6 +325,7 @@ function makeHybridDepthGroups(source){
   const geo=geometry();
   if(effectSettings.mirrorHorizontal){const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
   const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,transparent:true,depthWrite:false,alphaTest:.015});
+  installMicroMotion(material,band,count);
   const mesh=new THREE.Mesh(geo,material);mesh.layers.set(0);mesh.renderOrder=band;
   scene.add(mesh);hybridMeshes.push(mesh);
  }
@@ -587,6 +614,8 @@ renderer.domElement.addEventListener('pointermove',event=>{
 });
 renderer.domElement.addEventListener('pointerleave',()=>depthPointer.set(0,0));
 renderer.setAnimationLoop((time)=>{
+ // GPU-side micro-motion for the nearest depth groups; no CPU texture updates.
+ for(const entry of microMotionMaterials)entry.phase.value=time*.001;
  tiledPanorama?.update();
  effectSystem?.update(time,camera);atmosphereSystem?.update(time,camera);moonSystem?.update(time,camera);environmentSystem?.update(time,camera);
  if(getViewerMode()===ViewerMode.DESKTOP&&!down&&!orientation&&effectSettings.rotation){
