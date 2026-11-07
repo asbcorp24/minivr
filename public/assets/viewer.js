@@ -443,7 +443,9 @@ vrControl.onclick=startImmersiveVR;
 
 function updateCardboardEyes(){
  // A wider, but bounded, stereo baseline is useful for the depth-derived shell.
- cardboardStereo.eyeSep=parallaxDepthPixels&&stereoMode==='mono' ? .12 : .064;
+ // Physical eye separation remains comfortable; depth-derived geometry supplies
+ // the parallax, rather than exaggerating stereo disparity at 75% strength.
+ cardboardStereo.eyeSep=.064;
  const size=renderer.getDrawingBufferSize(new THREE.Vector2()),half=Math.max(1,Math.floor(size.x/2));
  camera.aspect=half/Math.max(1,size.y);camera.updateProjectionMatrix();camera.updateMatrixWorld(true);cardboardStereo.aspect=.5;cardboardStereo.update(camera);
  const l=cardboardStereo.cameraL,r=cardboardStereo.cameraR;
@@ -546,7 +548,18 @@ function placeCardboardMenu(){camera.updateMatrixWorld(true);const p=new THREE.V
 function updateCardboardGaze(){if(getViewerMode()!==ViewerMode.CARDBOARD){cardboardReticle.visible=false;return}if(!cardboardMenuPlaced)placeCardboardMenu();cardboardReticle.visible=true;camera.updateMatrixWorld(true);const origin=new THREE.Vector3(),direction=new THREE.Vector3();camera.getWorldPosition(origin);camera.getWorldDirection(direction);raycaster.set(origin,direction);const hit=raycaster.intersectObjects(cardboardTargets,false)[0]?.object||null;if(hit!==cardboardFocus){if(cardboardFocus){cardboardFocus.scale.setScalar(1);cardboardFocus.material.opacity=.82}cardboardFocus=hit;cardboardFocusStart=performance.now()}let p=0;if(hit){p=Math.max(0,Math.min(1,(performance.now()-cardboardFocusStart)/800));hit.scale.setScalar(1-.25*p);hit.material.opacity=.35+.47*(1-p);if(p>=1){cardboardFocusStart=performance.now()+999999;hit.userData.cardboardAction?.()}}cbReticleBase.material.color.setHex(hit?0x00d8ff:0xffffff);cbReticleFuse.geometry.dispose();cbReticleFuse.geometry=new THREE.RingGeometry(.014,.017,48,1,Math.PI/2,Math.max(.001,Math.PI*2*p))}
 function updateGaze(){if(getViewerMode()!==ViewerMode.WEBXR)return;const xrCam=renderer.xr.getCamera(camera);const origin=new THREE.Vector3(),direction=new THREE.Vector3(0,0,-1);xrCam.getWorldPosition(origin);xrCam.getWorldDirection(direction);raycaster.set(origin,direction);const hit=raycaster.intersectObjects(pickables(),false)[0]?.object||null;const previous=gazeTarget;if(hit!==previous){if(previous&&hotspotObjects.includes(previous)&&!previous.userData.portal){previous.material.map.dispose();previous.material.map=markerTexture(previous.userData,false);previous.scale.setScalar(previous.userData.baseScale)}if(previous?.material?.color&&previous.userData?.interactive)previous.material.color.setHex(previous.userData.baseColor||0x2a2a2a);if(hit&&hotspotObjects.includes(hit)&&!hit.userData.portal){hit.material.map.dispose();hit.material.map=markerTexture(hit.userData,true);hit.scale.setScalar(hit.userData.baseScale*1.25)}gazeTarget=hit;gazeStart=performance.now();document.body.classList.remove('gazing')}if(hit){document.body.classList.add('gazing');const elapsed=performance.now()-gazeStart,progress=Math.min(1,elapsed/1200);document.documentElement.style.setProperty('--gaze',progress);updateGazeCursor(hit,progress);if(hit.material?.color&&hit.userData?.interactive)hit.material.color.setHex(hit.userData.hoverColor||0x444444);if(elapsed>1200){gazeStart=performance.now()+999999;activate(hit)}}else{document.body.classList.remove('gazing');document.documentElement.style.setProperty('--gaze',0);updateGazeCursor(null,0)}}
 renderer.xr.addEventListener('sessionstart',()=>{camera.layers.enable(0);cardboard=false;cardboardDebug.visible=false;orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();document.body.classList.remove('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';hud.visible=true;xrDebug.visible=false;document.body.classList.add('xr-presenting')});
-function syncXREyes(){if(!renderer.xr.isPresenting||stereoMode==='mono')return;const xrCam=renderer.xr.getCamera(camera);if(!xrCam?.cameras?.length)return;if(xrCam.cameras.length>=2){xrCam.cameras[0].layers.disableAll();xrCam.cameras[0].layers.enable(0);xrCam.cameras[0].layers.enable(1);xrCam.cameras[1].layers.disableAll();xrCam.cameras[1].layers.enable(0);xrCam.cameras[1].layers.enable(2)}}renderer.xr.addEventListener('sessionend',()=>{xrDebug.visible=false;hud.visible=cardboard;document.body.classList.remove('xr-presenting');document.querySelector('#controls').style.display='';document.querySelector('#top').style.display=''});
+function syncXREyes(){
+ if(!renderer.xr.isPresenting)return;
+ const xrCam=renderer.xr.getCamera(camera);
+ if(!xrCam?.cameras?.length)return;
+ for(let i=0;i<xrCam.cameras.length;i++){
+  const eye=xrCam.cameras[i];
+  eye.layers.disableAll();eye.layers.enable(0);
+  // The same depth-deformed 360° geometry is rendered independently from
+  // each real XR eye pose; SBS/TB keep their dedicated per-eye textures.
+  if(stereoMode!=='mono')eye.layers.enable(i===0?1:2);
+ }
+}renderer.xr.addEventListener('sessionend',()=>{xrDebug.visible=false;hud.visible=cardboard;document.body.classList.remove('xr-presenting');document.querySelector('#controls').style.display='';document.querySelector('#top').style.display=''});
 renderer.domElement.addEventListener('pointermove',e=>{if(getViewerMode()!==ViewerMode.DESKTOP||down)return;const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);const hit=raycaster.intersectObjects(hotspotObjects,false)[0]?.object||null;hotspotObjects.forEach(o=>{const b=o.userData.baseScale||11,s=o===hit?b*1.23:b;o.scale.lerp(new THREE.Vector3(s,s,1),.18)});renderer.domElement.style.cursor=hit?'pointer':'grab'});
 function syncXRDebug(){return;if(!renderer.xr.isPresenting)return;xrDebugCube.rotation.x+=.014;xrDebugCube.rotation.y+=.02}
 function syncCardboardDebug(){return;if(!cardboard)return;camera.updateMatrixWorld(true);camera.getWorldPosition(cardboardDebug.position);camera.getWorldQuaternion(cardboardDebug.quaternion);debugCube.rotation.x+=.012;debugCube.rotation.y+=.018}
@@ -583,6 +596,13 @@ renderer.setAnimationLoop((time)=>{
  syncHudPose();syncCardboardDebug();syncXRDebug();
  scene.traverse(o=>{if(o.userData?.animate)o.userData.animate(time,gazeTarget?.userData?.portal===o)});
  if(mode===ViewerMode.CARDBOARD&&orientation)deviceOrientation.update();
+ if(mode!==ViewerMode.DESKTOP){
+  // WebXR supplies real 6DoF head translation and per-eye poses; Cardboard
+  // supplies physical binocular stereo. Never inject desktop sway into VR:
+  // artificial head movement causes discomfort and breaks tracking.
+  depthCameraOffset.set(0,0,0);
+  if(mode===ViewerMode.CARDBOARD&&!legacyCardboard)camera.position.set(0,0,0);
+ }
  if(mode===ViewerMode.DESKTOP&&!orientation){
   const amount=parallaxDepthPixels&&effectSettings.parallaxEnabled ? Math.max(0,Math.min(100,Number(effectSettings.parallaxStrength)||0))/100 : 0;
   const autoEnabled=amount>0&&effectSettings.rotation&&effectSettings.parallaxAuto!==false;
