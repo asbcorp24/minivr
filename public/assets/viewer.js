@@ -344,7 +344,7 @@ function makeFoliageWindMask(original,w,h){
   for(let yy=-2;yy<=2;yy++)for(let xx=-2;xx<=2;xx++){
    const v=colour(sx+xx*step,sy+yy*step);sum+=v;min=Math.min(min,v);max=Math.max(max,v);
   }
-  const weight=Math.min(1,sum/25)*Math.min(1,(max-min)*3);
+  const weight=Math.min(1,sum/25)*Math.min(1,(max-min)*5);
   const i=(y*mw+x)*4;
   frame.data[i]=frame.data[i+1]=frame.data[i+2]=Math.round(weight*255);
   frame.data[i+3]=255;
@@ -356,7 +356,8 @@ function makeFoliageWindMask(original,w,h){
 }
 function installMicroMotion(material,band,count){
  if(effectSettings.parallaxMicroMotion===false||new URLSearchParams(location.search).get('micro_motion')==='0')return;
- if(band<count-2||!foliageWindMask)return;
+ const previewMode=new URLSearchParams(location.search).get('micro_motion_preview')==='1';
+ if((band<count-2&&!previewMode)||!foliageWindMask)return;
  const preview=new URLSearchParams(location.search);
  const boosted=preview.get('micro_motion_preview')==='1';
  const phase={value:0},strength={value:boosted?1:THREE.MathUtils.clamp(Number(effectSettings.parallaxMicroMotionStrength??60),0,100)/100};
@@ -370,16 +371,18 @@ function installMicroMotion(material,band,count){
 #ifdef USE_MAP
   vec2 windUv = vMapUv;
   float windMask = texture2D(foliageWindMask,windUv).r;
+  // Diagnostic preview must show movement even if the colour mask misses leaves.
+  ${boosted ? "windMask = max(windMask, 0.85);" : "windMask = smoothstep(0.025, 0.32, windMask);"}
   float phaseA = microMotionTime*1.3 + windUv.y*34.0 + sin(windUv.x*38.0);
   float phaseB = microMotionTime*.8 + windUv.x*51.0;
-  vec2 windShift = vec2(sin(phaseA)*.0025 + sin(phaseB)*.0009,cos(phaseB)*.0012);
+  vec2 windShift = vec2(sin(phaseA)*.006 + sin(phaseB)*.002,cos(phaseB)*.003);
   windUv += windShift*windMask*microMotionStrength;
   vec4 sampledDiffuseColor = texture2D(map,windUv);
   diffuseColor *= sampledDiffuseColor;
 #endif
   `);
  };
- material.customProgramCacheKey=()=> 'minivr-foliage-fragment-wind-v3';
+ material.customProgramCacheKey=()=> 'minivr-foliage-fragment-wind-v4-'+(boosted?'preview':'normal');
  microMotionMaterials.push({material,phase,speed});
 }
 function makeHybridDepthGroups(source){
