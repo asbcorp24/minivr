@@ -128,10 +128,36 @@ function eyeTexture(source,eye){
  else if(stereoMode==='tb'){t.repeat.set(1,.5);t.offset.set(0,eye==='left'?.5:0)}
  return t;
 }
+let parallaxDepthPixels=null;
+async function loadParallaxDepth(){
+ if(projection!=='360'||stereoMode!=='mono'||!effectSettings.parallaxEnabled||!effectSettings.parallaxDepth)return;
+ try{
+  const img=new Image();img.crossOrigin='anonymous';img.src=effectSettings.parallaxDepth;await img.decode();
+  const canvas=document.createElement('canvas');canvas.width=256;canvas.height=128;
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,256,128);
+  parallaxDepthPixels=ctx.getImageData(0,0,256,128).data;
+ }catch(e){console.warn('MiniVR depth map unavailable',e);}
+}
+function applyDepthGeometry(g){
+ if(!parallaxDepthPixels)return;
+ const uv=g.getAttribute('uv'),pos=g.getAttribute('position');
+ const strength=Math.max(0,Math.min(100,Number(effectSettings.parallaxStrength)||0))/100;
+ for(let i=0;i<pos.count;i++){
+  const u=((uv.getX(i)%1)+1)%1,v=Math.max(0,Math.min(.9999,uv.getY(i)));
+  const x=Math.min(255,Math.floor(u*256)),y=Math.min(127,Math.floor((1-v)*128));
+  const depth=parallaxDepthPixels[(y*256+x)*4]/255;
+  // Small radial displacement preserves panorama direction while adding depth.
+  const radius=500+(depth-.5)*strength*80;
+  const old=Math.hypot(pos.getX(i),pos.getY(i),pos.getZ(i))||500;
+  const scale=radius/old;
+  pos.setXYZ(i,pos.getX(i)*scale,pos.getY(i)*scale,pos.getZ(i)*scale);
+ }
+ pos.needsUpdate=true;g.computeVertexNormals();
+}
 function geometry(aspect=16/9){
  if(projection==='flat'){const h=2.7,w=h*aspect;return new THREE.PlaneGeometry(w,h)}
  if(projection==='180') return new THREE.SphereGeometry(500,64,40,0,Math.PI);
- return new THREE.SphereGeometry(500,64,40);
+ const g=new THREE.SphereGeometry(500,parallaxDepthPixels?256:64,parallaxDepthPixels?128:40);applyDepthGeometry(g);return g;
 }
 function sourceAspect(source){const im=source.image;if(!im?.width||!im?.height)return 16/9;let w=im.width,h=im.height;if(stereoMode==='sbs')w/=2;else if(stereoMode==='tb')h/=2;return w/h}
 function makeEye(source,eye){
@@ -155,7 +181,8 @@ function installPanorama(source){
 }
 let tiledPanorama=null;
 async function loadInitialPanorama(){
- if(projection==='360'&&stereoMode==='mono'&&root.dataset.tiles){
+ await loadParallaxDepth();
+ if(projection==='360'&&stereoMode==='mono'&&root.dataset.tiles&&!parallaxDepthPixels){
   try{
    tiledPanorama=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer,mirror:!!effectSettings.mirrorHorizontal});
    document.body.classList.remove('scene-loading');return;
