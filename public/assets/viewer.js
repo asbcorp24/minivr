@@ -300,7 +300,10 @@ const microMotionMaterials=[];
 function installMicroMotion(material,band,count){
  if(effectSettings.parallaxMicroMotion===false||new URLSearchParams(location.search).get('micro_motion')==='0')return;
  if(band<count-2)return;
- const phase={value:0},strength={value:THREE.MathUtils.clamp(Number(effectSettings.parallaxMicroMotionStrength??25),0,100)/100};
+ const preview=new URLSearchParams(location.search);
+ const boosted=preview.get('micro_motion_preview')==='1';
+ const phase={value:0},strength={value:boosted?1:THREE.MathUtils.clamp(Number(effectSettings.parallaxMicroMotionStrength??60),0,100)/100};
+ const speed=THREE.MathUtils.clamp(Number(effectSettings.parallaxMicroMotionSpeed??1),.1,5);
  material.onBeforeCompile=shader=>{
   shader.uniforms.microMotionTime=phase;
   shader.uniforms.microMotionStrength=strength;
@@ -311,11 +314,11 @@ function installMicroMotion(material,band,count){
     float microWave = sin(microMotionTime * 0.73 + position.x * 0.18 + position.y * 0.11)
                     + 0.4 * sin(microMotionTime * 1.09 - position.z * 0.21);
     float microPoleFade = clamp(1.0 - abs(normalize(position).y), 0.0, 1.0);
-    transformed += normal * (microSpatial * microWave * microPoleFade * foliageWeight * microMotionStrength * 0.16);
+    transformed += normal * (microSpatial * microWave * microPoleFade * foliageWeight * microMotionStrength * 0.6);
   `);
  };
  material.customProgramCacheKey=()=> 'minivr-foliage-motion-v2';
- microMotionMaterials.push({material,phase});
+ microMotionMaterials.push({material,phase,speed});
 }
 function makeHybridDepthGroups(source){
  const count=Math.max(2,Math.min(10,Number(effectSettings.parallaxGroups)||5));
@@ -636,7 +639,7 @@ renderer.domElement.addEventListener('pointermove',event=>{
 renderer.domElement.addEventListener('pointerleave',()=>depthPointer.set(0,0));
 renderer.setAnimationLoop((time)=>{
  // GPU-side micro-motion for the nearest depth groups; no CPU texture updates.
- for(const entry of microMotionMaterials)entry.phase.value=time*.001;
+ for(const entry of microMotionMaterials)entry.phase.value=time*.001*entry.speed;
  tiledPanorama?.update();
  effectSystem?.update(time,camera);atmosphereSystem?.update(time,camera);moonSystem?.update(time,camera);environmentSystem?.update(time,camera);
  if(getViewerMode()===ViewerMode.DESKTOP&&!down&&!orientation&&effectSettings.rotation){
