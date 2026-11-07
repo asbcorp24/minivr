@@ -30,14 +30,57 @@ if(panel){
   const depth=await loadImage(panel.dataset.depth),c=document.createElement('canvas');c.width=1024;c.height=512;
   const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(depth,0,0,1024,512);
   const pixels=ctx.getImageData(0,0,1024,512).data;
-  for(let i=0;i<maskPixels.length;i++)maskPixels[i]=pixels[i*4]>174?1:0;
+  // Relative depth map: bright = near. Use percentile-based separation rather
+  // than a fixed 0.68 threshold, and reject smooth gradients with no objects.
+  const w=1024,h=512,depthValues=new Uint8Array(w*h),hist=new Uint32Array(256);
+  for(let i=0;i<depthValues.length;i++){const v=pixels[i*4];depthValues[i]=v;hist[v]++;}
+  const percentile=q=>{let count=0;for(let i=0;i<256;i++){count+=hist[i];if(count>=w*h*q)return i;}return 255;};
+  const low=percentile(.10),high=percentile(.90);
+  if(high-low<18){maskPixels.fill(0);maskReady=true;paintMask();status.textContent='На карте глубины недостаточно контраста. Уточните маску вручную.';return;}
+  const sensitivity=Number(panel.querySelector('[data-ai-depth-sensitivity]')?.value||65)/100;
+  const cutoff=low+(high-low)*sensitivity;
+  const edgeThreshold=Math.max(7,(high-low)*.12);
+  // Prefer coherent near regions with depth discontinuities. Keep horizontal
+  // seam continuity by wrapping x when sampling neighboring pixels.
+  const candidate=new Uint8Array(w*h);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+   const i=y*w+x,v=depthValues[i];if(v<cutoff)continue;
+   const left=depthValues[y*w+(x+w-3)%w],right=depthValues[y*w+(x+3)%w];
+   const up=depthValues[Math.max(0,y-3)*w+x],down=depthValues[Math.min(h-1,y+3)*w+x];
+   const edge=Math.max(Math.abs(v-left),Math.abs(v-right),Math.abs(v-up),Math.abs(v-down));
+   candidate[i]=(v>=low+(high-low)*.82||edge>=edgeThreshold)?1:0;
+  }
+  // Retain connected foreground regions; discard isolated depth noise.
+  const seen=new Uint8Array(w*h),queue=new Int32Array(w*h);
+  maskPixels.fill(0);
+  for(let start=0;start<w*h;start++){
+   if(!candidate[start]||seen[start])continue;
+   let head=0,tail=1;queue[0]=start;seen[start]=1;
+   while(head<tail){
+    const i=queue[head++],x=i%w,y=(i/w)|0;
+    const neighbors=[y*w+(x+w-1)%w,y*w+(x+1)%w];
+    if(y>0)neighbors.push(i-w);if(y<h-1)neighbors.push(i+w);
+    for(const j of neighbors)if(candidate[j]&&!seen[j]){seen[j]=1;queue[tail++]=j;}
+   }
+   if(tail>=32&&tail<w*h*.55)for(let k=0;k<tail;k++)maskPixels[queue[k]]=1;
+  }
+  // Expand by 2 pixels to cover antialiased foreground silhouettes.
+  const expanded=maskPixels.slice();
+  for(let y=1;y<h-1;y++)for(let x=0;x<w;x++){
+   const i=y*w+x;if(!maskPixels[i])continue;
+   for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)expanded[(y+dy)*w+(x+dx+w)%w]=1;
+  }
+  maskPixels.set(expanded);
   maskReady=true;paintMask();
+  const coverage=maskPixels.reduce((sum,value)=>sum+value,0)/maskPixels.length;
+  status.textContent='Автоматическая маска по карте глубины: '+(coverage*100).toFixed(1)+'% площади. Красным показаны участки для восстановления.';
  };
  if(maskCanvas){
   loadImage(panel.dataset.image).then(img=>{originalImage=img;drawCompare(false);return resetMask();}).catch(err=>{console.warn('MiniVR mask editor',err);status.textContent='Не удалось загрузить редактор маски: '+err.message;});
   panel.querySelector('[data-ai-mask-add]')?.addEventListener('click',()=>{maskMode=1;});
   panel.querySelector('[data-ai-mask-erase]')?.addEventListener('click',()=>{maskMode=0;});
   panel.querySelector('[data-ai-mask-reset]')?.addEventListener('click',()=>resetMask().catch(console.error));
+  panel.querySelector('[data-ai-depth-sensitivity]')?.addEventListener('input',()=>resetMask().catch(console.error));
   const stroke=event=>{
    if(!maskReady)return;
    const rect=maskCanvas.getBoundingClientRect(),x=Math.floor((event.clientX-rect.left)*1024/rect.width),y=Math.floor((event.clientY-rect.top)*512/rect.height);
@@ -177,7 +220,7 @@ if(panel){
     for(let c=0;c<3;c++)values[c*plane+i]=rgb.data[i*4+c]/255;
    }
    if(selected<100)throw Error('Карта глубины не содержит достаточно ближних объектов.');
-   if(selected>plane*.65)throw Error('Слишком большая область маски. Нужна карта с различимым фоном.');
+   if(selected>plane*.65)throw Error('Слишком большая область маски. Увеличьте порог глубины или удалите лишние участки кистью.');
    setProgress(75,'ИИ восстанавливает скрытый фон. Во время вычисления процент не меняется…');
    const outputs=await session.run({image:new ort.Tensor('float32',values,[1,3,h,w]),mask:new ort.Tensor('float32',mask,[1,1,h,w])});
    setProgress(85,'Обработка результата нейросети…');
