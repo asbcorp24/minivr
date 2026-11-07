@@ -28,7 +28,12 @@ $rawLamps=json_decode((string)($_POST['effectLamps']??'[]'),true);if(is_array($r
 <h3>ИИ-восстановление скрытого фона (LaMa)</h3>
 <p>Нейросеть работает в браузере. На первом запуске скачивается модель; обработка может быть длительной. Результат — приближённый фон, а не достоверная реконструкция.</p>
 <button type="button" data-ai-generate>Создать фон с помощью ИИ</button>
-<p data-ai-status>Для генерации требуется сохранённая карта глубины. Поддерживается браузер с WebAssembly.</p>
+<div style="display:flex;align-items:center;gap:12px;max-width:640px;margin-top:12px">
+<progress data-ai-progress max="100" value="0" aria-label="Ход генерации фона" style="width:100%;height:20px"></progress>
+<strong data-ai-percent style="min-width:45px;text-align:right">0%</strong>
+</div>
+<p data-ai-status aria-live="polite">Для генерации требуется сохранённая карта глубины. Поддерживается браузер с WebAssembly.</p>
+<small>Процент загрузки модели рассчитывается по полученным байтам; этап вычисления ИИ отображается без выдуманного процента внутри этапа.</small>
 <?php if(!empty($savedEffects['parallaxBackground'])):?>
 <p><strong>Восстановленный фон сохранён.</strong> <a href="<?=htmlspecialchars($savedEffects['parallaxBackground'],ENT_QUOTES)?>" target="_blank" rel="noopener">Открыть PNG</a></p>
 <img data-ai-saved src="<?=htmlspecialchars($savedEffects['parallaxBackground'],ENT_QUOTES)?>" alt="Сохранённый фоновый слой" style="width:100%;max-width:640px;aspect-ratio:2/1;object-fit:contain">
