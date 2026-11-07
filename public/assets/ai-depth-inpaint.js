@@ -21,9 +21,13 @@ if(panel){
  const paintMask=()=>{
   if(!maskCanvas||!originalImage)return;
   const ctx=maskCanvas.getContext('2d');ctx.clearRect(0,0,1024,512);ctx.drawImage(originalImage,0,0,1024,512);
-  const overlay=ctx.createImageData(1024,512);
-  for(let i=0;i<maskPixels.length;i++)if(maskPixels[i]){overlay.data[i*4]=255;overlay.data[i*4+3]=125;}
-  ctx.putImageData(overlay,0,0);
+  // putImageData replaces pixels, including transparent ones, and used to
+  // erase the panorama. Composite the mask instead of overwriting the canvas.
+  const overlay=document.createElement('canvas');overlay.width=1024;overlay.height=512;
+  const overlayCtx=overlay.getContext('2d'),image=overlayCtx.createImageData(1024,512);
+  for(let i=0;i<maskPixels.length;i++)if(maskPixels[i]){image.data[i*4]=255;image.data[i*4+3]=125;}
+  overlayCtx.putImageData(image,0,0);
+  ctx.drawImage(overlay,0,0);
  };
  const resetMask=async()=>{
   if(!panel.dataset.depth)return;
@@ -39,30 +43,40 @@ if(panel){
   if(high-low<18){maskPixels.fill(0);maskReady=true;paintMask();status.textContent='На карте глубины недостаточно контраста. Уточните маску вручную.';return;}
   const sensitivity=Number(panel.querySelector('[data-ai-depth-sensitivity]')?.value||65)/100;
   const cutoff=low+(high-low)*sensitivity;
-  // Select complete near-depth regions, not depth discontinuity outlines.
-  // Depth maps represent distance, not semantic object classes.
-  // Exclude bottom-connected floor/ground only when it forms a large area;
-  // preserve smaller foreground objects even when they touch the bottom.
-  const candidate=new Uint8Array(w*h);
-  for(let i=0;i<candidate.length;i++)candidate[i]=depthValues[i]>=cutoff?1:0;
-  const seen=new Uint8Array(w*h),queue=new Int32Array(w*h);
+  // Keep whole near-depth silhouettes. Do not discard connected components
+  // simply because they touch the bottom edge: that removes arches/railings.
+  // Approximate the smooth ground depth per row with a robust lower-image
+  // percentile, then keep near pixels that rise above the ground profile.
+  const rowGround=new Uint8Array(h);
+  for(let y=0;y<h;y++){
+   const rowHist=new Uint32Array(256);
+   for(let x=0;x<w;x+=4)rowHist[depthValues[y*w+x]]++;
+   let total=0,ground=0;
+   for(let v=0;v<256;v++){total+=rowHist[v];if(total>=w/4*.65){ground=v;break;}}
+   rowGround[y]=ground;
+  }
+  const candidate=new Uint8Array(w*h),seen=new Uint8Array(w*h),queue=new Int32Array(w*h);
+  // In the lower panorama, ground generally varies smoothly by row; retain
+  // pronounced depth peaks rather than deleting the entire connected region.
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+   const i=y*w+x,v=depthValues[i];
+   const near=v>=cutoff;
+   const foregroundPeak=v>=rowGround[y]+Math.max(12,(high-low)*.10);
+   candidate[i]=near&&(y<h*.58||foregroundPeak)?1:0;
+  }
   maskPixels.fill(0);
   for(let start=0;start<w*h;start++){
    if(!candidate[start]||seen[start])continue;
-   let head=0,tail=1,touchesBottom=false,top=h,bottom=0;
-   queue[0]=start;seen[start]=1;
+   let head=0,tail=1;queue[0]=start;seen[start]=1;
    while(head<tail){
     const i=queue[head++],x=i%w,y=(i/w)|0;
-    if(y===h-1)touchesBottom=true;
-    if(y<top)top=y;if(y>bottom)bottom=y;
     const left=y*w+(x+w-1)%w,right=y*w+(x+1)%w;
     if(candidate[left]&&!seen[left]){seen[left]=1;queue[tail++]=left;}
     if(candidate[right]&&!seen[right]){seen[right]=1;queue[tail++]=right;}
     if(y>0&&candidate[i-w]&&!seen[i-w]){seen[i-w]=1;queue[tail++]=i-w;}
     if(y<h-1&&candidate[i+w]&&!seen[i+w]){seen[i+w]=1;queue[tail++]=i+w;}
    }
-   const broadGround=touchesBottom&&tail>w*h*.12&&bottom-top>h*.15;
-   if(tail>=40&&!broadGround)for(let k=0;k<tail;k++)maskPixels[queue[k]]=1;
+   if(tail>=24)for(let k=0;k<tail;k++)maskPixels[queue[k]]=1;
   }
   // Small dilation covers anti-aliased silhouette edges. Wrap longitude.
   const expanded=maskPixels.slice();
