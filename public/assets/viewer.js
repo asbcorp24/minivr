@@ -202,8 +202,22 @@ function makeEye(source,eye){
  else if(projection==='180')mesh.rotation.y=Math.PI/2;
  mesh.layers.set(eye==='left'?1:2);scene.add(mesh);return mesh;
 }
+let aiBackgroundMesh=null;
+function installAiBackground(){
+ if(aiBackgroundMesh){scene.remove(aiBackgroundMesh);aiBackgroundMesh.geometry.dispose();aiBackgroundMesh.material.map?.dispose();aiBackgroundMesh.material.dispose();aiBackgroundMesh=null;}
+ if(!parallaxDepthPixels||projection!=='360'||stereoMode!=='mono'||!effectSettings.parallaxBackground)return;
+ const url=effectSettings.parallaxBackground;
+ new THREE.TextureLoader().load(url,texture=>{
+  texture.colorSpace=THREE.SRGBColorSpace;
+  const geo=new THREE.SphereGeometry(80,96,48);
+  if(effectSettings.mirrorHorizontal){const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
+  const mesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,depthWrite:false}));
+  mesh.layers.set(0);mesh.renderOrder=-10;scene.add(mesh);aiBackgroundMesh=mesh;
+ },undefined,err=>console.warn('AI background unavailable',err));
+}
 function installPanorama(source){
  source.colorSpace=THREE.SRGBColorSpace;
+ installAiBackground();
  const previous=[...new Set([leftMesh,rightMesh].filter(Boolean))];
  if(stereoMode==='mono'){
   const g=geometry(sourceAspect(source));if(effectSettings.mirrorHorizontal){const uv=g.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}const mesh=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:source,side:projection==='flat'?THREE.FrontSide:THREE.BackSide}));
