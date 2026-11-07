@@ -274,25 +274,45 @@ function clearHybridMeshes(){
 }
 // Fast local foliage candidate mask: chromatic green dominance + local texture.
 // It is a conservative browser-only heuristic, not semantic AI segmentation.
+// Seasonal foliage candidate classifier: green, yellow-green, gold, orange,
+// muted red and brown. Texture and local colour variation suppress flat walls.
+// This is an inexpensive heuristic, NOT semantic foliage segmentation.
 function foliageMaskForGeometry(geo,imagePixels,w,h){
  const uv=geo.getAttribute('uv'),out=new Float32Array(uv.count);
  const sample=(x,y)=>{
   x=((x%w)+w)%w;y=Math.max(0,Math.min(h-1,y));
   const i=(y*w+x)*4,r=imagePixels[i]/255,g=imagePixels[i+1]/255,b=imagePixels[i+2]/255;
-  const green=Math.max(0,Math.min(1,(g-Math.max(r,b)*.83-.035)*5));
-  const brightness=Math.max(r,g,b);
-  return green*(brightness>.12&&brightness<.88?1:0);
+  const hi=Math.max(r,g,b),lo=Math.min(r,g,b),delta=hi-lo;
+  if(hi<.12||hi>.94||delta<.075)return 0;
+  // HSV hue in degrees, saturation and value.
+  let hue=0;
+  if(delta>0){
+   if(hi===r)hue=60*(((g-b)/delta+6)%6);
+   else if(hi===g)hue=60*((b-r)/delta+2);
+   else hue=60*((r-g)/delta+4);
+  }
+  const saturation=delta/hi;
+  // Warm red foliage excludes magenta and highly saturated artificial reds.
+  const green=hue>=55&&hue<=165;
+  const yellow=hue>=34&&hue<55;
+  const orange=hue>=15&&hue<34;
+  const red=(hue>=0&&hue<15)||(hue>=345&&hue<=360);
+  const brown=hue>=10&&hue<=48&&hi<.60;
+  const seasonal=green?1:yellow?.95:orange?.82:red?.62:brown?.56:0;
+  return seasonal*Math.min(1,saturation*3)*(hi>.2?1:.5);
  };
  for(let i=0;i<uv.count;i++){
   const x=Math.floor((1-uv.getX(i))*w),y=Math.floor((1-uv.getY(i))*h);
-  const dx=Math.max(1,Math.floor(w/256)),dy=Math.max(1,Math.floor(h/128));
-  let sum=0,min=1,max=0;
-  for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){
+  const dx=Math.max(1,Math.floor(w/512)),dy=Math.max(1,Math.floor(h/256));
+  let sum=0,min=1,max=0,chromatic=0;
+  for(let yy=-2;yy<=2;yy++)for(let xx=-2;xx<=2;xx++){
    const v=sample(x+xx*dx,y+yy*dy);sum+=v;min=Math.min(min,v);max=Math.max(max,v);
+   if(v>.12)chromatic++;
   }
-  // Flat green walls and smooth fields should move less than textured foliage.
-  const textured=Math.min(1,(max-min)*3.5);
-  out[i]=Math.min(1,sum/9)*textured;
+  // Require both local fine-scale variation and a meaningful cluster of foliage colours.
+  const textured=Math.min(1,(max-min)*4.5);
+  const density=Math.min(1,chromatic/12);
+  out[i]=Math.min(1,sum/25)*textured*density;
  }
  geo.setAttribute('foliageWeight',new THREE.Float32BufferAttribute(out,1));
 }
