@@ -25,7 +25,7 @@ $rawLamps=json_decode((string)($_POST['effectLamps']??'[]'),true);if(is_array($r
 <input type="hidden" data-depth-strength value="25">
 </div>
 <div data-ai-background data-id="<?=(int)$editId?>" data-image="<?=htmlspecialchars($existing['image'],ENT_QUOTES)?>" data-depth="<?=htmlspecialchars((string)($savedEffects['parallaxDepth']??''),ENT_QUOTES)?>">
-<h3>ИИ-восстановление скрытого фона (DeepFill v2)</h3>
+<h3>ИИ-восстановление скрытого фона (LaMa)</h3>
 <p>Нейросеть работает в браузере. На первом запуске скачивается модель; обработка может быть длительной. Результат — приближённый фон, а не достоверная реконструкция.</p>
 <button type="button" data-ai-generate>Создать фон с помощью ИИ</button>
 <p data-ai-status>Для генерации требуется сохранённая карта глубины. Поддерживается браузер с WebAssembly.</p>
