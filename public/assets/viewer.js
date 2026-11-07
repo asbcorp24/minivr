@@ -202,9 +202,59 @@ function makeEye(source,eye){
  else if(projection==='180')mesh.rotation.y=Math.PI/2;
  mesh.layers.set(eye==='left'?1:2);scene.add(mesh);return mesh;
 }
+// A lightweight, local depth-guided background approximation. This is not
+// generative AI: unknown pixels are propagated from nearby visible background.
+function makeDepthBackground(source){
+ if(!parallaxDepthPixels||effectSettings.parallaxOcclusionFill===false)return null;
+ const image=source.image;
+ if(!image?.width||!image?.height)return null;
+ try{
+  const w=512,h=256,canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0,w,h);
+  const frame=ctx.getImageData(0,0,w,h),pixels=frame.data;
+  const original=new Uint8ClampedArray(pixels),mask=new Uint8Array(w*h);
+  // Foreground pixels are replaced by nearest known background colors.
+  let count=0;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+   const depth=sampleDepthBilinear((x+.5)/w,1-(y+.5)/h);
+   if(depth>.64){mask[y*w+x]=1;count++;}
+  }
+  if(!count||count>w*h*.75)return null;
+  let known=new Uint8Array(w*h);
+  for(let i=0;i<known.length;i++)known[i]=mask[i]?0:1;
+  for(let pass=0;pass<48;pass++){
+   const next=known.slice(),updates=[];
+   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const i=y*w+x;if(known[i])continue;
+    const neighbors=[y*w+(x+w-1)%w,y*w+(x+1)%w];
+    if(y>0)neighbors.push(i-w);
+    if(y<h-1)neighbors.push(i+w);
+    let r=0,g=0,b=0,n=0;
+    for(const j of neighbors)if(known[j]){r+=pixels[j*4];g+=pixels[j*4+1];b+=pixels[j*4+2];n++;}
+    if(n){updates.push([i,r/n,g/n,b/n]);next[i]=1;}
+   }
+   if(!updates.length)break;
+   for(const [i,r,g,b] of updates){pixels[i*4]=r;pixels[i*4+1]=g;pixels[i*4+2]=b;}
+   known=next;
+  }
+  // Keep non-foreground pixels faithful to the original panorama.
+  for(let i=0;i<mask.length;i++)if(!mask[i])pixels.set(original.subarray(i*4,i*4+4),i*4);
+  ctx.putImageData(frame,0,0);
+  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
+  texture.wrapS=THREE.RepeatWrapping;
+  const geo=new THREE.SphereGeometry(80,96,48);
+  if(effectSettings.mirrorHorizontal){const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
+  const mesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,depthWrite:false}));
+  mesh.layers.set(0);mesh.renderOrder=-10;
+  return mesh;
+ }catch(err){console.warn('Depth background fill unavailable',err);return null;}
+}
+let depthBackgroundMesh=null;
 function installPanorama(source){
  source.colorSpace=THREE.SRGBColorSpace;
  const previous=[...new Set([leftMesh,rightMesh].filter(Boolean))];
+ if(depthBackgroundMesh){scene.remove(depthBackgroundMesh);depthBackgroundMesh.geometry.dispose();depthBackgroundMesh.material.map?.dispose();depthBackgroundMesh.material.dispose();depthBackgroundMesh=null;}
+ if(projection==='360'&&stereoMode==='mono'&&parallaxDepthPixels){depthBackgroundMesh=makeDepthBackground(source);if(depthBackgroundMesh)scene.add(depthBackgroundMesh);}
  if(stereoMode==='mono'){
   const g=geometry(sourceAspect(source));if(effectSettings.mirrorHorizontal){const uv=g.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}const mesh=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:source,side:projection==='flat'?THREE.FrontSide:THREE.BackSide}));
   if(projection==='flat'){mesh.position.set(3.2,0,0);mesh.rotation.y=-Math.PI/2;}else if(projection==='180')mesh.rotation.y=Math.PI/2;
