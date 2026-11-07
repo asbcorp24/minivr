@@ -4,10 +4,32 @@ const panel=document.querySelector('[data-ai-background]');
 if(panel){
  const button=panel.querySelector('[data-ai-generate]'),status=panel.querySelector('[data-ai-status]');
  const preview=panel.querySelector('[data-ai-preview]');
+ const bar=panel.querySelector('[data-ai-progress]'),percent=panel.querySelector('[data-ai-percent]');
+ const setProgress=(value,label)=>{
+  const n=Math.max(0,Math.min(100,Math.round(value)));
+  if(bar){bar.value=n;bar.setAttribute('aria-valuenow',String(n));}
+  if(percent)percent.textContent=n+'%';
+  if(label)status.textContent=label;
+ };
+ // Stream the model response so download progress reflects actual bytes.
+ async function downloadModel(response){
+  const total=Number(response.headers.get('content-length'))||0;
+  if(!response.body||!total){setProgress(8,'Загрузка модели (размер не сообщён сервером)…');return response.arrayBuffer();}
+  const reader=response.body.getReader(),chunks=[];let received=0;
+  while(true){
+   const {done,value}=await reader.read();if(done)break;
+   chunks.push(value);received+=value.byteLength;
+   setProgress(5+Math.min(45,received/total*45),'Загрузка модели: '+(received/1048576).toFixed(1)+' / '+(total/1048576).toFixed(1)+' МБ');
+  }
+  const bytes=new Uint8Array(received);let offset=0;
+  for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
+  return bytes.buffer;
+ }
  // Safe non-AI fallback: propagate neighboring background colors into the
  // foreground mask. The original depth map and panorama remain unchanged.
  async function generateFallbackBackground(){
   const load=async url=>{const img=new Image();img.crossOrigin='anonymous';img.src=url;await img.decode();return img;};
+  setProgress(82,'Резервное заполнение фона…');
   const [photo,depth]=await Promise.all([load(panel.dataset.image),load(panel.dataset.depth)]);
   const w=1024,h=512,c=document.createElement('canvas');c.width=w;c.height=h;
   const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(photo,0,0,w,h);
@@ -44,14 +66,16 @@ if(panel){
   const blob=await new Promise(resolve=>c.toBlob(resolve,'image/png'));
   if(!blob)throw Error('Не удалось создать PNG');
   const form=new FormData();form.append('id',panel.dataset.id);form.append('background',blob,'background.png');
+  setProgress(95,'Сохранение фона…');
   const response=await fetch('/admin/depth-background-upload.php',{method:'POST',body:form,credentials:'same-origin'});
   const result=await response.json();
   if(!response.ok||!result.ok)throw Error(result.error||'Ошибка сохранения');
   const saved=panel.querySelector('[data-ai-saved]');if(saved)saved.src=result.url+'?v='+Date.now();
-  status.textContent='Создан и сохранён приближённый фон без ИИ: текущая ONNX-модель несовместима. Обновите просмотр.';
+  setProgress(100,'Создан и сохранён приближённый фон без ИИ. Обновите просмотр.');
  }
  button?.addEventListener('click',async()=>{
   button.disabled=true;
+  setProgress(0,'Начинаю обработку…');
   let session;
   try{
    if(!panel.dataset.depth)throw Error('Сначала сгенерируйте и сохраните карту глубины, затем обновите страницу.');
@@ -66,7 +90,8 @@ if(panel){
    const cache=typeof caches!=='undefined'?await caches.open('minivr-lama-model-v1').catch(()=>null):null;
    let response=cache?await cache.match(model):null;
    if(!response){response=await fetch(model).catch(()=>null);if(!response?.ok){response=await fetch(remoteModel);if(!response.ok)throw Error('Не удалось загрузить LaMa: HTTP '+response.status);}if(cache)await cache.put(model,response.clone()).catch(()=>{});}
-   bytes=await response.arrayBuffer();
+   bytes=await downloadModel(response);
+   setProgress(55,'Инициализация нейросети…');
    try{
     session=await ort.InferenceSession.create(bytes,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
    }catch(error){
@@ -77,7 +102,7 @@ if(panel){
     }
     throw error;
    }
-   status.textContent='Подготовка маски по карте глубины…';
+   setProgress(65,'Подготовка маски по карте глубины…');
    const load=async url=>{const img=new Image();img.crossOrigin='anonymous';img.src=url;await img.decode();return img;};
    const [photo,depth]=await Promise.all([load(panel.dataset.image),load(panel.dataset.depth)]);
    const w=512,h=512,makeCanvas=()=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;};
@@ -94,8 +119,9 @@ if(panel){
    }
    if(selected<100)throw Error('Карта глубины не содержит достаточно ближних объектов.');
    if(selected>plane*.65)throw Error('Слишком большая область маски. Нужна карта с различимым фоном.');
-   status.textContent='ИИ восстанавливает скрытый фон. Это может занять несколько минут…';
+   setProgress(75,'ИИ восстанавливает скрытый фон. Во время вычисления процент не меняется…');
    const outputs=await session.run({image:new ort.Tensor('float32',values,[1,3,h,w]),mask:new ort.Tensor('float32',mask,[1,1,h,w])});
+   setProgress(85,'Обработка результата нейросети…');
    const tensor=outputs.output??Object.values(outputs)[0];
    if(!tensor?.data||tensor.data.length<plane*3)throw Error('Модель вернула некорректный результат.');
    // Preserve original unmasked pixels and blend the generated region at the boundary.
@@ -122,11 +148,11 @@ if(panel){
    preview.src=final.toDataURL('image/png');preview.hidden=false;
    const blob=await new Promise(resolve=>final.toBlob(resolve,'image/png'));if(!blob)throw Error('PNG не создан');
    const form=new FormData();form.append('id',panel.dataset.id);form.append('background',blob,'background.png');
-   status.textContent='Сохраняю восстановленный фон на Timeweb…';
+   setProgress(95,'Сохраняю восстановленный фон на Timeweb…');
    const saved=await fetch('/admin/depth-background-upload.php',{method:'POST',body:form,credentials:'same-origin'});
    const answer=await saved.json();if(!saved.ok||!answer.ok)throw Error(answer.error||'Ошибка сохранения');
    const existing=panel.querySelector('[data-ai-saved]');if(existing)existing.src=answer.url+'?v='+Date.now();
-   status.textContent='Фон создан и сохранён. Обновите просмотр панорамы.';
+   setProgress(100,'Фон создан и сохранён. Обновите просмотр панорамы.');
   }catch(err){console.error('MiniVR AI inpainting',err);status.textContent='Ошибка: '+err.message;}
   finally{await session?.release?.().catch(()=>{});button.disabled=false;}
  });
