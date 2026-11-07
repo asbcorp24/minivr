@@ -129,6 +129,13 @@ function eyeTexture(source,eye){
  return t;
 }
 let parallaxDepthPixels=null;
+let manualFoliageMaskImage=null;
+async function loadManualFoliageMask(){
+ manualFoliageMaskImage=null;
+ if(!effectSettings.parallaxFoliageMask)return;
+ try{const img=new Image();img.src=effectSettings.parallaxFoliageMask;await img.decode();manualFoliageMaskImage=img;}
+ catch(e){console.warn('MiniVR manual foliage mask unavailable',e);}
+}
 async function loadParallaxDepth(){
  if(projection!=='360'||stereoMode!=='mono'||!effectSettings.parallaxEnabled||!effectSettings.parallaxDepth)return;
  try{
@@ -357,7 +364,9 @@ function makeFoliageWindMask(original,w,h){
 function installMicroMotion(material,band,count){
  if(effectSettings.parallaxMicroMotion===false||new URLSearchParams(location.search).get('micro_motion')==='0')return;
  // Never animate every depth layer: restrict wind to the two foreground bands.
- if(band<count-2||!foliageWindMask)return;
+ if(!foliageWindMask)return;
+ // Manual mask already defines exactly what moves; do not restrict it to depth bands.
+ if(!manualFoliageMaskImage&&band<count-2)return;
  const preview=new URLSearchParams(location.search);
  const boosted=preview.get('micro_motion_preview')==='1';
  const showMask=preview.get('micro_motion_mask')==='1';
@@ -383,7 +392,7 @@ function installMicroMotion(material,band,count){
 #endif
   `);
  };
- material.customProgramCacheKey=()=> 'minivr-foliage-fragment-wind-v5-'+(boosted?'preview':'normal')+(showMask?'-mask':'');
+ material.customProgramCacheKey=()=> 'minivr-foliage-fragment-wind-v6-'+(boosted?'preview':'normal')+(showMask?'-mask':'');
  microMotionMaterials.push({material,phase,speed});
 }
 function makeHybridDepthGroups(source){
@@ -396,7 +405,11 @@ function makeHybridDepthGroups(source){
  const base=document.createElement('canvas');base.width=w;base.height=h;
  const baseCtx=base.getContext('2d',{willReadFrequently:true});baseCtx.drawImage(image,0,0,w,h);
  const original=baseCtx.getImageData(0,0,w,h).data;
- foliageWindMask=effectSettings.parallaxMicroMotion!==false?makeFoliageWindMask(original,w,h):null;
+ foliageWindMask=null;
+ if(effectSettings.parallaxMicroMotion!==false){
+  if(manualFoliageMaskImage){const maskCanvas=document.createElement('canvas');maskCanvas.width=512;maskCanvas.height=256;const maskCtx=maskCanvas.getContext('2d');maskCtx.drawImage(manualFoliageMaskImage,0,0,512,256);foliageWindMask=new THREE.CanvasTexture(maskCanvas);foliageWindMask.wrapS=THREE.RepeatWrapping;foliageWindMask.minFilter=THREE.LinearFilter;}
+  else foliageWindMask=makeFoliageWindMask(original,w,h);
+ }
  const depth=new Float32Array(w*h);
  for(let y=0;y<h;y++)for(let x=0;x<w;x++)depth[y*w+x]=sampleDepthBilinear((x+.5)/w,1-(y+.5)/h);
  for(let band=0;band<count;band++){
@@ -449,7 +462,7 @@ function installPanorama(source){
 }
 let tiledPanorama=null;
 async function loadInitialPanorama(){
- await loadParallaxDepth();
+ await Promise.all([loadParallaxDepth(),loadManualFoliageMask()]);
  if(projection==='360'&&stereoMode==='mono'&&root.dataset.tiles&&!parallaxDepthPixels){
   try{
    tiledPanorama=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer,mirror:!!effectSettings.mirrorHorizontal});
