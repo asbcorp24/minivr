@@ -42,7 +42,8 @@ $rawLamps=json_decode((string)($_POST['effectLamps']??'[]'),true);if(is_array($r
 <canvas data-ai-mask-canvas width="1024" height="512" style="width:100%;aspect-ratio:2/1;touch-action:none;cursor:crosshair;border:1px solid #668;border-radius:8px"></canvas>
 <p><small>Изменения маски применяются при следующей генерации; исходная панорама и карта глубины не изменяются.</small></p>
 </div>
-<button t<button type="button" data-ai-generate-layers>Создать и сохранить слои глубины автоматически</button> ype="button" data-ai-generate>Создать фон с помощью ИИ</button>
+<button type="button" data-ai-generate-layers>Создать и сохранить слои глубины автоматически</button>
+<button type="button" data-ai-generate>Создать фон с помощью ИИ</button>
 <div style="max-width:720px;margin:12px 0">
 <strong>Сравнение результата</strong>
 <div style="display:flex;gap:8px;margin:8px 0">
