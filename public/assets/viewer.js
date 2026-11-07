@@ -147,7 +147,9 @@ function applyDepthGeometry(g){
   const x=Math.min(255,Math.floor(u*256)),y=Math.min(127,Math.floor((1-v)*128));
   const depth=parallaxDepthPixels[(y*256+x)*4]/255;
   // Small radial displacement preserves panorama direction while adding depth.
-  const radius=500+(depth-.5)*strength*80;
+  // A nearby depth shell makes binocular disparity and small viewpoint changes visible.
+  // Keep displacement conservative to limit holes and distortion in mono 360 imagery.
+  const radius=24+(depth-.5)*strength*12;
   const old=Math.hypot(pos.getX(i),pos.getY(i),pos.getZ(i))||500;
   const scale=radius/old;
   pos.setXYZ(i,pos.getX(i)*scale,pos.getY(i)*scale,pos.getZ(i)*scale);
@@ -292,6 +294,8 @@ async function startImmersiveVR(){
 vrControl.onclick=startImmersiveVR;
 
 function updateCardboardEyes(){
+ // A wider, but bounded, stereo baseline is useful for the depth-derived shell.
+ cardboardStereo.eyeSep=parallaxDepthPixels&&stereoMode==='mono' ? .12 : .064;
  const size=renderer.getDrawingBufferSize(new THREE.Vector2()),half=Math.max(1,Math.floor(size.x/2));
  camera.aspect=half/Math.max(1,size.y);camera.updateProjectionMatrix();camera.updateMatrixWorld(true);cardboardStereo.aspect=.5;cardboardStereo.update(camera);
  const l=cardboardStereo.cameraL,r=cardboardStereo.cameraR;
@@ -407,6 +411,15 @@ function syncHudPose(){
  head.updateMatrixWorld(true);head.getWorldPosition(hud.position);head.getWorldQuaternion(hud.quaternion);hud.scale.setScalar(1);
 }
 // Visible day/night grading on the actual panorama canvas, including tiled panoramas.
+// Subtle desktop 2.5D movement; no positional offsets in device-orientation or VR modes.
+const depthPointer=new THREE.Vector2();
+const depthCameraOffset=new THREE.Vector3();
+renderer.domElement.addEventListener('pointermove',event=>{
+ const bounds=renderer.domElement.getBoundingClientRect();
+ if(!bounds.width||!bounds.height)return;
+ depthPointer.set(THREE.MathUtils.clamp((event.clientX-bounds.left)/bounds.width*2-1,-1,1),THREE.MathUtils.clamp(1-(event.clientY-bounds.top)/bounds.height*2,-1,1));
+});
+renderer.domElement.addEventListener('pointerleave',()=>depthPointer.set(0,0));
 renderer.setAnimationLoop((time)=>{
  tiledPanorama?.update();
  effectSystem?.update(time,camera);atmosphereSystem?.update(time,camera);moonSystem?.update(time,camera);environmentSystem?.update(time,camera);
@@ -421,6 +434,11 @@ renderer.setAnimationLoop((time)=>{
  syncHudPose();syncCardboardDebug();syncXRDebug();
  scene.traverse(o=>{if(o.userData?.animate)o.userData.animate(time,gazeTarget?.userData?.portal===o)});
  if(mode===ViewerMode.CARDBOARD&&orientation)deviceOrientation.update();
+ if(mode===ViewerMode.DESKTOP&&!orientation){
+  const amount=parallaxDepthPixels&&effectSettings.parallaxEnabled ? Math.max(0,Math.min(100,Number(effectSettings.parallaxStrength)||0))/100 : 0;
+  const target=new THREE.Vector3(depthPointer.x*amount*.3,depthPointer.y*amount*.18,0);
+  depthCameraOffset.lerp(target,.08);camera.position.copy(depthCameraOffset);
+ }
  if(mode===ViewerMode.DESKTOP&&!orientation){const phi=THREE.MathUtils.degToRad(90-lat),theta=THREE.MathUtils.degToRad(lon);camera.lookAt(500*Math.sin(phi)*Math.cos(theta),500*Math.cos(phi),500*Math.sin(phi)*Math.sin(theta))}
  if(mode===ViewerMode.WEBXR){syncXREyes();updateGaze();renderer.render(scene,camera);return}
  if(mode===ViewerMode.CARDBOARD){updateCardboardGaze();if(legacyCardboard)legacyVREffect.render(scene,camera);else renderCardboard();return}
