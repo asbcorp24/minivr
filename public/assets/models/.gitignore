@@ -1,0 +1,3 @@
+# Large ONNX weights are provisioned separately on Timeweb.
+*.onnx
+*.onnx_data
