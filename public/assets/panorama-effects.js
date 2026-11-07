@@ -8,6 +8,67 @@ export function createPanoramaEffects(scene,settings){
  const mobile=matchMedia('(max-width: 800px)').matches;
  const count=type==='none'||density===0?0:Math.max(type==='birds'?(mobile?8:12):type==='insects'?(mobile?25:40):1,Math.round(density*(type==='rain'?8:type==='snow'?5:type==='dust'?9:type==='insects'?3:type==='birds'?.4:3)*(mobile?.6:1)));
  if(!count)return {update(){},dispose(){}};
+ // Distinct leaf silhouettes (maple, birch and oak), not oval GL points.
+ if(type==='leaves'){
+  const textures=['maple','birch','oak'].map((kind)=>{
+   const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;
+   const c=canvas.getContext('2d');c.translate(64,64);
+   const colors=kind==='maple'?['#d98927','#a74420']:kind==='birch'?['#e2bb4a','#9e8130']:['#a76b30','#704321'];
+   const grad=c.createLinearGradient(-28,-45,30,42);grad.addColorStop(0,colors[0]);grad.addColorStop(1,colors[1]);
+   c.fillStyle=grad;c.strokeStyle='#70451f';c.lineWidth=1.5;c.beginPath();
+   if(kind==='maple'){
+    const pts=[[0,-49],[9,-30],[20,-39],[20,-23],[40,-23],[27,-8],[39,2],[19,7],[22,27],[7,20],[0,40],[-7,20],[-22,27],[-19,7],[-39,2],[-27,-8],[-40,-23],[-20,-23],[-20,-39],[-9,-30]];
+    pts.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));
+   }else if(kind==='birch'){
+    c.moveTo(0,-48);c.bezierCurveTo(35,-35,38,2,0,42);c.bezierCurveTo(-38,2,-35,-35,0,-48);
+   }else{
+    c.moveTo(0,-49);
+    c.bezierCurveTo(17,-45,12,-34,24,-30);c.bezierCurveTo(38,-20,17,-12,27,-4);
+    c.bezierCurveTo(40,8,16,13,20,23);c.quadraticCurveTo(14,34,0,40);
+    c.quadraticCurveTo(-14,34,-20,23);c.bezierCurveTo(-16,13,-40,8,-27,-4);
+    c.bezierCurveTo(-17,-12,-38,-20,-24,-30);c.bezierCurveTo(-12,-34,-17,-45,0,-49);
+   }
+   c.closePath();c.fill();c.stroke();
+   c.strokeStyle='rgba(87,57,25,.65)';c.lineWidth=1.5;c.beginPath();c.moveTo(0,50);c.lineTo(0,-39);c.stroke();
+   c.lineWidth=.9;
+   for(const side of [-1,1])for(let y=-24;y<=23;y+=13){c.beginPath();c.moveTo(0,y+9);c.lineTo(side*(kind==='maple'?24:kind==='oak'?18:15),y-8);c.stroke();}
+   const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;return tex;
+  });
+  const group=new THREE.Group();group.layers.enableAll();scene.add(group);
+  const leaves=[];const total=Math.min(mobile?115:230,count);
+  for(let i=0;i<total;i++){
+   const tex=textures[i%3];
+   const material=new THREE.SpriteMaterial({map:tex,transparent:true,opacity:opacity,depthWrite:false,depthTest:true,side:THREE.DoubleSide});
+   const sprite=new THREE.Sprite(material);sprite.layers.enableAll();sprite.renderOrder=14;
+   const distance=4+Math.random()*16,angle=Math.random()*Math.PI*2;
+   const size=(.19+Math.random()*.29)*(distance/9);
+   sprite.position.set(Math.cos(angle)*distance,Math.random()*22-11,Math.sin(angle)*distance);
+   sprite.scale.set(size,size,1);group.add(sprite);
+   leaves.push({sprite,material,size,distance,phase:Math.random()*6.283,velocity:.6+Math.random()*.8});
+  }
+  let last=0;
+  return {
+   update(time,camera){
+    const dt=last?Math.min(.05,(time-last)/1000):0;last=time;
+    if(camera)camera.getWorldPosition(group.position);
+    const t=time*.001;
+    for(const o of leaves){
+     const p=o.sprite.position;
+     p.y-=dt*speed*o.velocity*1.35;
+     p.x+=dt*(wind*.33+Math.sin(t*1.3+o.phase)*.28)*speed;
+     p.z+=dt*Math.cos(t*.8+o.phase)*.3;
+     o.material.rotation=Math.sin(t*1.6+o.phase)*.7+t*.24*o.velocity;
+     const flutter=.72+.28*Math.abs(Math.cos(t*2.3+o.phase));
+     o.sprite.scale.x=o.size*flutter;
+     if(p.y< -11||Math.abs(p.x)>24||Math.abs(p.z)>24){
+      const a=Math.random()*Math.PI*2;
+      p.set(Math.cos(a)*o.distance,11,Math.sin(a)*o.distance);
+     }
+    }
+   },
+   dispose(){scene.remove(group);leaves.forEach(o=>o.material.dispose());textures.forEach(t=>t.dispose());}
+  };
+ }
  // Birds and insects use textured sprites instead of GL_POINTS: mobile GPUs often clamp point size.
  if(type==='birds'||type==='insects'){
   const canvas=document.createElement('canvas');canvas.width=type==='birds'?256:128;canvas.height=type==='birds'?256:128;
