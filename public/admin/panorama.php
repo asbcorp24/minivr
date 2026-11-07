@@ -13,7 +13,7 @@ $rawLamps=json_decode((string)($_POST['effectLamps']??'[]'),true);if(is_array($r
 <label class="check"><input type="checkbox" name="parallaxOcclusionFill" <?=!array_key_exists('parallaxOcclusionFill',$savedEffects)||!empty($savedEffects['parallaxOcclusionFill'])?'checked':''?>> Заполнение фона за ближними объектами (экспериментально)</label>
 <small>Локальное восстановление фона по соседним пикселям, без загрузки модели ИИ. Помогает скрыть просветы при движении камеры, но не восстанавливает реальные невидимые детали.</small>
 <fieldset><legend>Микродвижение растительности</legend><?php if($existing&&($existing['projection']??'')==='360'&&($existing['stereo']??'')==='mono'):?>
-<div id="foliage-mask-editor" data-image="<?=htmlspecialchars('/uploads/'.basename($existing['image']),ENT_QUOTES)?>" style="margin:12px 0">
+<div id="foliage-mask-editor" data-image="<?=htmlspecialchars($existing['image'],ENT_QUOTES)?>" style="margin:12px 0">
 <strong>Ручная маска листьев</strong>
 <p><small>Закрасьте листья на панораме. Белая маска — движение, чёрная — без движения. Рисование сохраняется вместе с настройками панорамы.</small></p>
 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0">
