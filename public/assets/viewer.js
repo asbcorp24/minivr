@@ -274,7 +274,11 @@ function clearHybridMeshes(){
 function makeHybridDepthGroups(source){
  const count=Math.max(2,Math.min(10,Number(effectSettings.parallaxGroups)||5));
  const image=source.image;if(!image?.width||!image?.height)return false;
- const w=1024,h=512,base=document.createElement('canvas');base.width=w;base.height=h;
+ const maxTextureSize=renderer.capabilities.maxTextureSize||4096;
+ const sourceWidth=image.naturalWidth||image.videoWidth||image.width,sourceHeight=image.naturalHeight||image.videoHeight||image.height;
+ const scale=Math.min(1,maxTextureSize/sourceWidth,maxTextureSize/sourceHeight,4096/sourceWidth);
+ const w=Math.max(2,Math.round(sourceWidth*scale/2)*2),h=Math.max(1,Math.round(sourceHeight*scale));
+ const base=document.createElement('canvas');base.width=w;base.height=h;
  const baseCtx=base.getContext('2d',{willReadFrequently:true});baseCtx.drawImage(image,0,0,w,h);
  const original=baseCtx.getImageData(0,0,w,h).data;
  const depth=new Float32Array(w*h);
@@ -282,10 +286,10 @@ function makeHybridDepthGroups(source){
  for(let band=0;band<count;band++){
   const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
   const ctx=canvas.getContext('2d'),frame=ctx.createImageData(w,h),pixels=frame.data;
-  const center=(band+.5)/count,halfWidth=.75/count;
+  const center=(band+.5)/count,halfWidth=1/count;
   for(let i=0;i<depth.length;i++){
    const distance=Math.abs(depth[i]-center);
-   const weight=Math.max(0,Math.min(1,(halfWidth-distance)/(halfWidth-.5/count)));
+   const weight=Math.max(0,Math.min(1,(halfWidth-distance)/(.5/count)));
    if(weight<=0)continue;
    const j=i*4;pixels[j]=original[j];pixels[j+1]=original[j+1];pixels[j+2]=original[j+2];
    pixels[j+3]=Math.round(255*weight);
@@ -588,8 +592,10 @@ renderer.setAnimationLoop((time)=>{
   depthAutoLastTime=time;
   if(autoEnabled)depthAutoPhase+=autoDt*autoSpeed*2*Math.PI/8;
   const sway=autoEnabled?amount*autoAmplitude:0;
-  const target=new THREE.Vector3(depthPointer.x*amount*1.3+Math.sin(depthAutoPhase)*sway*1.3,depthPointer.y*amount*.7+Math.sin(depthAutoPhase*.7)*sway*.5,Math.cos(depthAutoPhase)*sway*.4);
-  depthCameraOffset.lerp(target,.14);camera.position.copy(depthCameraOffset);
+  const target=new THREE.Vector3(depthPointer.x*amount*1.3+Math.sin(depthAutoPhase)*sway*1.1,depthPointer.y*amount*.7+Math.sin(depthAutoPhase*.7+0.4)*sway*.35,Math.cos(depthAutoPhase)*sway*.25);
+  // Frame-rate independent damping keeps camera sway consistent at 30/60/120 FPS.
+  const damping=1-Math.exp(-Math.max(0,Math.min(.05,autoDt||1/60))*9);
+  depthCameraOffset.lerp(target,damping);camera.position.copy(depthCameraOffset);
  }
  if(mode===ViewerMode.DESKTOP&&!orientation){const phi=THREE.MathUtils.degToRad(90-lat),theta=THREE.MathUtils.degToRad(lon);camera.lookAt(500*Math.sin(phi)*Math.cos(theta),500*Math.cos(phi),500*Math.sin(phi)*Math.sin(theta))}
  if(mode===ViewerMode.WEBXR){syncXREyes();updateGaze();renderer.render(scene,camera);return}
