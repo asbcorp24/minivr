@@ -130,6 +130,8 @@ function eyeTexture(source,eye){
 }
 let parallaxDepthPixels=null;
 let manualFoliageMaskImage=null;
+let manualWaterMaskImage=null,waterMotionMask=null;
+async function loadManualWaterMask(){manualWaterMaskImage=null;if(!effectSettings.parallaxWaterMotion||!effectSettings.parallaxWaterMask)return;try{const img=new Image();img.src=effectSettings.parallaxWaterMask;await img.decode();manualWaterMaskImage=img;}catch(e){console.warn('MiniVR water mask unavailable',e);}}
 async function loadManualFoliageMask(){
  manualFoliageMaskImage=null;
  if(!effectSettings.parallaxFoliageMask)return;
@@ -277,6 +279,7 @@ let hybridMeshes=[];
 function clearHybridMeshes(){
  microMotionMaterials.length=0;
  if(foliageWindMask){foliageWindMask.dispose();foliageWindMask=null;}
+ if(waterMotionMask){waterMotionMask.dispose();waterMotionMask=null;}
  for(const mesh of hybridMeshes){scene.remove(mesh);mesh.geometry.dispose();mesh.material.map?.dispose();mesh.material.dispose();}
  hybridMeshes=[];
 }
@@ -395,6 +398,49 @@ function installMicroMotion(material,band,count){
  material.customProgramCacheKey=()=> 'minivr-foliage-fragment-wind-v6-'+(boosted?'preview':'normal')+(showMask?'-mask':'');
  microMotionMaterials.push({material,phase,speed});
 }
+function installWaterMotion(material){
+ if(!waterMotionMask||new URLSearchParams(location.search).get('water_motion')==='0')return;
+ const phase={value:0},strength={value:THREE.MathUtils.clamp(Number(effectSettings.parallaxWaterStrength??45),0,100)/100};
+ const speed=THREE.MathUtils.clamp(Number(effectSettings.parallaxWaterSpeed??1),.1,5);
+ const kind=({calm:0,sea:1,river:2,waterfall:3,underwater:4})[effectSettings.parallaxWaterType]??0;
+ const direction=THREE.MathUtils.degToRad(Number(effectSettings.parallaxWaterDirection)||0);
+ const previous=material.onBeforeCompile;
+ material.onBeforeCompile=shader=>{
+  if(previous)previous(shader);
+  shader.uniforms.waterMotionTime=phase;
+  shader.uniforms.waterMotionStrength=strength;
+  shader.uniforms.waterMotionMask={value:waterMotionMask};
+  shader.fragmentShader='uniform float waterMotionTime;\nuniform float waterMotionStrength;\nuniform sampler2D waterMotionMask;\n'+shader.fragmentShader;
+  // Water is composed with foliage inside the same map sample when both effects are active.
+  const waterCode=`
+  float waterCoverage = smoothstep(0.02,0.28,texture2D(waterMotionMask,vMapUv).a);
+  float wt = waterMotionTime;
+  float waves = sin(vMapUv.y * ${kind===1?'120.0':'75.0'} + wt * ${kind===1?'3.4':'1.8'} + sin(vMapUv.x*35.0+wt)*0.7);
+  float ripples = sin(vMapUv.x*165.0+wt*2.1)*cos(vMapUv.y*145.0-wt*1.4);
+  vec2 flowDirection = vec2(cos(${direction.toFixed(6)}),sin(${direction.toFixed(6)}));
+  vec2 waterShift = vec2(waves*0.0025+ripples*0.0008,ripples*0.0013);
+  ${kind===1?'waterShift += vec2(sin(vMapUv.y*52.0+wt*2.5)*0.003,cos(vMapUv.x*30.0-wt)*0.001);':''}
+  ${kind===2?'waterShift += flowDirection * (0.003*sin(wt*1.8+vMapUv.y*100.0));':''}
+  ${kind===3?'waterShift += vec2(ripples*0.001,0.005*sin(wt*2.5+vMapUv.y*90.0));':''}
+  ${kind===4?'waterShift *= 0.45;':''}
+  waterShift *= waterCoverage * waterMotionStrength;
+  `;
+  // Inject before the foliage map sample when present; otherwise replace standard map chunk.
+  if(shader.fragmentShader.includes('vec4 sampledDiffuseColor = texture2D(map,windUv);')){
+   shader.fragmentShader=shader.fragmentShader.replace('vec4 sampledDiffuseColor = texture2D(map,windUv);',waterCode+'\n  windUv += waterShift;\n  vec4 sampledDiffuseColor = texture2D(map,windUv);');
+  }else{
+   shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#ifdef USE_MAP
+   vec2 waterUv=vMapUv;
+   ${waterCode}
+   waterUv+=waterShift;
+   diffuseColor*=texture2D(map,waterUv);
+   #endif`);
+  }
+ };
+ const prevKey=material.customProgramCacheKey?.bind(material);
+ material.customProgramCacheKey=()=> (prevKey?prevKey():'minivr-water')+'-water-v1-'+kind+'-'+direction.toFixed(4);
+ microMotionMaterials.push({material,phase,speed});
+}
 function makeHybridDepthGroups(source){
  const count=Math.max(2,Math.min(10,Number(effectSettings.parallaxGroups)||5));
  const image=source.image;if(!image?.width||!image?.height)return false;
@@ -410,6 +456,8 @@ function makeHybridDepthGroups(source){
   if(manualFoliageMaskImage){const maskCanvas=document.createElement('canvas');maskCanvas.width=512;maskCanvas.height=256;const maskCtx=maskCanvas.getContext('2d');maskCtx.drawImage(manualFoliageMaskImage,0,0,512,256);foliageWindMask=new THREE.CanvasTexture(maskCanvas);foliageWindMask.wrapS=THREE.RepeatWrapping;foliageWindMask.minFilter=THREE.LinearFilter;}
   else foliageWindMask=makeFoliageWindMask(original,w,h);
  }
+ waterMotionMask=null;
+ if(manualWaterMaskImage){const maskCanvas=document.createElement('canvas');maskCanvas.width=512;maskCanvas.height=256;maskCanvas.getContext('2d').drawImage(manualWaterMaskImage,0,0,512,256);waterMotionMask=new THREE.CanvasTexture(maskCanvas);waterMotionMask.wrapS=THREE.RepeatWrapping;waterMotionMask.minFilter=THREE.LinearFilter;}
  const depth=new Float32Array(w*h);
  for(let y=0;y<h;y++)for(let x=0;x<w;x++)depth[y*w+x]=sampleDepthBilinear((x+.5)/w,1-(y+.5)/h);
  for(let band=0;band<count;band++){
@@ -430,6 +478,7 @@ function makeHybridDepthGroups(source){
   if(effectSettings.mirrorHorizontal){const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
   const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,transparent:true,depthWrite:false,alphaTest:.015});
   installMicroMotion(material,band,count);
+  installWaterMotion(material);
   const mesh=new THREE.Mesh(geo,material);mesh.layers.set(0);mesh.renderOrder=band;
   scene.add(mesh);hybridMeshes.push(mesh);
  }
@@ -462,7 +511,7 @@ function installPanorama(source){
 }
 let tiledPanorama=null;
 async function loadInitialPanorama(){
- await Promise.all([loadParallaxDepth(),loadManualFoliageMask()]);
+ await Promise.all([loadParallaxDepth(),loadManualFoliageMask(),loadManualWaterMask()]);
  if(projection==='360'&&stereoMode==='mono'&&root.dataset.tiles&&!parallaxDepthPixels){
   try{
    tiledPanorama=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer,mirror:!!effectSettings.mirrorHorizontal});
