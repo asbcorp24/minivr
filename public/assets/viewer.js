@@ -263,16 +263,63 @@ function installAiBackground(){
   mesh.layers.set(0);mesh.renderOrder=-10;scene.add(mesh);aiBackgroundMesh=mesh;
  },undefined,err=>console.warn('AI background unavailable',err));
 }
+// Hybrid parallax: five overlapping depth bands on independent transparent
+// meshes. Each mesh keeps continuous per-vertex depth (no flat cut-outs).
+// Original 2:1 panorama and longitude seam are preserved.
+let hybridMeshes=[];
+function clearHybridMeshes(){
+ for(const mesh of hybridMeshes){scene.remove(mesh);mesh.geometry.dispose();mesh.material.map?.dispose();mesh.material.dispose();}
+ hybridMeshes=[];
+}
+function makeHybridDepthGroups(source){
+ const count=Math.max(2,Math.min(10,Number(effectSettings.parallaxGroups)||5));
+ const image=source.image;if(!image?.width||!image?.height)return false;
+ const w=1024,h=512,base=document.createElement('canvas');base.width=w;base.height=h;
+ const baseCtx=base.getContext('2d',{willReadFrequently:true});baseCtx.drawImage(image,0,0,w,h);
+ const original=baseCtx.getImageData(0,0,w,h).data;
+ const depth=new Float32Array(w*h);
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++)depth[y*w+x]=sampleDepthBilinear((x+.5)/w,1-(y+.5)/h);
+ for(let band=0;band<count;band++){
+  const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+  const ctx=canvas.getContext('2d'),frame=ctx.createImageData(w,h),pixels=frame.data;
+  const center=(band+.5)/count,halfWidth=.75/count;
+  for(let i=0;i<depth.length;i++){
+   const distance=Math.abs(depth[i]-center);
+   const weight=Math.max(0,Math.min(1,(halfWidth-distance)/(halfWidth-.5/count)));
+   if(weight<=0)continue;
+   const j=i*4;pixels[j]=original[j];pixels[j+1]=original[j+1];pixels[j+2]=original[j+2];
+   pixels[j+3]=Math.round(255*weight);
+  }
+  ctx.putImageData(frame,0,0);
+  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
+  const geo=geometry();
+  if(effectSettings.mirrorHorizontal){const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
+  const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,transparent:true,depthWrite:false,alphaTest:.015});
+  const mesh=new THREE.Mesh(geo,material);mesh.layers.set(0);mesh.renderOrder=band;
+  scene.add(mesh);hybridMeshes.push(mesh);
+ }
+ return true;
+}
 function installPanorama(source){
  source.colorSpace=THREE.SRGBColorSpace;
  installAiBackground();
  const previous=[...new Set([leftMesh,rightMesh].filter(Boolean))];
+ clearHybridMeshes();
  if(depthBackgroundMesh){scene.remove(depthBackgroundMesh);depthBackgroundMesh.geometry.dispose();depthBackgroundMesh.material.map?.dispose();depthBackgroundMesh.material.dispose();depthBackgroundMesh=null;}
  if(projection==='360'&&stereoMode==='mono'&&parallaxDepthPixels&&!effectSettings.parallaxBackground){depthBackgroundMesh=makeDepthBackground(source);if(depthBackgroundMesh)scene.add(depthBackgroundMesh);}
  if(stereoMode==='mono'){
+  const hybrid=projection==='360'&&parallaxDepthPixels&&effectSettings.parallaxEnabled&&effectSettings.parallaxMode==='hybrid'&&makeHybridDepthGroups(source);
+  if(hybrid){
+   // Keep the original at the far radius to cover disocclusions between bands.
+   const geo=new THREE.SphereGeometry(80,96,48);
+   if(effectSettings.mirrorHorizontal){const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
+   const backdrop=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:source,side:THREE.BackSide,depthWrite:false}));
+   backdrop.layers.set(0);backdrop.renderOrder=-20;scene.add(backdrop);leftMesh=rightMesh=backdrop;
+  }else{
   const g=geometry(sourceAspect(source));if(effectSettings.mirrorHorizontal){const uv=g.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}const mesh=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:source,side:projection==='flat'?THREE.FrontSide:THREE.BackSide}));
   if(projection==='flat'){mesh.position.set(3.2,0,0);mesh.rotation.y=-Math.PI/2;}else if(projection==='180')mesh.rotation.y=Math.PI/2;
   mesh.layers.set(0);scene.add(mesh);leftMesh=rightMesh=mesh;
+  }
  }else{leftMesh=makeEye(source,'left');rightMesh=makeEye(source,'right');source.dispose()}
  for(const mesh of previous){scene.remove(mesh);mesh.geometry.dispose();mesh.material.map?.dispose();mesh.material.dispose()}
  if(getViewerMode()===ViewerMode.DESKTOP){if(stereoMode==='mono')camera.layers.set(0);else desktopEye()}
