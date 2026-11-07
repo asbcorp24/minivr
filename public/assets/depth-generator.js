@@ -42,7 +42,7 @@ if(panel){
    const form=new FormData();form.append('id',panel.dataset.id);form.append('strength',strength.value);form.append('depth',blob,'depth.png');
    status.textContent='Сохраняю карту глубины на Timeweb…';
    const response=await fetch('/admin/depth-upload.php',{method:'POST',body:form,credentials:'same-origin'});
-   const data=await response.json();if(!response.ok||!data.ok)throw Error(data.error||'Ошибка сохранения');
+   const uploadResult=await response.json();if(!response.ok||!uploadResult.ok)throw Error(uploadResult.error||'Ошибка сохранения');
    status.textContent='Карта глубины сохранена. Обновите страницу для просмотра параллакса.';
   }catch(e){status.textContent='Ошибка: '+e.message;console.error('MiniVR depth',e);}
   finally{button.disabled=false;}
