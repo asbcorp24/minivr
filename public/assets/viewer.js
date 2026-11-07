@@ -269,6 +269,7 @@ function installAiBackground(){
 let hybridMeshes=[];
 function clearHybridMeshes(){
  microMotionMaterials.length=0;
+ if(foliageWindMask){foliageWindMask.dispose();foliageWindMask=null;}
  for(const mesh of hybridMeshes){scene.remove(mesh);mesh.geometry.dispose();mesh.material.map?.dispose();mesh.material.dispose();}
  hybridMeshes=[];
 }
@@ -316,10 +317,46 @@ function foliageMaskForGeometry(geo,imagePixels,w,h){
  }
  geo.setAttribute('foliageWeight',new THREE.Float32BufferAttribute(out,1));
 }
+// Per-pixel wind distortion: unlike vertex motion, this is visible even when
+// foliage occupies only a few pixels inside a large sphere triangle.
 const microMotionMaterials=[];
+let foliageWindMask=null;
+function makeFoliageWindMask(original,w,h){
+ const mw=Math.min(512,w),mh=Math.min(256,h);
+ const mask=document.createElement('canvas');mask.width=mw;mask.height=mh;
+ const ctx=mask.getContext('2d'),frame=ctx.createImageData(mw,mh);
+ const colour=(x,y)=>{
+  x=Math.max(0,Math.min(w-1,x));y=Math.max(0,Math.min(h-1,y));
+  const i=(y*w+x)*4,r=original[i]/255,g=original[i+1]/255,b=original[i+2]/255;
+  const hi=Math.max(r,g,b),lo=Math.min(r,g,b),d=hi-lo;
+  if(hi<.12||hi>.96||d<.07)return 0;
+  let hue=0;
+  if(hi===r)hue=60*(((g-b)/d+6)%6);
+  else if(hi===g)hue=60*((b-r)/d+2);
+  else hue=60*((r-g)/d+4);
+  const seasonal=(hue>=35&&hue<=165)?1:(hue>=12&&hue<35)?.75:(hue<12||hue>345)?.55:0;
+  return seasonal*Math.min(1,d/hi*3);
+ };
+ for(let y=0;y<mh;y++)for(let x=0;x<mw;x++){
+  const sx=Math.floor((x+.5)*w/mw),sy=Math.floor((y+.5)*h/mh);
+  const step=Math.max(1,Math.floor(w/mw/2));
+  let sum=0,min=1,max=0;
+  for(let yy=-2;yy<=2;yy++)for(let xx=-2;xx<=2;xx++){
+   const v=colour(sx+xx*step,sy+yy*step);sum+=v;min=Math.min(min,v);max=Math.max(max,v);
+  }
+  const weight=Math.min(1,sum/25)*Math.min(1,(max-min)*3);
+  const i=(y*mw+x)*4;
+  frame.data[i]=frame.data[i+1]=frame.data[i+2]=Math.round(weight*255);
+  frame.data[i+3]=255;
+ }
+ ctx.putImageData(frame,0,0);
+ const texture=new THREE.CanvasTexture(mask);
+ texture.wrapS=THREE.RepeatWrapping;texture.minFilter=THREE.LinearFilter;
+ return texture;
+}
 function installMicroMotion(material,band,count){
  if(effectSettings.parallaxMicroMotion===false||new URLSearchParams(location.search).get('micro_motion')==='0')return;
- if(band<count-2)return;
+ if(band<count-2||!foliageWindMask)return;
  const preview=new URLSearchParams(location.search);
  const boosted=preview.get('micro_motion_preview')==='1';
  const phase={value:0},strength={value:boosted?1:THREE.MathUtils.clamp(Number(effectSettings.parallaxMicroMotionStrength??60),0,100)/100};
@@ -327,17 +364,22 @@ function installMicroMotion(material,band,count){
  material.onBeforeCompile=shader=>{
   shader.uniforms.microMotionTime=phase;
   shader.uniforms.microMotionStrength=strength;
-  shader.vertexShader='attribute float foliageWeight;\nuniform float microMotionTime;\nuniform float microMotionStrength;\n'+shader.vertexShader;
-  shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
-    float microSpatial = sin(position.x * 0.31 + position.z * 0.17)
-                       * sin(position.y * 0.24 - position.z * 0.13);
-    float microWave = sin(microMotionTime * 0.73 + position.x * 0.18 + position.y * 0.11)
-                    + 0.4 * sin(microMotionTime * 1.09 - position.z * 0.21);
-    float microPoleFade = clamp(1.0 - abs(normalize(position).y), 0.0, 1.0);
-    transformed += normal * (microSpatial * microWave * microPoleFade * foliageWeight * microMotionStrength * 0.6);
+  shader.uniforms.foliageWindMask={value:foliageWindMask};
+  shader.fragmentShader='uniform float microMotionTime;\nuniform float microMotionStrength;\nuniform sampler2D foliageWindMask;\n'+shader.fragmentShader;
+  shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`
+#ifdef USE_MAP
+  vec2 windUv = vMapUv;
+  float windMask = texture2D(foliageWindMask,windUv).r;
+  float phaseA = microMotionTime*1.3 + windUv.y*34.0 + sin(windUv.x*38.0);
+  float phaseB = microMotionTime*.8 + windUv.x*51.0;
+  vec2 windShift = vec2(sin(phaseA)*.0025 + sin(phaseB)*.0009,cos(phaseB)*.0012);
+  windUv += windShift*windMask*microMotionStrength;
+  vec4 sampledDiffuseColor = texture2D(map,windUv);
+  diffuseColor *= sampledDiffuseColor;
+#endif
   `);
  };
- material.customProgramCacheKey=()=> 'minivr-foliage-motion-v2';
+ material.customProgramCacheKey=()=> 'minivr-foliage-fragment-wind-v3';
  microMotionMaterials.push({material,phase,speed});
 }
 function makeHybridDepthGroups(source){
@@ -350,6 +392,7 @@ function makeHybridDepthGroups(source){
  const base=document.createElement('canvas');base.width=w;base.height=h;
  const baseCtx=base.getContext('2d',{willReadFrequently:true});baseCtx.drawImage(image,0,0,w,h);
  const original=baseCtx.getImageData(0,0,w,h).data;
+ foliageWindMask=effectSettings.parallaxMicroMotion!==false?makeFoliageWindMask(original,w,h):null;
  const depth=new Float32Array(w*h);
  for(let y=0;y<h;y++)for(let x=0;x<w;x++)depth[y*w+x]=sampleDepthBilinear((x+.5)/w,1-(y+.5)/h);
  for(let band=0;band<count;band++){
@@ -366,7 +409,7 @@ function makeHybridDepthGroups(source){
   ctx.putImageData(frame,0,0);
   const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
   const geo=geometry();
-  if(band>=count-2&&effectSettings.parallaxMicroMotion!==false)foliageMaskForGeometry(geo,original,w,h);
+  
   if(effectSettings.mirrorHorizontal){const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
   const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,transparent:true,depthWrite:false,alphaTest:.015});
   installMicroMotion(material,band,count);
