@@ -574,8 +574,12 @@ function syncHudPose(){
 // Visible day/night grading on the actual panorama canvas, including tiled panoramas.
 // Subtle desktop 2.5D movement; no positional offsets in device-orientation or VR modes.
 const depthPointer=new THREE.Vector2();
+const depthPointerSmooth=new THREE.Vector2();
 const depthCameraOffset=new THREE.Vector3();
+const depthLocalOffset=new THREE.Vector3();
+const depthDesiredOffset=new THREE.Vector3();
 let depthAutoPhase=0,depthAutoLastTime=0;
+let depthMotionActive=false;
 renderer.domElement.addEventListener('pointermove',event=>{
  const bounds=renderer.domElement.getBoundingClientRect();
  if(!bounds.width||!bounds.height)return;
@@ -596,26 +600,44 @@ renderer.setAnimationLoop((time)=>{
  syncHudPose();syncCardboardDebug();syncXRDebug();
  scene.traverse(o=>{if(o.userData?.animate)o.userData.animate(time,gazeTarget?.userData?.portal===o)});
  if(mode===ViewerMode.CARDBOARD&&orientation)deviceOrientation.update();
- if(mode!==ViewerMode.DESKTOP){
-  // WebXR supplies real 6DoF head translation and per-eye poses; Cardboard
-  // supplies physical binocular stereo. Never inject desktop sway into VR:
-  // artificial head movement causes discomfort and breaks tracking.
-  depthCameraOffset.set(0,0,0);
-  if(mode===ViewerMode.CARDBOARD&&!legacyCardboard)camera.position.set(0,0,0);
- }
+ // Update motion in view-relative coordinates: when the panorama rotates,
+ // the apparent camera translation follows the viewing direction rather
+ // than remaining pinned to the world X/Z axes.
+ const motionDt=depthAutoLastTime?Math.min(.05,Math.max(0,(time-depthAutoLastTime)/1000)):1/60;
+ depthAutoLastTime=time;
  if(mode===ViewerMode.DESKTOP&&!orientation){
-  const amount=parallaxDepthPixels&&effectSettings.parallaxEnabled ? Math.max(0,Math.min(100,Number(effectSettings.parallaxStrength)||0))/100 : 0;
+  const amount=parallaxDepthPixels&&effectSettings.parallaxEnabled
+   ? THREE.MathUtils.clamp(Number(effectSettings.parallaxStrength)||0,0,100)/100:0;
   const autoEnabled=amount>0&&effectSettings.rotation&&effectSettings.parallaxAuto!==false;
-  const autoAmplitude=Math.max(0,Math.min(100,Number(effectSettings.parallaxAutoAmplitude??35)))/100;
-  const autoSpeed=Math.max(.1,Math.min(3,Number(effectSettings.parallaxAutoSpeed??.6)));
-  const autoDt=depthAutoLastTime?Math.min(.05,(time-depthAutoLastTime)/1000):0;
-  depthAutoLastTime=time;
-  if(autoEnabled)depthAutoPhase+=autoDt*autoSpeed*2*Math.PI/8;
+  const autoAmplitude=THREE.MathUtils.clamp(Number(effectSettings.parallaxAutoAmplitude??35),0,100)/100;
+  const autoSpeed=THREE.MathUtils.clamp(Number(effectSettings.parallaxAutoSpeed??.6),.1,3);
+  if(autoEnabled)depthAutoPhase=(depthAutoPhase+motionDt*autoSpeed*2*Math.PI/8)%(Math.PI*2);
+  const pointerDamping=1-Math.exp(-motionDt*7);
+  depthPointerSmooth.lerp(depthPointer,pointerDamping);
+  // Soft, elliptical translation with small vertical and forward components.
+  // Avoid large head bobbing; foreground objects should move more than far ones.
   const sway=autoEnabled?amount*autoAmplitude:0;
-  const target=new THREE.Vector3(depthPointer.x*amount*1.3+Math.sin(depthAutoPhase)*sway*1.1,depthPointer.y*amount*.7+Math.sin(depthAutoPhase*.7+0.4)*sway*.35,Math.cos(depthAutoPhase)*sway*.25);
-  // Frame-rate independent damping keeps camera sway consistent at 30/60/120 FPS.
-  const damping=1-Math.exp(-Math.max(0,Math.min(.05,autoDt||1/60))*9);
-  depthCameraOffset.lerp(target,damping);camera.position.copy(depthCameraOffset);
+  depthLocalOffset.set(
+   depthPointerSmooth.x*amount*1.15+Math.sin(depthAutoPhase)*sway*.85,
+   depthPointerSmooth.y*amount*.55+Math.sin(depthAutoPhase*.65+.4)*sway*.18,
+   Math.cos(depthAutoPhase)*sway*.2
+  );
+  const yaw=THREE.MathUtils.degToRad(lon);
+  const cos=Math.cos(yaw),sin=Math.sin(yaw);
+  depthDesiredOffset.set(
+   depthLocalOffset.x*cos-depthLocalOffset.z*sin,
+   depthLocalOffset.y,
+   depthLocalOffset.x*sin+depthLocalOffset.z*cos
+  );
+  const damping=1-Math.exp(-motionDt*8);
+  depthCameraOffset.lerp(depthDesiredOffset,damping);
+  camera.position.copy(depthCameraOffset);
+  depthMotionActive=true;
+ }else if(depthMotionActive){
+  // Never apply synthetic translation to tracked XR head poses or Cardboard.
+  depthCameraOffset.set(0,0,0);depthPointerSmooth.set(0,0);
+  if(mode===ViewerMode.CARDBOARD&&!legacyCardboard)camera.position.set(0,0,0);
+  depthMotionActive=false;
  }
  if(mode===ViewerMode.DESKTOP&&!orientation){const phi=THREE.MathUtils.degToRad(90-lat),theta=THREE.MathUtils.degToRad(lon);camera.lookAt(500*Math.sin(phi)*Math.cos(theta),500*Math.cos(phi),500*Math.sin(phi)*Math.sin(theta))}
  if(mode===ViewerMode.WEBXR){syncXREyes();updateGaze();renderer.render(scene,camera);return}
