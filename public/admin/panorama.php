@@ -33,6 +33,7 @@ $rawLamps=json_decode((string)($_POST['effectLamps']??'[]'),true);if(is_array($r
 <button type="button" data-ai-mask-add>Кисть: добавить</button>
 <button type="button" data-ai-mask-erase>Кисть: стереть</button>
 <label>Размер кисти <input data-ai-mask-size type="range" min="4" max="90" value="24"></label>
+<label>Порог ближних объектов <input data-ai-depth-sensitivity type="range" min="30" max="90" value="65"> <small>левее — больше объектов, правее — меньше</small></label>
 <button type="button" data-ai-mask-reset>Сбросить маску</button>
 </div>
 <canvas data-ai-mask-canvas width="1024" height="512" style="width:100%;aspect-ratio:2/1;touch-action:none;cursor:crosshair;border:1px solid #668;border-radius:8px"></canvas>
