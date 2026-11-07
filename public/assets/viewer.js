@@ -356,10 +356,11 @@ function makeFoliageWindMask(original,w,h){
 }
 function installMicroMotion(material,band,count){
  if(effectSettings.parallaxMicroMotion===false||new URLSearchParams(location.search).get('micro_motion')==='0')return;
- const previewMode=new URLSearchParams(location.search).get('micro_motion_preview')==='1';
- if((band<count-2&&!previewMode)||!foliageWindMask)return;
+ // Never animate every depth layer: restrict wind to the two foreground bands.
+ if(band<count-2||!foliageWindMask)return;
  const preview=new URLSearchParams(location.search);
  const boosted=preview.get('micro_motion_preview')==='1';
+ const showMask=preview.get('micro_motion_mask')==='1';
  const phase={value:0},strength={value:boosted?1:THREE.MathUtils.clamp(Number(effectSettings.parallaxMicroMotionStrength??60),0,100)/100};
  const speed=THREE.MathUtils.clamp(Number(effectSettings.parallaxMicroMotionSpeed??1),.1,5);
  material.onBeforeCompile=shader=>{
@@ -371,18 +372,18 @@ function installMicroMotion(material,band,count){
 #ifdef USE_MAP
   vec2 windUv = vMapUv;
   float windMask = texture2D(foliageWindMask,windUv).r;
-  // Diagnostic preview must show movement even if the colour mask misses leaves.
-  ${boosted ? "windMask = max(windMask, 0.85);" : "windMask = smoothstep(0.025, 0.32, windMask);"}
+  windMask = smoothstep(0.025, 0.32, windMask);
   float phaseA = microMotionTime*1.3 + windUv.y*34.0 + sin(windUv.x*38.0);
   float phaseB = microMotionTime*.8 + windUv.x*51.0;
   vec2 windShift = vec2(sin(phaseA)*.006 + sin(phaseB)*.002,cos(phaseB)*.003);
   windUv += windShift*windMask*microMotionStrength;
   vec4 sampledDiffuseColor = texture2D(map,windUv);
   diffuseColor *= sampledDiffuseColor;
+  ${showMask ? 'diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.1, 0.75), windMask * 0.8);' : ''}
 #endif
   `);
  };
- material.customProgramCacheKey=()=> 'minivr-foliage-fragment-wind-v4-'+(boosted?'preview':'normal');
+ material.customProgramCacheKey=()=> 'minivr-foliage-fragment-wind-v5-'+(boosted?'preview':'normal')+(showMask?'-mask':'');
  microMotionMaterials.push({material,phase,speed});
 }
 function makeHybridDepthGroups(source){
