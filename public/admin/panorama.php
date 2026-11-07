@@ -27,7 +27,26 @@ $rawLamps=json_decode((string)($_POST['effectLamps']??'[]'),true);if(is_array($r
 <div data-ai-background data-id="<?=(int)$editId?>" data-image="<?=htmlspecialchars($existing['image'],ENT_QUOTES)?>" data-depth="<?=htmlspecialchars((string)($savedEffects['parallaxDepth']??''),ENT_QUOTES)?>">
 <h3>ИИ-восстановление скрытого фона (LaMa)</h3>
 <p>Нейросеть работает в браузере. На первом запуске скачивается модель; обработка может быть длительной. Результат — приближённый фон, а не достоверная реконструкция.</p>
+<div style="max-width:720px;margin:12px 0">
+<p><strong>Маска объектов для удаления</strong> — красным отмечены области, которые нейросеть должна дорисовать. Можно исправить кистью.</p>
+<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0">
+<button type="button" data-ai-mask-add>Кисть: добавить</button>
+<button type="button" data-ai-mask-erase>Кисть: стереть</button>
+<label>Размер кисти <input data-ai-mask-size type="range" min="4" max="90" value="24"></label>
+<button type="button" data-ai-mask-reset>Сбросить маску</button>
+</div>
+<canvas data-ai-mask-canvas width="1024" height="512" style="width:100%;aspect-ratio:2/1;touch-action:none;cursor:crosshair;border:1px solid #668;border-radius:8px"></canvas>
+<p><small>Изменения маски применяются при следующей генерации; исходная панорама и карта глубины не изменяются.</small></p>
+</div>
 <button type="button" data-ai-generate>Создать фон с помощью ИИ</button>
+<div style="max-width:720px;margin:12px 0">
+<strong>Сравнение результата</strong>
+<div style="display:flex;gap:8px;margin:8px 0">
+<button type="button" data-ai-show-original>Исходная</button>
+<button type="button" data-ai-show-result>После обработки</button>
+</div>
+<canvas data-ai-compare width="1024" height="512" style="width:100%;aspect-ratio:2/1;border-radius:8px;border:1px solid #668"></canvas>
+</div>
 <div style="display:flex;align-items:center;gap:12px;max-width:640px;margin-top:12px">
 <progress data-ai-progress max="100" value="0" aria-label="Ход генерации фона" style="width:100%;height:20px"></progress>
 <strong data-ai-percent style="min-width:45px;text-align:right">0%</strong>
