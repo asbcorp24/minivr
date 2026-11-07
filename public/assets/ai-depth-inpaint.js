@@ -13,12 +13,13 @@ if(panel){
    const ort=await import('https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0/dist/ort.bundle.min.mjs');
    ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0/dist/';
    ort.env.wasm.numThreads=1;
-   const model='https://huggingface.co/vooxyou/deepfillv2-inpainting/resolve/main/deepfillv2_quantized.onnx';
+   const model='/assets/models/deepfillv2_quantized.onnx';
+   const remoteModel='https://huggingface.co/vooxyou/deepfillv2-inpainting/resolve/main/deepfillv2_quantized.onnx';
    // Cache model bytes to avoid repeated downloads after the first generation.
    let bytes;
    const cache=typeof caches!=='undefined'?await caches.open('minivr-inpaint-model-v1').catch(()=>null):null;
    let response=cache?await cache.match(model):null;
-   if(!response){response=await fetch(model);if(!response.ok)throw Error('Не удалось загрузить модель: HTTP '+response.status);if(cache)await cache.put(model,response.clone()).catch(()=>{});}
+   if(!response){response=await fetch(model).catch(()=>null);if(!response?.ok){response=await fetch(remoteModel);if(!response.ok)throw Error('Не удалось загрузить модель: HTTP '+response.status);}if(cache)await cache.put(model,response.clone()).catch(()=>{});}
    bytes=await response.arrayBuffer();
    session=await ort.InferenceSession.create(bytes,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
    status.textContent='Подготовка маски по карте глубины…';
