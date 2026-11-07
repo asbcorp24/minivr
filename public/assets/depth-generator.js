@@ -10,10 +10,13 @@ if(panel){
   try{
    status.textContent='Загрузка модели ИИ (первый запуск может занять несколько минут)…';
    const {pipeline,RawImage,env}=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm');
-   env.allowLocalModels=false;
-   const estimator=await pipeline('depth-estimation','onnx-community/depth-anything-v2-small',{device:'webgpu'}).catch(async()=>{
+   env.allowLocalModels=true;
+   env.allowRemoteModels=true;
+   env.localModelPath='/assets/models/';
+   const modelId='onnx-community/depth-anything-v2-small';
+   const estimator=await pipeline('depth-estimation',modelId,{device:'webgpu'}).catch(async()=>{
     status.textContent='WebGPU недоступен — запускаю обработку на CPU…';
-    return pipeline('depth-estimation','onnx-community/depth-anything-v2-small',{device:'wasm'});
+    return pipeline('depth-estimation',modelId,{device:'wasm'});
    });
    const img=new Image();img.crossOrigin='anonymous';img.src=panel.dataset.image;
    await img.decode();
