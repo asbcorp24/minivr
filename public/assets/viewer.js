@@ -138,24 +138,57 @@ async function loadParallaxDepth(){
   parallaxDepthPixels=ctx.getImageData(0,0,256,128).data;
  }catch(e){console.warn('MiniVR depth map unavailable',e);}
 }
+function sampleDepthBilinear(u,v){
+ // Longitude wraps at the seam; latitude clamps at the poles.
+ const x=((u%1)+1)%1*256-.5,y=Math.max(0,Math.min(127,(1-v)*128-.5));
+ const x0=Math.floor(x),y0=Math.floor(y),fx=x-x0,fy=y-y0;
+ const read=(ix,iy)=>parallaxDepthPixels[(Math.max(0,Math.min(127,iy))*256+((ix%256)+256)%256)*4]/255;
+ const top=read(x0,y0)*(1-fx)+read(x0+1,y0)*fx;
+ const bottom=read(x0,y0+1)*(1-fx)+read(x0+1,y0+1)*fx;
+ return top*(1-fy)+bottom*fy;
+}
 function applyDepthGeometry(g){
  if(!parallaxDepthPixels)return;
  const uv=g.getAttribute('uv'),pos=g.getAttribute('position');
  const strength=Math.max(0,Math.min(100,Number(effectSettings.parallaxStrength)||0))/100;
+ if(strength<=0)return;
+ // Depth-map values are relative, not metric distances. Map them to a bounded
+ // inverse-depth shell: nearby pixels move more than distant pixels.
+ const near=12,far=46;
+ const radii=new Float32Array(pos.count);
  for(let i=0;i<pos.count;i++){
-  const u=((uv.getX(i)%1)+1)%1,v=Math.max(0,Math.min(.9999,uv.getY(i)));
-  const x=Math.min(255,Math.floor(u*256)),y=Math.min(127,Math.floor((1-v)*128));
-  const depth=parallaxDepthPixels[(y*256+x)*4]/255;
-  // Small radial displacement preserves panorama direction while adding depth.
-  // A nearby depth shell makes binocular disparity and small viewpoint changes visible.
-  // Keep displacement conservative to limit holes and distortion in mono 360 imagery.
-  const radius=24+(depth-.5)*strength*12;
+  const u=uv.getX(i),v=uv.getY(i);
+  let depth=sampleDepthBilinear(u,v);
+  // Suppress noise at the poles where many triangles converge.
+  const polarFade=Math.min(1,Math.max(0,Math.sin(Math.PI*v)*8));
+  depth=.5+(depth-.5)*polarFade;
+  const inverseDistance=(1/far)+(1/near-1/far)*depth;
+  const mapped=1/inverseDistance;
+  radii[i]=THREE.MathUtils.lerp(26,mapped,strength);
+ }
+ // One mild mesh-space smoothing pass avoids jagged depth steps and cracks.
+ const width=257,height=129;
+ if(pos.count===width*height){
+  const smooth=new Float32Array(radii);
+  for(let y=1;y<height-1;y++)for(let x=0;x<width;x++){
+   const i=y*width+x;
+   const left=y*width+(x===0?width-2:x-1),right=y*width+(x===width-1?1:x+1);
+   smooth[i]=radii[i]*.7+(radii[left]+radii[right]+radii[i-width]+radii[i+width])*.075;
+  }
+  radii.set(smooth);
+  // The duplicated longitude seam must have exactly identical positions.
+  for(let y=0;y<height;y++){const l=y*width,r=l+width-1;const avg=(radii[l]+radii[r])*.5;radii[l]=avg;radii[r]=avg;}
+ }
+ for(let i=0;i<pos.count;i++){
   const old=Math.hypot(pos.getX(i),pos.getY(i),pos.getZ(i))||500;
-  const scale=radius/old;
+  const scale=radii[i]/old;
   pos.setXYZ(i,pos.getX(i)*scale,pos.getY(i)*scale,pos.getZ(i)*scale);
  }
- pos.needsUpdate=true;g.computeVertexNormals();
+ pos.needsUpdate=true;
+ g.computeVertexNormals();
+ g.computeBoundingSphere();
 }
+
 function geometry(aspect=16/9){
  if(projection==='flat'){const h=2.7,w=h*aspect;return new THREE.PlaneGeometry(w,h)}
  if(projection==='180') return new THREE.SphereGeometry(500,64,40,0,Math.PI);
@@ -444,7 +477,7 @@ renderer.setAnimationLoop((time)=>{
   depthAutoLastTime=time;
   if(autoEnabled)depthAutoPhase+=autoDt*autoSpeed*2*Math.PI/8;
   const sway=autoEnabled?amount*autoAmplitude:0;
-  const target=new THREE.Vector3(depthPointer.x*amount*2.8+Math.sin(depthAutoPhase)*sway*2.8,depthPointer.y*amount*1.6+Math.sin(depthAutoPhase*.7)*sway*.8,Math.cos(depthAutoPhase)*sway*.8);
+  const target=new THREE.Vector3(depthPointer.x*amount*1.3+Math.sin(depthAutoPhase)*sway*1.3,depthPointer.y*amount*.7+Math.sin(depthAutoPhase*.7)*sway*.5,Math.cos(depthAutoPhase)*sway*.4);
   depthCameraOffset.lerp(target,.14);camera.position.copy(depthCameraOffset);
  }
  if(mode===ViewerMode.DESKTOP&&!orientation){const phi=THREE.MathUtils.degToRad(90-lat),theta=THREE.MathUtils.degToRad(lon);camera.lookAt(500*Math.sin(phi)*Math.cos(theta),500*Math.cos(phi),500*Math.sin(phi)*Math.sin(theta))}
