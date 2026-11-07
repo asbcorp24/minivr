@@ -69,6 +69,63 @@ export function createPanoramaEffects(scene,settings){
    dispose(){scene.remove(group);leaves.forEach(o=>o.material.dispose());textures.forEach(t=>t.dispose());}
   };
  }
+ // Snow: soft distant flakes and crisp six-armed snow crystals near the viewer.
+ if(type==='snow'){
+  const textures=[0,1,2].map(kind=>{
+   const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;
+   const c=canvas.getContext('2d');c.translate(64,64);
+   if(kind===0){
+    const g=c.createRadialGradient(0,0,1,0,0,38);
+    g.addColorStop(0,'rgba(255,255,255,.95)');g.addColorStop(.38,'rgba(245,250,255,.8)');
+    g.addColorStop(1,'rgba(235,246,255,0)');
+    c.fillStyle=g;c.beginPath();c.arc(0,0,38,0,Math.PI*2);c.fill();
+   }else{
+    c.strokeStyle=kind===1?'rgba(246,251,255,.96)':'rgba(222,239,255,.9)';
+    c.lineCap='round';c.lineWidth=kind===1?4:3;
+    for(let arm=0;arm<6;arm++){
+     c.save();c.rotate(arm*Math.PI/3);
+     c.beginPath();c.moveTo(0,0);c.lineTo(0,-43);c.stroke();
+     for(const y of [-18,-29]){
+      c.beginPath();c.moveTo(0,y);c.lineTo(-10,y+10);c.moveTo(0,y);c.lineTo(10,y+10);c.stroke();
+     }
+     c.restore();
+    }
+    c.fillStyle='rgba(255,255,255,.95)';c.beginPath();c.arc(0,0,4,0,Math.PI*2);c.fill();
+   }
+   const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;return texture;
+  });
+  const group=new THREE.Group();group.layers.enableAll();scene.add(group);
+  const flakes=[];const total=Math.min(mobile?260:600,count);
+  for(let i=0;i<total;i++){
+   const kind=i%5===0?1+(i%2):0;
+   const distance=3+Math.random()*17,angle=Math.random()*Math.PI*2;
+   const size=(kind===0?.055+Math.random()*.075:.15+Math.random()*.18)*(distance/9);
+   const material=new THREE.SpriteMaterial({map:textures[kind],transparent:true,opacity:opacity*(kind===0?.78:.94),depthWrite:false,depthTest:true});
+   const sprite=new THREE.Sprite(material);sprite.layers.enableAll();sprite.renderOrder=13;
+   sprite.position.set(Math.cos(angle)*distance,Math.random()*22-11,Math.sin(angle)*distance);
+   sprite.scale.set(size,size,1);group.add(sprite);
+   flakes.push({sprite,material,size,distance,phase:Math.random()*Math.PI*2,velocity:.45+Math.random()*.9,kind});
+  }
+  let last=0;
+  return {
+   update(time,camera){
+    const dt=last?Math.min(.05,(time-last)/1000):0;last=time;
+    if(camera)camera.getWorldPosition(group.position);
+    const t=time*.001;
+    for(const f of flakes){
+     const p=f.sprite.position;
+     p.y-=dt*speed*f.velocity*(f.kind===0?1.4:.95);
+     p.x+=dt*speed*(wind*.24+Math.sin(t*.8+f.phase)*.25);
+     p.z+=dt*Math.cos(t*.65+f.phase)*.18;
+     f.material.rotation+=dt*speed*(f.kind===0?.08:.25)*f.velocity;
+     if(p.y< -11||Math.abs(p.x)>24||Math.abs(p.z)>24){
+      const a=Math.random()*Math.PI*2;p.set(Math.cos(a)*f.distance,11,Math.sin(a)*f.distance);
+     }
+    }
+   },
+   dispose(){scene.remove(group);flakes.forEach(f=>f.material.dispose());textures.forEach(t=>t.dispose());}
+  };
+ }
  // Birds and insects use textured sprites instead of GL_POINTS: mobile GPUs often clamp point size.
  if(type==='birds'||type==='insects'){
   const canvas=document.createElement('canvas');canvas.width=type==='birds'?256:128;canvas.height=type==='birds'?256:128;
