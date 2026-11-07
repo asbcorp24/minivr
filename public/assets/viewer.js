@@ -240,7 +240,12 @@ function makeDepthBackground(source){
   // Keep non-foreground pixels faithful to the original panorama.
   for(let i=0;i<mask.length;i++)if(!mask[i])pixels.set(original.subarray(i*4,i*4+4),i*4);
   ctx.putImageData(frame,0,0);
-  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
+  // Use saved independent PNG layers when present; otherwise generate from
+  // the depth map at runtime for backward compatibility.
+  const savedLayers=Array.isArray(effectSettings.parallaxLayers)?effectSettings.parallaxLayers:[];
+  const savedUrl=savedLayers.length===count&&typeof savedLayers[band]==='string'?savedLayers[band]:null;
+  const texture=savedUrl?new THREE.TextureLoader().load(savedUrl,undefined,undefined,err=>console.warn('Depth layer load failed',savedUrl,err)):new THREE.CanvasTexture(canvas);
+  texture.colorSpace=THREE.SRGBColorSpace;
   texture.wrapS=THREE.RepeatWrapping;
   const geo=new THREE.SphereGeometry(80,96,48);
   if(effectSettings.mirrorHorizontal){const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
