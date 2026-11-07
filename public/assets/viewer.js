@@ -272,29 +272,49 @@ function clearHybridMeshes(){
  for(const mesh of hybridMeshes){scene.remove(mesh);mesh.geometry.dispose();mesh.material.map?.dispose();mesh.material.dispose();}
  hybridMeshes=[];
 }
-// Subtle depth-aware vertex motion. Uses the existing depth-group geometry:
-// no AI inference, extra textures, or CPU geometry uploads per frame.
+// Fast local foliage candidate mask: chromatic green dominance + local texture.
+// It is a conservative browser-only heuristic, not semantic AI segmentation.
+function foliageMaskForGeometry(geo,imagePixels,w,h){
+ const uv=geo.getAttribute('uv'),out=new Float32Array(uv.count);
+ const sample=(x,y)=>{
+  x=((x%w)+w)%w;y=Math.max(0,Math.min(h-1,y));
+  const i=(y*w+x)*4,r=imagePixels[i]/255,g=imagePixels[i+1]/255,b=imagePixels[i+2]/255;
+  const green=Math.max(0,Math.min(1,(g-Math.max(r,b)*.83-.035)*5));
+  const brightness=Math.max(r,g,b);
+  return green*(brightness>.12&&brightness<.88?1:0);
+ };
+ for(let i=0;i<uv.count;i++){
+  const x=Math.floor((1-uv.getX(i))*w),y=Math.floor((1-uv.getY(i))*h);
+  const dx=Math.max(1,Math.floor(w/256)),dy=Math.max(1,Math.floor(h/128));
+  let sum=0,min=1,max=0;
+  for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){
+   const v=sample(x+xx*dx,y+yy*dy);sum+=v;min=Math.min(min,v);max=Math.max(max,v);
+  }
+  // Flat green walls and smooth fields should move less than textured foliage.
+  const textured=Math.min(1,(max-min)*3.5);
+  out[i]=Math.min(1,sum/9)*textured;
+ }
+ geo.setAttribute('foliageWeight',new THREE.Float32BufferAttribute(out,1));
+}
 const microMotionMaterials=[];
 function installMicroMotion(material,band,count){
  if(effectSettings.parallaxMicroMotion===false||new URLSearchParams(location.search).get('micro_motion')==='0')return;
- if(band<count-2)return; // Higher depth values correspond to nearer surfaces.
+ if(band<count-2)return;
  const phase={value:0},strength={value:THREE.MathUtils.clamp(Number(effectSettings.parallaxMicroMotionStrength??25),0,100)/100};
  material.onBeforeCompile=shader=>{
   shader.uniforms.microMotionTime=phase;
   shader.uniforms.microMotionStrength=strength;
-  shader.vertexShader='uniform float microMotionTime;\nuniform float microMotionStrength;\n'+shader.vertexShader;
+  shader.vertexShader='attribute float foliageWeight;\nuniform float microMotionTime;\nuniform float microMotionStrength;\n'+shader.vertexShader;
   shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
-    // Smooth low-frequency movement with a spatially varying amplitude.
-    // Position-based phase is continuous across the longitude seam.
     float microSpatial = sin(position.x * 0.31 + position.z * 0.17)
                        * sin(position.y * 0.24 - position.z * 0.13);
     float microWave = sin(microMotionTime * 0.73 + position.x * 0.18 + position.y * 0.11)
                     + 0.4 * sin(microMotionTime * 1.09 - position.z * 0.21);
     float microPoleFade = clamp(1.0 - abs(normalize(position).y), 0.0, 1.0);
-    transformed += normal * (microSpatial * microWave * microPoleFade * microMotionStrength * 0.055);
+    transformed += normal * (microSpatial * microWave * microPoleFade * foliageWeight * microMotionStrength * 0.16);
   `);
  };
- material.customProgramCacheKey=()=> 'minivr-micro-motion-v1';
+ material.customProgramCacheKey=()=> 'minivr-foliage-motion-v2';
  microMotionMaterials.push({material,phase});
 }
 function makeHybridDepthGroups(source){
@@ -323,6 +343,7 @@ function makeHybridDepthGroups(source){
   ctx.putImageData(frame,0,0);
   const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
   const geo=geometry();
+  if(band>=count-2&&effectSettings.parallaxMicroMotion!==false)foliageMaskForGeometry(geo,original,w,h);
   if(effectSettings.mirrorHorizontal){const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
   const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,transparent:true,depthWrite:false,alphaTest:.015});
   installMicroMotion(material,band,count);
