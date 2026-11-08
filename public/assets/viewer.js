@@ -468,6 +468,24 @@ function makeHybridDepthGroups(source){
  if(manualWaterMaskImage){const maskCanvas=document.createElement('canvas');maskCanvas.width=512;maskCanvas.height=256;maskCanvas.getContext('2d').drawImage(manualWaterMaskImage,0,0,512,256);waterMotionMask=new THREE.CanvasTexture(maskCanvas);waterMotionMask.wrapS=THREE.RepeatWrapping;waterMotionMask.minFilter=THREE.LinearFilter;}
  const depth=new Float32Array(w*h);
  for(let y=0;y<h;y++)for(let x=0;x<w;x++)depth[y*w+x]=remapParallaxDepth(sampleDepthBilinear((x+.5)/w,1-(y+.5)/h));
+ // Soft screen-space depth-edge shadows. Computed only when explicitly enabled.
+ // This is a depth-derived approximation, not physically traced cast shadows.
+ const contactStrength=effectSettings.parallaxContactShadows===true
+  ?THREE.MathUtils.clamp(Number(effectSettings.parallaxContactShadowStrength??40),0,100)/100:0;
+ const contactShadow=contactStrength>0?new Float32Array(w*h):null;
+ if(contactShadow){
+  const radius=Math.max(1,Math.round(w/1024*3));
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+   const i=y*w+x,d=depth[i];let edge=0;
+   for(const [dx,dy] of [[-radius,0],[radius,0],[0,-radius],[0,radius],[-radius,-radius],[radius,radius]]){
+    const nx=(x+dx+w)%w,ny=Math.max(0,Math.min(h-1,y+dy));
+    const difference=depth[ny*w+nx]-d;
+    if(difference>.06)edge=Math.max(edge,Math.min(1,(difference-.06)*3.5));
+   }
+   contactShadow[i]=edge;
+  }
+ }
+
  for(let band=0;band<count;band++){
   const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
   const ctx=canvas.getContext('2d'),frame=ctx.createImageData(w,h),pixels=frame.data;
@@ -483,7 +501,15 @@ function makeHybridDepthGroups(source){
    const foreground=band/(count-1);
    const edgePower=1+occlusion*foreground*2.2;
    const coverage=occlusion>0?Math.pow(weight,edgePower):weight;
-   const j=i*4;pixels[j]=original[j];pixels[j+1]=original[j+1];pixels[j+2]=original[j+2];
+   const j=i*4;
+   // Darken only the deeper receiving bands near a nearer depth boundary.
+   // Preserve source colors when the feature is disabled.
+   const shadow=contactShadow&&depth[i]<center+.5/count
+    ?contactShadow[i]*contactStrength*.48:0;
+   const light=1-shadow;
+   pixels[j]=Math.round(original[j]*light);
+   pixels[j+1]=Math.round(original[j+1]*light);
+   pixels[j+2]=Math.round(original[j+2]*light);
    pixels[j+3]=Math.round(255*coverage);
   }
   ctx.putImageData(frame,0,0);
