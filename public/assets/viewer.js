@@ -820,8 +820,13 @@ renderer.setAnimationLoop((time)=>{
   // Keep landscape, tablets, Cardboard and WebXR unchanged.
   const portraitPhone=window.matchMedia('(orientation: portrait) and (pointer: coarse) and (max-width: 600px)').matches;
   const portraitBoost=portraitPhone?1.35:1;
+  // Depth Window: optional stronger viewpoint translation, as if looking
+  // through a nearby opening into the panorama. No synthetic camera motion in XR.
+  const depthWindow=effectSettings.parallaxDepthWindow===true
+   ?THREE.MathUtils.clamp(Number(effectSettings.parallaxDepthWindowStrength??50),0,100)/100:0;
+  const windowBoost=1+depthWindow*.8;
   const amount=parallaxDepthPixels&&effectSettings.parallaxEnabled
-   ? THREE.MathUtils.clamp(Number(effectSettings.parallaxStrength)||0,0,100)/100*portraitBoost:0;
+   ? THREE.MathUtils.clamp(Number(effectSettings.parallaxStrength)||0,0,100)/100*portraitBoost*windowBoost:0;
   const autoEnabled=amount>0&&effectSettings.rotation&&effectSettings.parallaxAuto!==false;
   const autoAmplitude=THREE.MathUtils.clamp(Number(effectSettings.parallaxAutoAmplitude??35),0,100)/100;
   const autoSpeed=THREE.MathUtils.clamp(Number(effectSettings.parallaxAutoSpeed??.6),.1,3);
@@ -833,8 +838,8 @@ renderer.setAnimationLoop((time)=>{
   const sway=autoEnabled?amount*autoAmplitude:0;
   depthLocalOffset.set(
    depthPointerSmooth.x*amount*1.15+Math.sin(depthAutoPhase)*sway*.85,
-   depthPointerSmooth.y*amount*.55+Math.sin(depthAutoPhase*.65+.4)*sway*.18,
-   Math.cos(depthAutoPhase)*sway*.2
+   depthPointerSmooth.y*amount*(.55+depthWindow*.15)+Math.sin(depthAutoPhase*.65+.4)*sway*.18,
+   Math.cos(depthAutoPhase)*sway*.2+depthWindow*amount*.12
   );
   const yaw=THREE.MathUtils.degToRad(lon);
   const cos=Math.cos(yaw),sin=Math.sin(yaw);
