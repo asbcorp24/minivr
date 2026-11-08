@@ -472,16 +472,36 @@ function makeHybridDepthGroups(source){
   const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
   const ctx=canvas.getContext('2d'),frame=ctx.createImageData(w,h),pixels=frame.data;
   const center=(band+.5)/count,halfWidth=1/count;
+  const occlusion=effectSettings.parallaxDynamicOcclusion===true
+   ?THREE.MathUtils.clamp(Number(effectSettings.parallaxOcclusionStrength??50),0,100)/100:0;
   for(let i=0;i<depth.length;i++){
    const distance=Math.abs(depth[i]-center);
    const weight=Math.max(0,Math.min(1,(halfWidth-distance)/(.5/count)));
    if(weight<=0)continue;
+   // Sharper coverage on near bands gives them a more definite silhouette,
+   // while retaining a feathered transition at depth boundaries.
+   const foreground=band/(count-1);
+   const edgePower=1+occlusion*foreground*2.2;
+   const coverage=occlusion>0?Math.pow(weight,edgePower):weight;
    const j=i*4;pixels[j]=original[j];pixels[j+1]=original[j+1];pixels[j+2]=original[j+2];
-   pixels[j+3]=Math.round(255*weight);
+   pixels[j+3]=Math.round(255*coverage);
   }
   ctx.putImageData(frame,0,0);
   const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
   const geo=geometry();
+  if(occlusion>0){
+   // Shift each band to a progressively closer shell. Foreground silhouettes
+   // occlude more of the distant bands during existing camera parallax.
+   const pos=geo.getAttribute('position');
+   const nearBias=occlusion*(band/(count-1))*1.8;
+   for(let k=0;k<pos.count;k++){
+    const x=pos.getX(k),y=pos.getY(k),z=pos.getZ(k);
+    const radius=Math.hypot(x,y,z)||1;
+    const factor=Math.max(.85,(radius-nearBias)/radius);
+    pos.setXYZ(k,x*factor,y*factor,z*factor);
+   }
+   pos.needsUpdate=true;geo.computeBoundingSphere();
+  }
   
   if(effectSettings.mirrorHorizontal){const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
   const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,transparent:true,depthWrite:false,alphaTest:.015});
