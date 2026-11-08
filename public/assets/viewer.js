@@ -156,6 +156,13 @@ function sampleDepthBilinear(u,v){
  const bottom=read(x0,y0+1)*(1-fx)+read(x0+1,y0+1)*fx;
  return top*(1-fy)+bottom*fy;
 }
+// Optional near-field emphasis. Depth maps use 0=far and 1=near.
+function remapParallaxDepth(depth){
+ if(!effectSettings.parallaxNonlinear)return depth;
+ const strength=THREE.MathUtils.clamp(Number(effectSettings.parallaxNonlinearStrength??50),0,100)/100;
+ // Smoothly preserve distant geometry while expanding the near-field response.
+ return THREE.MathUtils.lerp(depth,Math.pow(depth,2.2),strength);
+}
 function applyDepthGeometry(g){
  if(!parallaxDepthPixels)return;
  const uv=g.getAttribute('uv'),pos=g.getAttribute('position');
@@ -171,6 +178,7 @@ function applyDepthGeometry(g){
   // Suppress noise at the poles where many triangles converge.
   const polarFade=Math.min(1,Math.max(0,Math.sin(Math.PI*v)*8));
   depth=.5+(depth-.5)*polarFade;
+  depth=remapParallaxDepth(depth);
   const inverseDistance=(1/far)+(1/near-1/far)*depth;
   const mapped=1/inverseDistance;
   radii[i]=THREE.MathUtils.lerp(26,mapped,strength);
@@ -459,7 +467,7 @@ function makeHybridDepthGroups(source){
  waterMotionMask=null;
  if(manualWaterMaskImage){const maskCanvas=document.createElement('canvas');maskCanvas.width=512;maskCanvas.height=256;maskCanvas.getContext('2d').drawImage(manualWaterMaskImage,0,0,512,256);waterMotionMask=new THREE.CanvasTexture(maskCanvas);waterMotionMask.wrapS=THREE.RepeatWrapping;waterMotionMask.minFilter=THREE.LinearFilter;}
  const depth=new Float32Array(w*h);
- for(let y=0;y<h;y++)for(let x=0;x<w;x++)depth[y*w+x]=sampleDepthBilinear((x+.5)/w,1-(y+.5)/h);
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++)depth[y*w+x]=remapParallaxDepth(sampleDepthBilinear((x+.5)/w,1-(y+.5)/h));
  for(let band=0;band<count;band++){
   const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
   const ctx=canvas.getContext('2d'),frame=ctx.createImageData(w,h),pixels=frame.data;
