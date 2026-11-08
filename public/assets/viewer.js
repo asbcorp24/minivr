@@ -788,8 +788,12 @@ renderer.setAnimationLoop((time)=>{
  const motionDt=depthAutoLastTime?Math.min(.05,Math.max(0,(time-depthAutoLastTime)/1000)):1/60;
  depthAutoLastTime=time;
  if(mode===ViewerMode.DESKTOP&&!orientation){
+  // Portrait phones need a stronger positional depth cue than desktop.
+  // Keep landscape, tablets, Cardboard and WebXR unchanged.
+  const portraitPhone=window.matchMedia('(orientation: portrait) and (pointer: coarse) and (max-width: 600px)').matches;
+  const portraitBoost=portraitPhone?1.35:1;
   const amount=parallaxDepthPixels&&effectSettings.parallaxEnabled
-   ? THREE.MathUtils.clamp(Number(effectSettings.parallaxStrength)||0,0,100)/100:0;
+   ? THREE.MathUtils.clamp(Number(effectSettings.parallaxStrength)||0,0,100)/100*portraitBoost:0;
   const autoEnabled=amount>0&&effectSettings.rotation&&effectSettings.parallaxAuto!==false;
   const autoAmplitude=THREE.MathUtils.clamp(Number(effectSettings.parallaxAutoAmplitude??35),0,100)/100;
   const autoSpeed=THREE.MathUtils.clamp(Number(effectSettings.parallaxAutoSpeed??.6),.1,3);
