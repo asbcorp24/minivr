@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/panorama-thumbnails.php';
 
 /**
  * Managed panorama image cleanup. Never remove arbitrary filesystem paths:
@@ -43,6 +44,7 @@ function panoramaRemoveUnreferenced(PDO $db, string $url): bool {
     $file = UPLOAD_DIR.'/'.$name;
     if (is_link($file)) return false;
     if (is_file($file) && !@unlink($file)) return false;
+    panoramaRemoveThumbnails($url);
     $tileName = pathinfo($name, PATHINFO_FILENAME);
     if (preg_match('/^[a-f0-9]{20}$/D', $tileName)) {
         panoramaRemoveTileTree(__DIR__.'/../public/tiles/'.$tileName);
