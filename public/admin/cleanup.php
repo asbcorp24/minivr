@@ -9,18 +9,31 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
  if (!hash_equals($_SESSION['cleanup_csrf'],(string)($_POST['csrf']??''))) {
   http_response_code(403); exit('Неверный токен запроса');
  }
+ if(($_POST['action']??'')==='generate_previews'){
+  $created=0;
+  $images=db()->query('SELECT DISTINCT image FROM panoramas')->fetchAll(PDO::FETCH_COLUMN);
+  foreach($images as $url){
+   if(panoramaThumbnailPath((string)$url,'card')===null)continue;
+   if(!is_file(panoramaThumbnailPath((string)$url,'card')) && panoramaCreateThumbnails((string)$url))$created++;
+  }
+  $message='Сгенерировано комплектов миниатюр: '.$created;
+ } else {
  $removed=0;
  // Recompute the list on submission. Never trust submitted file paths.
  foreach (panoramaOrphanImages(db()) as $item) {
   if (panoramaRemoveUnreferenced(db(),$item['url'])) $removed++;
  }
  $message='Удалено неиспользуемых изображений: '.$removed;
+ }
 }
 $orphans=panoramaOrphanImages(db());
 $total=array_sum(array_column($orphans,'size'));
 ?>
 <!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Очистка файлов — MiniVR</title><link rel="stylesheet" href="/assets/admin.css"></head>
 <body><main style="max-width:1000px;margin:auto;padding:32px"><a href="/admin/">← Панорамы</a><h1>Очистка неиспользуемых изображений</h1>
+<h2>Миниатюры существующих панорам</h2>
+<p>Для ранее загруженных панорам можно создать WebP 320 px и 640 px. Исходные фотографии не изменяются. Для генерации требуется PHP GD с поддержкой WebP.</p>
+<form method="post"><input type="hidden" name="csrf" value="<?=htmlspecialchars($_SESSION['cleanup_csrf'],ENT_QUOTES)?>"><input type="hidden" name="action" value="generate_previews"><button class="btn" type="submit">Создать отсутствующие миниатюры</button></form>
 <p>Предварительный просмотр. Удаляются только файлы MiniVR со случайными именами, на которые больше нет ссылок в панорамах, превью и обложках экскурсий. Вместе с ними удаляются связанные тайлы.</p>
 <?php if($message):?><p role="status"><?=htmlspecialchars($message,ENT_QUOTES)?></p><?php endif;?>
 <p><strong>Файлов: <?=count($orphans)?></strong> · Объём: <?=htmlspecialchars(number_format($total/1048576,2,',',' '))?> МБ</p>
