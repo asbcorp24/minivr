@@ -728,7 +728,7 @@ function makeCardboardCalibrationPanel(){
  panel.id='cardboard-calibration';
  panel.style.cssText='position:fixed;z-index:10020;left:50%;top:12px;transform:translateX(-50%);width:min(92vw,360px);max-height:85vh;overflow:auto;padding:12px;border-radius:12px;background:#061522f2;color:#fff;font:13px system-ui;box-shadow:0 8px 35px #000b;display:none';
  const title=document.createElement('div');title.textContent='Настройка линз Cardboard';title.style.cssText='font-weight:700;margin-bottom:8px';panel.appendChild(title);
- const fields=[['scale','Размер изображения',0.6,1,0.01],['spacing','Расстояние между центрами',-0.2,0.2,0.005],['vertical','Смещение по высоте',-0.15,0.15,0.005],['fov','Поле зрения',55,105,1]];
+ const fields=[['scale','Масштаб внутри линз',0.6,1,0.01],['spacing','Расстояние между центрами',-0.2,0.2,0.005],['vertical','Смещение по высоте',-0.15,0.15,0.005],['fov','Поле зрения',55,105,1]];
  const update=()=>{try{localStorage.setItem(cardboardCalibrationKey,JSON.stringify(cardboardCalibration))}catch{}};
  const inputs={};
  for(const [key,label,min,max,step] of fields){
@@ -766,24 +766,30 @@ function updateCardboardEyes(){
 }
 function renderCardboard(){
  const {size,half,l,r}=updateCardboardEyes();
- const width=Math.max(1,Math.floor(half*cardboardCalibration.scale));
- const height=Math.max(1,Math.floor(size.y*cardboardCalibration.scale));
- const y=Math.round((size.y-height)/2+cardboardCalibration.vertical*size.y);
- const spacing=Math.round(cardboardCalibration.spacing*half);
- const leftX=Math.round((half-width)/2-spacing);
- const rightX=Math.round(half+(half-width)/2+spacing);
- // Use renderer viewport/scissor APIs; raw gl.viewport is overwritten by renderer.render.
+ // Each eye always owns exactly half of the physical framebuffer. Do not
+ // shrink or translate viewports: that produces black strips and off-center eyes.
+ const scale=THREE.MathUtils.clamp(Number(cardboardCalibration.scale)||1,.6,1);
+ const spacing=THREE.MathUtils.clamp(Number(cardboardCalibration.spacing)||0,-.2,.2);
+ const vertical=THREE.MathUtils.clamp(Number(cardboardCalibration.vertical)||0,-.15,.15);
+ for(const [eye,sign] of [[l,-1],[r,1]]){
+  // Adjust optical framing inside the fixed viewport, not the viewport itself.
+  // Scaling both focal axes preserves aspect ratio; projection offsets move
+  // the optical centers without leaving uncovered pixels.
+  const e=eye.projectionMatrix.elements;
+  e[0]/=scale;e[5]/=scale;
+  e[8]+=sign*spacing*2;
+  e[9]+=vertical*2;
+  eye.projectionMatrixInverse.copy(eye.projectionMatrix).invert();
+ }
  renderer.setRenderTarget(null);
  renderer.autoClear=false;
  renderer.setScissorTest(true);
  renderer.setViewport(0,0,size.x,size.y);
  renderer.setScissor(0,0,size.x,size.y);
  renderer.clear(true,true,true);
- for(const [eye,x] of [[l,leftX],[r,rightX]]){
-  const x0=Math.max(0,x),y0=Math.max(0,y),x1=Math.min(size.x,x+width),y1=Math.min(size.y,y+height);
-  if(x1<=x0||y1<=y0)continue;
-  renderer.setViewport(x,y,width,height);
-  renderer.setScissor(x0,y0,x1-x0,y1-y0);
+ for(const [eye,x,width] of [[l,0,half],[r,half,size.x-half]]){
+  renderer.setViewport(x,0,width,size.y);
+  renderer.setScissor(x,0,width,size.y);
   renderer.clearDepth();
   renderer.render(scene,eye);
  }
