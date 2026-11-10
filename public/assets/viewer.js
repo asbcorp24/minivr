@@ -712,26 +712,84 @@ async function startImmersiveVR(){
 }
 vrControl.onclick=startImmersiveVR;
 
+// User-calibrated fallback for Cardboard headsets without a VRDisplay profile.
+// Values are screen-relative, so they work across different phone resolutions.
+const cardboardCalibrationKey='minivr:cardboard:calibration:v1';
+const cardboardCalibrationDefaults={scale:0.88,spacing:0,vertical:0,fov:75};
+let cardboardCalibration={...cardboardCalibrationDefaults};
+try{
+ const saved=JSON.parse(localStorage.getItem(cardboardCalibrationKey)||'null');
+ if(saved&&typeof saved==='object')for(const key of Object.keys(cardboardCalibrationDefaults)){
+  const value=Number(saved[key]);if(Number.isFinite(value))cardboardCalibration[key]=value;
+ }
+}catch{}
+function makeCardboardCalibrationPanel(){
+ const panel=document.createElement('div');
+ panel.id='cardboard-calibration';
+ panel.style.cssText='position:fixed;z-index:10020;left:50%;top:12px;transform:translateX(-50%);width:min(92vw,360px);max-height:85vh;overflow:auto;padding:12px;border-radius:12px;background:#061522f2;color:#fff;font:13px system-ui;box-shadow:0 8px 35px #000b;display:none';
+ const title=document.createElement('div');title.textContent='Настройка линз Cardboard';title.style.cssText='font-weight:700;margin-bottom:8px';panel.appendChild(title);
+ const fields=[['scale','Размер изображения',0.6,1,0.01],['spacing','Расстояние между центрами',-0.2,0.2,0.005],['vertical','Смещение по высоте',-0.15,0.15,0.005],['fov','Поле зрения',55,105,1]];
+ const update=()=>{try{localStorage.setItem(cardboardCalibrationKey,JSON.stringify(cardboardCalibration))}catch{}};
+ const inputs={};
+ for(const [key,label,min,max,step] of fields){
+  const wrap=document.createElement('label');wrap.style.cssText='display:block;margin:8px 0';
+  const text=document.createElement('div');text.textContent=label;wrap.appendChild(text);
+  const range=document.createElement('input');range.type='range';range.min=min;range.max=max;range.step=step;range.value=cardboardCalibration[key];range.style.width='85%';
+  const output=document.createElement('span');output.style.marginLeft='5px';output.textContent=range.value;
+  range.addEventListener('input',()=>{cardboardCalibration[key]=Number(range.value);output.textContent=range.value;update()});
+  wrap.append(range,output);panel.appendChild(wrap);inputs[key]={range,output};
+ }
+ const note=document.createElement('div');note.textContent='Совместите центры изображений с линзами. Настройки сохраняются для этого браузера. Для VR-устройств с собственным профилем используется их штатная оптика.';note.style.cssText='opacity:.8;margin:8px 0';panel.appendChild(note);
+ const reset=document.createElement('button');reset.textContent='Сброс';reset.onclick=()=>{cardboardCalibration={...cardboardCalibrationDefaults};for(const [key,input] of Object.entries(inputs)){input.range.value=cardboardCalibration[key];input.output.textContent=String(cardboardCalibration[key])}update()};
+ const close=document.createElement('button');close.textContent='Закрыть';close.onclick=()=>panel.style.display='none';close.style.marginLeft='12px';
+ panel.append(reset,close);document.body.appendChild(panel);
+ const open=document.createElement('button');open.textContent='⚙ Линзы';open.title='Калибровка Cardboard';open.style.cssText='position:fixed;right:12px;top:12px;z-index:10019;padding:7px 11px;border-radius:8px;background:#061522dd;color:white;border:1px solid #43849d;display:none';
+ open.onclick=()=>panel.style.display=panel.style.display==='none'?'block':'none';document.body.appendChild(open);
+ return {panel,open};
+}
+const cardboardCalibrationUI=makeCardboardCalibrationPanel();
+function syncCardboardCalibrationUI(){
+ const visible=cardboard&&!legacyCardboard;
+ cardboardCalibrationUI.open.style.display=visible?'block':'none';
+ if(!visible)cardboardCalibrationUI.panel.style.display='none';
+}
 function updateCardboardEyes(){
  // A wider, but bounded, stereo baseline is useful for the depth-derived shell.
  // Physical eye separation remains comfortable; depth-derived geometry supplies
  // the parallax, rather than exaggerating stereo disparity at 75% strength.
  cardboardStereo.eyeSep=.064;
  const size=renderer.getDrawingBufferSize(new THREE.Vector2()),half=Math.max(1,Math.floor(size.x/2));
- camera.aspect=half/Math.max(1,size.y);camera.updateProjectionMatrix();camera.updateMatrixWorld(true);cardboardStereo.aspect=.5;cardboardStereo.update(camera);
+ camera.aspect=half/Math.max(1,size.y);camera.fov=cardboardCalibration.fov;camera.updateProjectionMatrix();camera.updateMatrixWorld(true);cardboardStereo.aspect=.5;cardboardStereo.update(camera);
  const l=cardboardStereo.cameraL,r=cardboardStereo.cameraR;
  if(stereoMode==='mono'){l.layers.set(0);r.layers.set(0)}else{l.layers.disableAll();l.layers.enable(0);l.layers.enable(1);r.layers.disableAll();r.layers.enable(0);r.layers.enable(2)}
  return {size,half,l,r};
 }
 function renderCardboard(){
  const {size,half,l,r}=updateCardboardEyes();
- const gl=renderer.getContext();
- renderer.setRenderTarget(null);renderer.autoClear=false;
+ const width=Math.max(1,Math.floor(half*cardboardCalibration.scale));
+ const height=Math.max(1,Math.floor(size.y*cardboardCalibration.scale));
+ const y=Math.round((size.y-height)/2+cardboardCalibration.vertical*size.y);
+ const spacing=Math.round(cardboardCalibration.spacing*half);
+ const leftX=Math.round((half-width)/2-spacing);
+ const rightX=Math.round(half+(half-width)/2+spacing);
+ // Use renderer viewport/scissor APIs; raw gl.viewport is overwritten by renderer.render.
+ renderer.setRenderTarget(null);
+ renderer.autoClear=false;
  renderer.setScissorTest(true);
- gl.enable(gl.SCISSOR_TEST);
- gl.viewport(0,0,half,size.y);gl.scissor(0,0,half,size.y);gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);renderer.render(scene,l);
- gl.viewport(half,0,size.x-half,size.y);gl.scissor(half,0,size.x-half,size.y);gl.clear(gl.DEPTH_BUFFER_BIT);renderer.render(scene,r);
- gl.disable(gl.SCISSOR_TEST);renderer.setScissorTest(false);renderer.setViewport(0,0,size.x,size.y);renderer.autoClear=true;
+ renderer.setViewport(0,0,size.x,size.y);
+ renderer.setScissor(0,0,size.x,size.y);
+ renderer.clear(true,true,true);
+ for(const [eye,x] of [[l,leftX],[r,rightX]]){
+  const x0=Math.max(0,x),y0=Math.max(0,y),x1=Math.min(size.x,x+width),y1=Math.min(size.y,y+height);
+  if(x1<=x0||y1<=y0)continue;
+  renderer.setViewport(x,y,width,height);
+  renderer.setScissor(x0,y0,x1-x0,y1-y0);
+  renderer.clearDepth();
+  renderer.render(scene,eye);
+ }
+ renderer.setScissorTest(false);
+ renderer.setViewport(0,0,size.x,size.y);
+ renderer.autoClear=true;
 }
 const cardboardRestoreKey='minivr:cardboard:restore';
 async function switchSceneInPlace(url){
@@ -786,18 +844,18 @@ async function restoreCardboardAfterNavigation(){
 }
 async function toggleCardboard(){
  if(renderer.xr.isPresenting)return;
- if(legacyCardboard&&legacyVRDisplay){try{await legacyVREffect.exitPresent()}catch{}legacyCardboard=false;cardboard=false;hud.visible=false;cardboardMenu.visible=false;cardboardReticle.visible=false;cardboardMenuPlaced=false;document.body.classList.remove('cardboard');document.querySelector('#controls').style.display='';document.querySelector('#top').style.display='';resize();return}
+ if(legacyCardboard&&legacyVRDisplay){try{await legacyVREffect.exitPresent()}catch{}legacyCardboard=false;cardboard=false;syncCardboardCalibrationUI();hud.visible=false;cardboardMenu.visible=false;cardboardReticle.visible=false;cardboardMenuPlaced=false;document.body.classList.remove('cardboard');document.querySelector('#controls').style.display='';document.querySelector('#top').style.display='';resize();return}
  try{
   const displays=await navigator.getVRDisplays?.();
   legacyVRDisplay=displays?.[0]||null;
   if(legacyVRDisplay){
    legacyVREffect.setVRDisplay(legacyVRDisplay);legacyVRControls.setVRDisplay(legacyVRDisplay);legacyVREffect.setSize(innerWidth,innerHeight,false);
-   await legacyVREffect.requestPresent();legacyCardboard=true;cardboard=false;orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();camera.layers.enable(0);camera.layers.enable(1);camera.layers.enable(2);hud.visible=false;gazeCursor.visible=false;cardboardMenuPlaced=false;placeCardboardMenu();document.body.classList.add('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';return;
+   await legacyVREffect.requestPresent();legacyCardboard=true;cardboard=false;syncCardboardCalibrationUI();orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();camera.layers.enable(0);camera.layers.enable(1);camera.layers.enable(2);hud.visible=false;gazeCursor.visible=false;cardboardMenuPlaced=false;placeCardboardMenu();document.body.classList.add('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';return;
   }
  }catch(err){console.warn('Legacy Cardboard requestPresent failed',err)}
  // Emergency fallback only when the polyfilled VRDisplay cannot present.
  if(typeof DeviceOrientationEvent?.requestPermission==='function'){try{if((await DeviceOrientationEvent.requestPermission())!=='granted')return}catch{return}}
- orientation=true;deviceOrientation.enabled=true;deviceOrientation.connect();cardboard=true;hud.visible=false;gazeCursor.visible=false;cardboardMenuPlaced=false;placeCardboardMenu();document.body.classList.add('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';try{await document.documentElement.requestFullscreen?.()}catch{}resize();
+ orientation=true;deviceOrientation.enabled=true;deviceOrientation.connect();cardboard=true;syncCardboardCalibrationUI();hud.visible=false;gazeCursor.visible=false;cardboardMenuPlaced=false;placeCardboardMenu();document.body.classList.add('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';try{await document.documentElement.requestFullscreen?.()}catch{}resize();
 }
 document.querySelector('#cardboard').onclick=toggleCardboard;
 restoreCardboardAfterNavigation().catch(err=>console.warn('Cardboard restore failed',err));
