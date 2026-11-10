@@ -715,7 +715,7 @@ vrControl.onclick=startImmersiveVR;
 // User-calibrated fallback for Cardboard headsets without a VRDisplay profile.
 // Values are screen-relative, so they work across different phone resolutions.
 const cardboardCalibrationKey='minivr:cardboard:calibration:v1';
-const cardboardCalibrationDefaults={scale:0.88,spacing:0,vertical:0,fov:75};
+const cardboardCalibrationDefaults={scale:0.88,spacing:0,vertical:0,fov:75,stereoStrength:1.8};
 let cardboardCalibration={...cardboardCalibrationDefaults};
 try{
  const saved=JSON.parse(localStorage.getItem(cardboardCalibrationKey)||'null');
@@ -728,7 +728,7 @@ function makeCardboardCalibrationPanel(){
  panel.id='cardboard-calibration';
  panel.style.cssText='position:fixed;z-index:10020;left:50%;top:12px;transform:translateX(-50%);width:min(92vw,360px);max-height:85vh;overflow:auto;padding:12px;border-radius:12px;background:#061522f2;color:#fff;font:13px system-ui;box-shadow:0 8px 35px #000b;display:none';
  const title=document.createElement('div');title.textContent='Настройка линз Cardboard';title.style.cssText='font-weight:700;margin-bottom:8px';panel.appendChild(title);
- const fields=[['scale','Размер изображения',0.6,1,0.01],['spacing','Расстояние между центрами',-0.2,0.2,0.005],['vertical','Смещение по высоте',-0.15,0.15,0.005],['fov','Поле зрения',55,105,1]];
+ const fields=[['scale','Размер изображения',0.6,1,0.01],['spacing','Расстояние между центрами',-0.2,0.2,0.005],['vertical','Смещение по высоте',-0.15,0.15,0.005],['fov','Поле зрения',55,105,1],['stereoStrength','Сила 3D (только с картой глубины)',0.5,3,0.1]];
  const update=()=>{try{localStorage.setItem(cardboardCalibrationKey,JSON.stringify(cardboardCalibration))}catch{}};
  const inputs={};
  for(const [key,label,min,max,step] of fields){
@@ -739,6 +739,12 @@ function makeCardboardCalibrationPanel(){
   range.addEventListener('input',()=>{cardboardCalibration[key]=Number(range.value);output.textContent=range.value;update()});
   wrap.append(range,output);panel.appendChild(wrap);inputs[key]={range,output};
  }
+ const stereoStatus=document.createElement('div');
+ stereoStatus.style.cssText='padding:6px 0;font-size:12px;opacity:.9';
+ stereoStatus.textContent=projection==='360'&&stereoMode==='mono'&&effectSettings.parallaxEnabled&&effectSettings.parallaxDepth
+  ?'3D: карта глубины задана; при загрузке проверьте эффект в очках.'
+  :'3D: для моно-панорамы нужна включённая карта глубины. Без неё изображение останется плоским.';
+ panel.appendChild(stereoStatus);
  const note=document.createElement('div');note.textContent='Совместите центры изображений с линзами. Настройки сохраняются для этого браузера. Для VR-устройств с собственным профилем используется их штатная оптика.';note.style.cssText='opacity:.8;margin:8px 0';panel.appendChild(note);
  const reset=document.createElement('button');reset.textContent='Сброс';reset.onclick=()=>{cardboardCalibration={...cardboardCalibrationDefaults};for(const [key,input] of Object.entries(inputs)){input.range.value=cardboardCalibration[key];input.output.textContent=String(cardboardCalibration[key])}update()};
  const close=document.createElement('button');close.textContent='Закрыть';close.onclick=()=>panel.style.display='none';close.style.marginLeft='12px';
@@ -757,7 +763,11 @@ function updateCardboardEyes(){
  // A wider, but bounded, stereo baseline is useful for the depth-derived shell.
  // Physical eye separation remains comfortable; depth-derived geometry supplies
  // the parallax, rather than exaggerating stereo disparity at 75% strength.
- cardboardStereo.eyeSep=.064;
+ // For a depth-derived mono panorama, use a bounded virtual stereo baseline.
+ // A plain mono panorama has no scene depth and must not be presented as real stereo.
+ const hasDepth=projection==='360'&&stereoMode==='mono'&&parallaxDepthPixels&&effectSettings.parallaxEnabled;
+ const strength=THREE.MathUtils.clamp(Number(cardboardCalibration.stereoStrength)||1,0.5,3);
+ cardboardStereo.eyeSep=hasDepth?.064*strength:.064;
  const size=renderer.getDrawingBufferSize(new THREE.Vector2()),half=Math.max(1,Math.floor(size.x/2));
  camera.aspect=half/Math.max(1,size.y);camera.fov=cardboardCalibration.fov;camera.updateProjectionMatrix();camera.updateMatrixWorld(true);cardboardStereo.aspect=.5;cardboardStereo.update(camera);
  const l=cardboardStereo.cameraL,r=cardboardStereo.cameraR;
@@ -848,7 +858,7 @@ async function toggleCardboard(){
  try{
   const displays=await navigator.getVRDisplays?.();
   legacyVRDisplay=displays?.[0]||null;
-  if(legacyVRDisplay && false){
+  if(false && legacyVRDisplay){
    legacyVREffect.setVRDisplay(legacyVRDisplay);legacyVRControls.setVRDisplay(legacyVRDisplay);legacyVREffect.setSize(innerWidth,innerHeight,false);
    await legacyVREffect.requestPresent();legacyCardboard=true;cardboard=false;syncCardboardCalibrationUI();orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();camera.layers.enable(0);camera.layers.enable(1);camera.layers.enable(2);hud.visible=false;gazeCursor.visible=false;cardboardMenuPlaced=false;placeCardboardMenu();document.body.classList.add('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';return;
   }
