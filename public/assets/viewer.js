@@ -449,12 +449,49 @@ function installWaterMotion(material){
  material.customProgramCacheKey=()=> (prevKey?prevKey():'minivr-water')+'-water-v1-'+kind+'-'+direction.toFixed(4);
  microMotionMaterials.push({material,phase,speed});
 }
+// Parallax quality is independent of the original 360° texture resolution.
+// Auto uses a conservative mobile budget; Cardboard is more demanding (two eyes).
+const parallaxQualityKey='minivr-parallax-quality';
+const parallaxQualityOptions=['auto','high','medium','low'];
+let parallaxQuality='auto';
+try {
+ const saved=localStorage.getItem(parallaxQualityKey);
+ if(parallaxQualityOptions.includes(saved))parallaxQuality=saved;
+} catch {}
+function parallaxQualityBudget(){
+ const mobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints>1 && window.innerWidth<1100);
+ const memory=Number(navigator.deviceMemory)||0;
+ const mode=typeof getViewerMode==='function'?getViewerMode():'desktop';
+ const isCardboard=mode==='cardboard';
+ const auto=isCardboard||mobile&&memory>0&&memory<=4?'low':mobile?'medium':'high';
+ const quality=parallaxQuality==='auto'?auto:parallaxQuality;
+ const budgets={high:{width:4096,layers:5},medium:{width:2048,layers:3},low:{width:1024,layers:2}};
+ return budgets[quality];
+}
+function installParallaxQualityControl(){
+ const select=document.createElement('select');
+ select.setAttribute('aria-label','Качество параллакса');
+ select.title='Качество слоёв параллакса (после смены страница перезагрузится)';
+ select.style.cssText='position:fixed;right:12px;bottom:12px;z-index:10002;background:#071824;color:#fff;border:1px solid #43849d;border-radius:8px;padding:7px;font:13px sans-serif;max-width:170px';
+ for(const [value,label] of [['auto','Параллакс: авто'],['high','Параллакс: высокое'],['medium','Параллакс: среднее'],['low','Параллакс: низкое']]){
+  const option=document.createElement('option');option.value=value;option.textContent=label;select.appendChild(option);
+ }
+ select.value=parallaxQuality;
+ select.addEventListener('change',()=>{
+  parallaxQuality=select.value;
+  try{localStorage.setItem(parallaxQualityKey,parallaxQuality)}catch{}
+  window.location.reload();
+ });
+ document.body.appendChild(select);
+}
+installParallaxQualityControl();
 function makeHybridDepthGroups(source){
- const count=Math.max(2,Math.min(10,Number(effectSettings.parallaxGroups)||5));
+ const budget=parallaxQualityBudget();
+ const count=Math.max(2,Math.min(budget.layers,Number(effectSettings.parallaxGroups)||5));
  const image=source.image;if(!image?.width||!image?.height)return false;
  const maxTextureSize=renderer.capabilities.maxTextureSize||4096;
  const sourceWidth=image.naturalWidth||image.videoWidth||image.width,sourceHeight=image.naturalHeight||image.videoHeight||image.height;
- const scale=Math.min(1,maxTextureSize/sourceWidth,maxTextureSize/sourceHeight,4096/sourceWidth);
+ const scale=Math.min(1,maxTextureSize/sourceWidth,maxTextureSize/sourceHeight,budget.width/sourceWidth);
  const w=Math.max(2,Math.round(sourceWidth*scale/2)*2),h=Math.max(1,Math.round(sourceHeight*scale));
  const base=document.createElement('canvas');base.width=w;base.height=h;
  const baseCtx=base.getContext('2d',{willReadFrequently:true});baseCtx.drawImage(image,0,0,w,h);
