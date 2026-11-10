@@ -744,12 +744,12 @@ function makeCardboardCalibrationPanel(){
  const close=document.createElement('button');close.textContent='Закрыть';close.onclick=()=>panel.style.display='none';close.style.marginLeft='12px';
  panel.append(reset,close);document.body.appendChild(panel);
  const open=document.createElement('button');open.textContent='⚙ Линзы';open.title='Калибровка Cardboard';open.style.cssText='position:fixed;right:12px;top:12px;z-index:10019;padding:7px 11px;border-radius:8px;background:#061522dd;color:white;border:1px solid #43849d;display:none';
- open.onclick=()=>panel.style.display=panel.style.display==='none'?'block':'none';document.body.appendChild(open);
+ open.onclick=()=>panel.style.display=panel.style.display==='none'?'block':'none';document.body.appendChild(open);open.style.display='block';
  return {panel,open};
 }
 const cardboardCalibrationUI=makeCardboardCalibrationPanel();
 function syncCardboardCalibrationUI(){
- const visible=cardboard&&!legacyCardboard;
+ const visible=true; // Allow calibration before putting the phone into the headset.
  cardboardCalibrationUI.open.style.display=visible?'block':'none';
  if(!visible)cardboardCalibrationUI.panel.style.display='none';
 }
@@ -848,12 +848,12 @@ async function toggleCardboard(){
  try{
   const displays=await navigator.getVRDisplays?.();
   legacyVRDisplay=displays?.[0]||null;
-  if(legacyVRDisplay){
+  if(legacyVRDisplay && false){
    legacyVREffect.setVRDisplay(legacyVRDisplay);legacyVRControls.setVRDisplay(legacyVRDisplay);legacyVREffect.setSize(innerWidth,innerHeight,false);
    await legacyVREffect.requestPresent();legacyCardboard=true;cardboard=false;syncCardboardCalibrationUI();orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();camera.layers.enable(0);camera.layers.enable(1);camera.layers.enable(2);hud.visible=false;gazeCursor.visible=false;cardboardMenuPlaced=false;placeCardboardMenu();document.body.classList.add('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';return;
   }
  }catch(err){console.warn('Legacy Cardboard requestPresent failed',err)}
- // Emergency fallback only when the polyfilled VRDisplay cannot present.
+ // Use the calibratable stereo renderer for the Cardboard button on all phones.
  if(typeof DeviceOrientationEvent?.requestPermission==='function'){try{if((await DeviceOrientationEvent.requestPermission())!=='granted')return}catch{return}}
  orientation=true;deviceOrientation.enabled=true;deviceOrientation.connect();cardboard=true;syncCardboardCalibrationUI();hud.visible=false;gazeCursor.visible=false;cardboardMenuPlaced=false;placeCardboardMenu();document.body.classList.add('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';try{await document.documentElement.requestFullscreen?.()}catch{}resize();
 }
