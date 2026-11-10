@@ -714,8 +714,8 @@ vrControl.onclick=startImmersiveVR;
 
 // User-calibrated fallback for Cardboard headsets without a VRDisplay profile.
 // Values are screen-relative, so they work across different phone resolutions.
-const cardboardCalibrationKey='minivr:cardboard:calibration:v1';
-const cardboardCalibrationDefaults={scale:0.88,spacing:0,vertical:0,fov:75};
+const cardboardCalibrationKey='minivr:cardboard:calibration:v2';
+const cardboardCalibrationDefaults={scale:1,spacing:0,vertical:0,fov:75};
 let cardboardCalibration={...cardboardCalibrationDefaults};
 try{
  const saved=JSON.parse(localStorage.getItem(cardboardCalibrationKey)||'null');
@@ -759,7 +759,7 @@ function updateCardboardEyes(){
  // the parallax, rather than exaggerating stereo disparity at 75% strength.
  cardboardStereo.eyeSep=.064;
  const size=renderer.getDrawingBufferSize(new THREE.Vector2()),half=Math.max(1,Math.floor(size.x/2));
- camera.aspect=half/Math.max(1,size.y);camera.fov=cardboardCalibration.fov;camera.updateProjectionMatrix();camera.updateMatrixWorld(true);cardboardStereo.aspect=.5;cardboardStereo.update(camera);
+ camera.aspect=half/Math.max(1,size.y);camera.fov=cardboardCalibration.fov;camera.updateProjectionMatrix();camera.updateMatrixWorld(true);cardboardStereo.aspect=1;cardboardStereo.update(camera);
  const l=cardboardStereo.cameraL,r=cardboardStereo.cameraR;
  if(stereoMode==='mono'){l.layers.set(0);r.layers.set(0)}else{l.layers.disableAll();l.layers.enable(0);l.layers.enable(1);r.layers.disableAll();r.layers.enable(0);r.layers.enable(2)}
  return {size,half,l,r};
@@ -776,7 +776,7 @@ function renderCardboard(){
   // Scaling both focal axes preserves aspect ratio; projection offsets move
   // the optical centers without leaving uncovered pixels.
   const e=eye.projectionMatrix.elements;
-  e[0]/=scale;e[5]/=scale;
+  e[0]*=scale;e[5]*=scale;
   e[8]+=sign*spacing*2;
   e[9]+=vertical*2;
   eye.projectionMatrixInverse.copy(eye.projectionMatrix).invert();
