@@ -19,8 +19,9 @@ try{
  if(!move_uploaded_file($f['tmp_name'],$dir.'/'.$name))throw new RuntimeException('Ошибка сохранения PNG');
  $old=$effects['parallaxBackground']??null;
  $effects['parallaxBackground']='/uploads/depth/'.$name;
+ $effects['parallaxBackgroundEnabled']=true;
  try{$q=db()->prepare('UPDATE panoramas SET effects=? WHERE id=?');$q->execute([json_encode($effects,JSON_UNESCAPED_UNICODE),$id]);}
  catch(Throwable $e){@unlink($dir.'/'.$name);throw $e;}
- if(is_string($old)&&preg_match('~^/uploads/depth/bg'.$id.'-[a-f0-9]{16}\\.png$~',$old))@unlink(__DIR__.'/..'.$old);
+ // Keep prior generated files for rollback and comparison.
  echo json_encode(['ok'=>true,'url'=>$effects['parallaxBackground']]);
 }catch(Throwable $e){http_response_code(400);echo json_encode(['error'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);}
