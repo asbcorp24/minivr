@@ -5,12 +5,12 @@ export function createDesktop3DWindow(canvas){
  let x=0,y=0,desiredX=0,desiredY=0;
  try{enabled=localStorage.getItem(key)==='1'}catch{}
  const panel=document.createElement('label');
- panel.title='Объёмный 3D: Shift + перетаскивание — перемещение точки обзора, R — сброс';
+ panel.title='Объёмный 3D: отдельная геометрия глубины и более чёткие края объектов; Shift + мышь — смещение';
  panel.style.cssText='position:fixed;right:12px;bottom:60px;z-index:10002;background:#071824;color:#fff;border:1px solid #43849d;border-radius:8px;padding:8px 10px;font:13px sans-serif;display:flex;align-items:center;gap:7px;cursor:pointer';
  const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=enabled;
- const label=document.createElement('span');label.textContent='Объёмный 3D';
+ const label=document.createElement('span');label.textContent='Объёмный 3D (рельеф)';
  panel.append(checkbox,label);document.body.appendChild(panel);
- checkbox.addEventListener('change',()=>{enabled=checkbox.checked;if(!enabled){dragging=false;desiredX=desiredY=0;}try{localStorage.setItem(key,enabled?'1':'0')}catch{}});
+ checkbox.addEventListener('change',()=>{enabled=checkbox.checked;if(!enabled){dragging=false;desiredX=desiredY=0;}try{localStorage.setItem(key,enabled?'1':'0')}catch{}window.location.reload();});
  const isEligible=()=>enabled&&document.pointerLockElement!==canvas;
  canvas.addEventListener('pointerdown',e=>{
   if(!isEligible()||!e.shiftKey||e.button!==0)return;
