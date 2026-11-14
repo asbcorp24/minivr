@@ -235,18 +235,34 @@ if(panel){
     if(cache)await cache.put(model,response.clone()).catch(()=>{});
    }
    bytes=await downloadModel(response);
-   setProgress(55,'Инициализация нейросети…');
-   try{
-    session=await ort.InferenceSession.create(bytes,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
-   }catch(error){
-    if(/ExtractImagePatches|No Op registered|not implemented|unsupported/i.test(String(error))){
-     status.textContent='Модель LaMa не запустилась в ONNX Runtime Web. Переключаюсь на локальное заполнение фона…';
-     await generateFallbackBackground();
-     return;
-    }
-    throw error;
+   // Prefer GPU acceleration where available, but retain CPU support for
+   // unsupported GPUs, browsers, operators and model graph partitions.
+   let provider='wasm';
+   let gpuAvailable=false;
+   if(navigator.gpu&&window.isSecureContext){
+    try{const adapter=await navigator.gpu.requestAdapter();gpuAvailable=!!adapter;}
+    catch(error){console.warn('MiniVR: WebGPU adapter unavailable',error);}
    }
-   setProgress(65,'Подготовка маски по карте глубины…');
+   if(gpuAvailable){
+    setProgress(55,'Запускаю LaMa на видеокарте (WebGPU)…');
+    try{
+     session=await ort.InferenceSession.create(bytes,{executionProviders:['webgpu','wasm'],graphOptimizationLevel:'all'});
+     provider='webgpu';
+    }catch(error){
+     console.warn('MiniVR: WebGPU LaMa failed; retrying on CPU (WASM)',error);
+     setProgress(55,'WebGPU недоступен для этой модели. Переключаюсь на процессор (WASM)…');
+    }
+   }else{
+    setProgress(55,'WebGPU недоступен. Запускаю LaMa на процессоре (WASM)…');
+   }
+   if(!session){
+    try{
+     session=await ort.InferenceSession.create(bytes,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
+    }catch(error){
+     throw Error('LaMa не запускается даже на CPU (WASM): '+String(error.message||error));
+    }
+   }
+   setProgress(65,'LaMa: '+(provider==='webgpu'?'видеокарта (WebGPU)':'процессор (WASM)')+'. Подготовка маски…');
    const load=async url=>{const img=new Image();img.crossOrigin='anonymous';img.src=url;await img.decode();return img;};
    const [photo,depth]=await Promise.all([load(panel.dataset.image),load(panel.dataset.depth)]);
    const w=512,h=512,makeCanvas=()=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;};
@@ -264,7 +280,19 @@ if(panel){
    if(selected<100)throw Error('Карта глубины не содержит достаточно ближних объектов.');
    if(selected>plane*.65)throw Error('Слишком большая область маски. Увеличьте порог глубины или удалите лишние участки кистью.');
    setProgress(75,'ИИ восстанавливает скрытый фон. Во время вычисления процент не меняется…');
-   const outputs=await session.run({image:new ort.Tensor('float32',values,[1,3,h,w]),mask:new ort.Tensor('float32',mask,[1,1,h,w])});
+   let outputs;
+   try{
+    outputs=await session.run({image:new ort.Tensor('float32',values,[1,3,h,w]),mask:new ort.Tensor('float32',mask,[1,1,h,w])});
+   }catch(error){
+    if(provider!=='webgpu')throw error;
+    console.warn('MiniVR: WebGPU inference failed; retrying on CPU (WASM)',error);
+    setProgress(75,'WebGPU не смог выполнить LaMa. Повторяю на процессоре (WASM)…');
+    await session.release();
+    session=null;
+    session=await ort.InferenceSession.create(bytes,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
+    provider='wasm';
+    outputs=await session.run({image:new ort.Tensor('float32',values,[1,3,h,w]),mask:new ort.Tensor('float32',mask,[1,1,h,w])});
+   }
    setProgress(85,'Обработка результата нейросети…');
    const tensor=outputs.output??Object.values(outputs)[0];
    if(!tensor?.data||tensor.data.length<plane*3)throw Error('Модель вернула некорректный результат.');
@@ -297,7 +325,7 @@ if(panel){
    const saved=await fetch('/admin/depth-background-upload.php',{method:'POST',body:form,credentials:'same-origin'});
    const answer=await saved.json();if(!saved.ok||!answer.ok)throw Error(answer.error||'Ошибка сохранения');
    const existing=panel.querySelector('[data-ai-saved]');if(existing)existing.src=answer.url+'?v='+Date.now();
-   markSaved();setProgress(100,'Фон создан и сохранён. Обновите просмотр панорамы.');
+   markSaved();setProgress(100,'Фон создан на '+(provider==='webgpu'?'видеокарте (WebGPU)':'процессоре (WASM)')+' и сохранён. Обновите просмотр панорамы.');
   }catch(err){console.error('MiniVR AI inpainting',err);status.textContent='Ошибка: '+err.message;}
   finally{await session?.release?.().catch(()=>{});button.disabled=false;}
  });
