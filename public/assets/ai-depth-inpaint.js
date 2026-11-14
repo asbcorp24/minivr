@@ -216,15 +216,22 @@ if(panel){
    // Cache model bytes to avoid repeated downloads after the first generation.
    let bytes;
    const cache=typeof caches!=='undefined'?await caches.open('minivr-lama-model-v1').catch(()=>null):null;
+   // Prefer the model installed on this MiniVR server. Only use the remote
+   // mirror when the local file cannot be fetched.
    let response=cache?await cache.match(model):null;
    if(!response){
-    // A missing optional local model is normal on a fresh installation.
-    // Avoid a noisy 404 in the browser console by using the hosted model
-    // unless the administrator has explicitly configured a local model URL.
-    const configuredModel=panel.dataset.modelUrl||remoteModel;
-    setProgress(5,'Загрузка модели LaMa: '+(panel.dataset.modelUrl?'локальный файл':'Hugging Face')+'…');
-    response=await fetch(configuredModel);
-    if(!response.ok)throw Error('Не удалось загрузить модель LaMa: HTTP '+response.status+'. Проверьте доступ к '+configuredModel);
+    const localModel=panel.dataset.modelUrl||model;
+    setProgress(5,'Загрузка локальной модели LaMa…');
+    try{
+     const local=await fetch(localModel);
+     if(local.ok)response=local;
+     else console.warn('MiniVR: локальная модель LaMa недоступна, HTTP '+local.status);
+    }catch(error){console.warn('MiniVR: не удалось загрузить локальную LaMa',error);}
+    if(!response){
+     setProgress(5,'Локальная модель недоступна. Пробую Hugging Face…');
+     response=await fetch(remoteModel);
+     if(!response.ok)throw Error('Не удалось загрузить LaMa с Hugging Face: HTTP '+response.status);
+    }
     if(cache)await cache.put(model,response.clone()).catch(()=>{});
    }
    bytes=await downloadModel(response);
