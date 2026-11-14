@@ -294,7 +294,7 @@ let depthBackgroundMesh=null;
 let aiBackgroundMesh=null;
 function installAiBackground(){
  if(aiBackgroundMesh){scene.remove(aiBackgroundMesh);aiBackgroundMesh.geometry.dispose();aiBackgroundMesh.material.map?.dispose();aiBackgroundMesh.material.dispose();aiBackgroundMesh=null;}
- if(!parallaxDepthPixels||projection!=='360'||stereoMode!=='mono'||!effectSettings.parallaxBackground)return;
+ if(!parallaxDepthPixels||projection!=='360'||stereoMode!=='mono'||!effectSettings.parallaxBackground||effectSettings.parallaxBackgroundEnabled===false)return;
  const url=effectSettings.parallaxBackground;
  new THREE.TextureLoader().load(url,texture=>{
   texture.colorSpace=THREE.SRGBColorSpace;
@@ -515,7 +515,7 @@ function installParallaxQualityControl(){
 installParallaxQualityControl();
 // Experimental depth-surface reconstruction is opt-in until it has been
 // checked against thin foliage, railings and other difficult silhouettes.
-const experimentalDepthSurfaces=new URLSearchParams(location.search).get('depth_surfaces')==='1';
+const experimentalDepthSurfaces=false; // Disabled after visual artifacts.
 function shapeDepthBandSurface(geo,band,count){
  const position=geo.getAttribute('position'),uv=geo.getAttribute('uv');
  const center=(band+.5)/count;
@@ -634,7 +634,7 @@ function installPanorama(source){
  const previous=[...new Set([leftMesh,rightMesh].filter(Boolean))];
  clearHybridMeshes();
  if(depthBackgroundMesh){scene.remove(depthBackgroundMesh);depthBackgroundMesh.geometry.dispose();depthBackgroundMesh.material.map?.dispose();depthBackgroundMesh.material.dispose();depthBackgroundMesh=null;}
- if(projection==='360'&&stereoMode==='mono'&&parallaxDepthPixels&&!effectSettings.parallaxBackground){depthBackgroundMesh=makeDepthBackground(source);if(depthBackgroundMesh)scene.add(depthBackgroundMesh);}
+ if(projection==='360'&&stereoMode==='mono'&&parallaxDepthPixels&&(!effectSettings.parallaxBackground||effectSettings.parallaxBackgroundEnabled===false)){depthBackgroundMesh=makeDepthBackground(source);if(depthBackgroundMesh)scene.add(depthBackgroundMesh);}
  if(stereoMode==='mono'){
   const hybrid=projection==='360'&&parallaxDepthPixels&&effectSettings.parallaxEnabled&&(effectSettings.parallaxMode==='hybrid'||desktopReliefEnabled())&&makeHybridDepthGroups(source);
   if(hybrid){
