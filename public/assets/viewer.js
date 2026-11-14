@@ -252,16 +252,17 @@ function makeDepthBackground(source){
   const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0,w,h);
   const frame=ctx.getImageData(0,0,w,h),pixels=frame.data;
   const original=new Uint8ClampedArray(pixels),mask=new Uint8Array(w*h);
+  const relief=desktopReliefEnabled();
   // Foreground pixels are replaced by nearest known background colors.
   let count=0;
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
    const depth=sampleDepthBilinear((x+.5)/w,1-(y+.5)/h);
-   if(depth>.64){mask[y*w+x]=1;count++;}
+   if(depth>(relief?.59:.64)){mask[y*w+x]=1;count++;}
   }
   if(!count||count>w*h*.75)return null;
   let known=new Uint8Array(w*h);
   for(let i=0;i<known.length;i++)known[i]=mask[i]?0:1;
-  for(let pass=0;pass<48;pass++){
+  for(let pass=0;pass<(relief?64:48);pass++){
    const next=known.slice(),updates=[];
    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     const i=y*w+x;if(known[i])continue;
@@ -549,8 +550,8 @@ function makeHybridDepthGroups(source){
   const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
   const ctx=canvas.getContext('2d'),frame=ctx.createImageData(w,h),pixels=frame.data;
   const center=(band+.5)/count,halfWidth=1/count;
-  const occlusion=effectSettings.parallaxDynamicOcclusion===true
-   ?THREE.MathUtils.clamp(Number(effectSettings.parallaxOcclusionStrength??50),0,100)/100:0;
+  const occlusion=effectSettings.parallaxDynamicOcclusion===true||desktopReliefEnabled()
+   ?Math.max(desktopReliefEnabled()?.55:0,THREE.MathUtils.clamp(Number(effectSettings.parallaxOcclusionStrength??50),0,100)/100):0;
   for(let i=0;i<depth.length;i++){
    const distance=Math.abs(depth[i]-center);
    const weight=Math.max(0,Math.min(1,(halfWidth-distance)/(.5/count)));
@@ -589,7 +590,7 @@ function makeHybridDepthGroups(source){
   }
   
   if(effectSettings.mirrorHorizontal){const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
-  const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,transparent:true,depthWrite:false,alphaTest:.015});
+  const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,transparent:true,depthWrite:false,alphaTest:desktopReliefEnabled()?.055:.015});
   installMicroMotion(material,band,count);
   installWaterMotion(material);
   const mesh=new THREE.Mesh(geo,material);mesh.layers.set(0);mesh.renderOrder=band;
@@ -605,7 +606,7 @@ function installPanorama(source){
  if(depthBackgroundMesh){scene.remove(depthBackgroundMesh);depthBackgroundMesh.geometry.dispose();depthBackgroundMesh.material.map?.dispose();depthBackgroundMesh.material.dispose();depthBackgroundMesh=null;}
  if(projection==='360'&&stereoMode==='mono'&&parallaxDepthPixels&&!effectSettings.parallaxBackground){depthBackgroundMesh=makeDepthBackground(source);if(depthBackgroundMesh)scene.add(depthBackgroundMesh);}
  if(stereoMode==='mono'){
-  const hybrid=projection==='360'&&parallaxDepthPixels&&effectSettings.parallaxEnabled&&effectSettings.parallaxMode==='hybrid'&&makeHybridDepthGroups(source);
+  const hybrid=projection==='360'&&parallaxDepthPixels&&effectSettings.parallaxEnabled&&(effectSettings.parallaxMode==='hybrid'||desktopReliefEnabled())&&makeHybridDepthGroups(source);
   if(hybrid){
    // Keep the original at the far radius to cover disocclusions between bands.
    const geo=new THREE.SphereGeometry(80,96,48);
