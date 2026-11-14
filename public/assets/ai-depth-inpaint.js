@@ -217,7 +217,16 @@ if(panel){
    let bytes;
    const cache=typeof caches!=='undefined'?await caches.open('minivr-lama-model-v1').catch(()=>null):null;
    let response=cache?await cache.match(model):null;
-   if(!response){response=await fetch(model).catch(()=>null);if(!response?.ok){response=await fetch(remoteModel);if(!response.ok)throw Error('Не удалось загрузить LaMa: HTTP '+response.status);}if(cache)await cache.put(model,response.clone()).catch(()=>{});}
+   if(!response){
+    // A missing optional local model is normal on a fresh installation.
+    // Avoid a noisy 404 in the browser console by using the hosted model
+    // unless the administrator has explicitly configured a local model URL.
+    const configuredModel=panel.dataset.modelUrl||remoteModel;
+    setProgress(5,'Загрузка модели LaMa: '+(panel.dataset.modelUrl?'локальный файл':'Hugging Face')+'…');
+    response=await fetch(configuredModel);
+    if(!response.ok)throw Error('Не удалось загрузить модель LaMa: HTTP '+response.status+'. Проверьте доступ к '+configuredModel);
+    if(cache)await cache.put(model,response.clone()).catch(()=>{});
+   }
    bytes=await downloadModel(response);
    setProgress(55,'Инициализация нейросети…');
    try{
