@@ -123,6 +123,18 @@ if(panel){
   maskCanvas.addEventListener('pointerup',()=>{maskDrawing=false;});
   maskCanvas.addEventListener('pointercancel',()=>{maskDrawing=false;});
  }
+ const makeForegroundMaskBlob=async()=>{
+  const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=512;
+  const ctx=canvas.getContext('2d'),frame=ctx.createImageData(1024,512);
+  for(let i=0;i<maskPixels.length;i++){
+   const value=maskPixels[i]?255:0,j=i*4;
+   frame.data[j]=value;frame.data[j+1]=value;frame.data[j+2]=value;frame.data[j+3]=255;
+  }
+  ctx.putImageData(frame,0,0);
+  const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+  if(!blob)throw Error('Не удалось сохранить маску дерева');
+  return blob;
+ };
  const getMask=(w,h)=>{
   const result=new Float32Array(w*h);
   if(!maskReady)return null;
@@ -193,7 +205,7 @@ if(panel){
   await showResult(preview.src);
   const blob=await new Promise(resolve=>c.toBlob(resolve,'image/png'));
   if(!blob)throw Error('Не удалось создать PNG');
-  const form=new FormData();form.append('id',panel.dataset.id);form.append('background',blob,'background.png');
+  const form=new FormData();form.append('id',panel.dataset.id);form.append('background',blob,'background.png');form.append('foreground_mask',await makeForegroundMaskBlob(),'foreground-mask.png');
   setProgress(95,'Сохранение фона…');
   const response=await fetch('/admin/depth-background-upload.php',{method:'POST',body:form,credentials:'same-origin'});
   const result=await response.json();
@@ -320,7 +332,7 @@ if(panel){
    preview.src=final.toDataURL('image/png');preview.hidden=false;
    await showResult(preview.src);
    const blob=await new Promise(resolve=>final.toBlob(resolve,'image/png'));if(!blob)throw Error('PNG не создан');
-   const form=new FormData();form.append('id',panel.dataset.id);form.append('background',blob,'background.png');
+   const form=new FormData();form.append('id',panel.dataset.id);form.append('background',blob,'background.png');form.append('foreground_mask',await makeForegroundMaskBlob(),'foreground-mask.png');
    setProgress(95,'Сохраняю восстановленный фон на Timeweb…');
    const saved=await fetch('/admin/depth-background-upload.php',{method:'POST',body:form,credentials:'same-origin'});
    const answer=await saved.json();if(!saved.ok||!answer.ok)throw Error(answer.error||'Ошибка сохранения');

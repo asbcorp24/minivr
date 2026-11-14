@@ -130,6 +130,14 @@ function eyeTexture(source,eye){
  return t;
 }
 let parallaxDepthPixels=null;
+let aiForegroundMaskImage=null;
+async function loadAiForegroundMask(){
+ aiForegroundMaskImage=null;
+ if(!effectSettings.parallaxBackground||effectSettings.parallaxBackgroundEnabled===false||!effectSettings.parallaxForegroundMask)return;
+ try{const img=new Image();img.crossOrigin='anonymous';img.src=effectSettings.parallaxForegroundMask;await img.decode();aiForegroundMaskImage=img;}
+ catch(error){console.warn('MiniVR: foreground mask unavailable',error);}
+}
+
 let manualFoliageMaskImage=null;
 let manualWaterMaskImage=null,waterMotionMask=null;
 async function loadManualWaterMask(){manualWaterMaskImage=null;if(!effectSettings.parallaxWaterMotion||!effectSettings.parallaxWaterMask)return;try{const img=new Image();img.src=effectSettings.parallaxWaterMask;await img.decode();manualWaterMaskImage=img;}catch(e){console.warn('MiniVR water mask unavailable',e);}}
@@ -555,6 +563,16 @@ function makeHybridDepthGroups(source){
  }
  waterMotionMask=null;
  if(manualWaterMaskImage){const maskCanvas=document.createElement('canvas');maskCanvas.width=512;maskCanvas.height=256;maskCanvas.getContext('2d').drawImage(manualWaterMaskImage,0,0,512,256);waterMotionMask=new THREE.CanvasTexture(maskCanvas);waterMotionMask.wrapS=THREE.RepeatWrapping;waterMotionMask.minFilter=THREE.LinearFilter;}
+ const aiCutout=!!aiForegroundMaskImage&&effectSettings.parallaxBackgroundEnabled!==false;
+ let foregroundMask=null;
+ if(aiCutout){
+  const maskCanvas=document.createElement('canvas');maskCanvas.width=w;maskCanvas.height=h;
+  const maskCtx=maskCanvas.getContext('2d',{willReadFrequently:true});
+  maskCtx.drawImage(aiForegroundMaskImage,0,0,w,h);
+  const maskData=maskCtx.getImageData(0,0,w,h).data;
+  foregroundMask=new Float32Array(w*h);
+  for(let i=0;i<foregroundMask.length;i++)foregroundMask[i]=maskData[i*4]/255;
+ }
  const depth=new Float32Array(w*h);
  for(let y=0;y<h;y++)for(let x=0;x<w;x++)depth[y*w+x]=remapParallaxDepth(sampleDepthBilinear((x+.5)/w,1-(y+.5)/h));
  // Soft screen-space depth-edge shadows. Computed only when explicitly enabled.
@@ -599,7 +617,7 @@ function makeHybridDepthGroups(source){
    pixels[j]=Math.round(original[j]*light);
    pixels[j+1]=Math.round(original[j+1]*light);
    pixels[j+2]=Math.round(original[j+2]*light);
-   pixels[j+3]=Math.round(255*coverage);
+   pixels[j+3]=Math.round(255*coverage*(foregroundMask?foregroundMask[i]:1));
   }
   ctx.putImageData(frame,0,0);
   const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
@@ -642,6 +660,8 @@ function installPanorama(source){
    const geo=new THREE.SphereGeometry(80,96,48);
    if(effectSettings.mirrorHorizontal){const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
    const backdrop=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:source,side:THREE.BackSide,depthWrite:false}));
+   // When a cutout exists, the AI sphere replaces the old full-photo backdrop.
+   if(aiForegroundMaskImage&&effectSettings.parallaxBackgroundEnabled!==false)backdrop.visible=false;
    backdrop.layers.set(0);backdrop.renderOrder=-20;scene.add(backdrop);leftMesh=rightMesh=backdrop;
   }else{
   const g=geometry(sourceAspect(source));if(effectSettings.mirrorHorizontal){const uv=g.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}const mesh=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:source,side:projection==='flat'?THREE.FrontSide:THREE.BackSide}));
@@ -655,7 +675,7 @@ function installPanorama(source){
 }
 let tiledPanorama=null;
 async function loadInitialPanorama(){
- await Promise.all([loadParallaxDepth(),loadManualFoliageMask(),loadManualWaterMask()]);
+ await Promise.all([loadParallaxDepth(),loadManualFoliageMask(),loadManualWaterMask(),loadAiForegroundMask()]);
  if(projection==='360'&&stereoMode==='mono'&&root.dataset.tiles&&!parallaxDepthPixels){
   try{
    tiledPanorama=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer,mirror:!!effectSettings.mirrorHorizontal});
