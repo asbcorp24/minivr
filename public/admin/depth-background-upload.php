@@ -14,14 +14,21 @@ try{
  if(!$f||$f['error']!==UPLOAD_ERR_OK||$f['size']>8*1024*1024)throw new RuntimeException('Ошибка загрузки PNG (максимум 8 МБ)');
  $info=@getimagesize($f['tmp_name']);
  if(!$info||$info[2]!==IMAGETYPE_PNG||$info[0]!==1024||$info[1]!==512)throw new RuntimeException('Требуется PNG 1024×512');
+ $maskFile=$_FILES['foreground_mask']??null;
+ if(!$maskFile||$maskFile['error']!==UPLOAD_ERR_OK||$maskFile['size']>2*1024*1024)throw new RuntimeException('Нужна маска дерева PNG (до 2 МБ)');
+ $maskInfo=@getimagesize($maskFile['tmp_name']);
+ if(!$maskInfo||$maskInfo[2]!==IMAGETYPE_PNG||$maskInfo[0]!==1024||$maskInfo[1]!==512)throw new RuntimeException('Маска должна быть PNG 1024×512');
  $dir=__DIR__.'/../uploads/depth';if(!is_dir($dir)&&!mkdir($dir,0755,true))throw new RuntimeException('Невозможно создать каталог');
  $name='bg'.$id.'-'.bin2hex(random_bytes(8)).'.png';
  if(!move_uploaded_file($f['tmp_name'],$dir.'/'.$name))throw new RuntimeException('Ошибка сохранения PNG');
+ $maskName='mask'.$id.'-'.bin2hex(random_bytes(8)).'.png';
+ if(!move_uploaded_file($maskFile['tmp_name'],$dir.'/'.$maskName)){@unlink($dir.'/'.$name);throw new RuntimeException('Ошибка сохранения маски');}
  $old=$effects['parallaxBackground']??null;
  $effects['parallaxBackground']='/uploads/depth/'.$name;
  $effects['parallaxBackgroundEnabled']=true;
+ $effects['parallaxForegroundMask']='/uploads/depth/'.$maskName;
  try{$q=db()->prepare('UPDATE panoramas SET effects=? WHERE id=?');$q->execute([json_encode($effects,JSON_UNESCAPED_UNICODE),$id]);}
- catch(Throwable $e){@unlink($dir.'/'.$name);throw $e;}
+ catch(Throwable $e){@unlink($dir.'/'.$name);@unlink($dir.'/'.$maskName);throw $e;}
  // Keep prior generated files for rollback and comparison.
  echo json_encode(['ok'=>true,'url'=>$effects['parallaxBackground']]);
 }catch(Throwable $e){http_response_code(400);echo json_encode(['error'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);}
