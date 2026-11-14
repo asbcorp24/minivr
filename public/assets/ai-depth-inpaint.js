@@ -8,6 +8,21 @@ if(panel){
  const compareCanvas=panel.querySelector('[data-ai-compare]');
  const maskPixels=new Uint8Array(1024*512);
  let maskReady=false,maskMode=1,maskDrawing=false,originalImage=null,resultImage=null;
+ const toggle=panel.querySelector('[data-ai-toggle-background]');
+ toggle?.addEventListener('click',async()=>{
+  toggle.disabled=true;
+  try{
+   const enabled=toggle.dataset.enabled!=='1';
+   const response=await fetch('/admin/depth-background-toggle.php',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({id:panel.dataset.id,enabled:enabled?'1':'0'})});
+   const answer=await response.json();
+   if(!response.ok||!answer.ok)throw Error(answer.error||'Ошибка переключения');
+   toggle.dataset.enabled=enabled?'1':'0';
+   toggle.textContent=enabled?'Отключить ИИ-фон (откат)':'Включить сохранённый ИИ-фон';
+   status.textContent=enabled?'ИИ-фон включён. Обновите панораму.':'ИИ-фон отключён. Обновите панораму.';
+  }catch(error){status.textContent='Ошибка: '+error.message;}
+  finally{toggle.disabled=false;}
+ });
+ const markSaved=()=>{if(toggle){toggle.disabled=false;toggle.dataset.enabled='1';toggle.textContent='Отключить ИИ-фон (откат)';}};
  const loadImage=async url=>{const image=new Image();image.crossOrigin='anonymous';image.src=url;await image.decode();return image;};
  const drawCompare=async(result=false)=>{
   const canvas=compareCanvas;if(!canvas)return;
@@ -173,7 +188,7 @@ if(panel){
   const result=await response.json();
   if(!response.ok||!result.ok)throw Error(result.error||'Ошибка сохранения');
   const saved=panel.querySelector('[data-ai-saved]');if(saved)saved.src=result.url+'?v='+Date.now();
-  setProgress(100,'Создан и сохранён приближённый фон без ИИ. Обновите просмотр.');
+  markSaved();setProgress(100,'Создан и сохранён приближённый фон без ИИ. Обновите просмотр.');
  }
  button?.addEventListener('click',async()=>{
   button.disabled=true;
@@ -255,7 +270,7 @@ if(panel){
    const saved=await fetch('/admin/depth-background-upload.php',{method:'POST',body:form,credentials:'same-origin'});
    const answer=await saved.json();if(!saved.ok||!answer.ok)throw Error(answer.error||'Ошибка сохранения');
    const existing=panel.querySelector('[data-ai-saved]');if(existing)existing.src=answer.url+'?v='+Date.now();
-   setProgress(100,'Фон создан и сохранён. Обновите просмотр панорамы.');
+   markSaved();setProgress(100,'Фон создан и сохранён. Обновите просмотр панорамы.');
   }catch(err){console.error('MiniVR AI inpainting',err);status.textContent='Ошибка: '+err.message;}
   finally{await session?.release?.().catch(()=>{});button.disabled=false;}
  });
