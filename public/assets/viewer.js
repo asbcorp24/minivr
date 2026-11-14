@@ -222,23 +222,8 @@ function applyDepthGeometry(g){
   pos.setXYZ(i,pos.getX(i)*scale,pos.getY(i)*scale,pos.getZ(i)*scale);
  }
  pos.needsUpdate=true;
- // A depth-discontinuity-aware reconstruction mesh. A triangle connecting
- // foreground and background would create a stretched wall in free space.
- // Remove only those triangles on desktop relief meshes; the existing
- // far-background panorama remains available behind the resulting gaps.
- if(relief&&g.index){
-  const indices=g.index.array,kept=[];
-  const threshold=4.5;
-  for(let t=0;t<indices.length;t+=3){
-   const a=indices[t],b=indices[t+1],c=indices[t+2];
-   const min=Math.min(radii[a],radii[b],radii[c]);
-   const max=Math.max(radii[a],radii[b],radii[c]);
-   if(max-min>threshold)continue;
-   kept.push(a,b,c);
-  }
-  // Never replace the mesh with an empty index buffer on malformed maps.
-  if(kept.length>indices.length*.3)g.setIndex(kept);
- }
+ // Keep the reconstructed sphere continuous. Removing depth-edge triangles
+ // creates visible holes and jagged strips around trees and foliage.
  g.computeVertexNormals();
  g.computeBoundingSphere();
 }
