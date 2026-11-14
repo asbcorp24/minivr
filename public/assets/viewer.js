@@ -990,8 +990,8 @@ renderer.setAnimationLoop((time)=>{
   // Avoid large head bobbing; foreground objects should move more than far ones.
   const sway=autoEnabled?amount*autoAmplitude:0;
   depthLocalOffset.set(
-   depthPointerSmooth.x*amount*1.15+Math.sin(depthAutoPhase)*sway*.85+desktopWindowOffset.x,
-   depthPointerSmooth.y*amount*(.55+depthWindow*.15)+Math.sin(depthAutoPhase*.65+.4)*sway*.18+desktopWindowOffset.y,
+   depthPointerSmooth.x*amount*(desktopReliefEnabled()?.35:1.15)+Math.sin(depthAutoPhase)*sway*.85+desktopWindowOffset.x,
+   depthPointerSmooth.y*amount*(desktopReliefEnabled()?.2:(.55+depthWindow*.15))+Math.sin(depthAutoPhase*.65+.4)*sway*.18+desktopWindowOffset.y,
    Math.cos(depthAutoPhase)*sway*.2+depthWindow*amount*.12
   );
   const yaw=THREE.MathUtils.degToRad(lon);
