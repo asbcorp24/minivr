@@ -689,7 +689,7 @@ renderer.domElement.addEventListener('pointermove',e=>{if(!activeTouches.has(e.p
 const releaseTouch=e=>{activeTouches.delete(e.pointerId);if(activeTouches.size<2)pinchDistance=0;};
 renderer.domElement.addEventListener('pointerup',releaseTouch);
 renderer.domElement.addEventListener('pointercancel',releaseTouch);
-let moved=false;renderer.domElement.addEventListener('pointerdown',e=>{if(desktop3DWindow.isDragging())return;down=true;moved=false;x0=e.clientX;y0=e.clientY;lon0=lon;lat0=lat});
+let moved=false;renderer.domElement.addEventListener('pointerdown',e=>{if(e.shiftKey&&desktop3DWindow.isEnabled()&&getViewerMode()===ViewerMode.DESKTOP&&projection==='360'&&stereoMode==='mono'&&!!parallaxDepthPixels&&effectSettings.parallaxEnabled===true)return;down=true;moved=false;x0=e.clientX;y0=e.clientY;lon0=lon;lat0=lat});
 addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboard&&!renderer.xr.isPresenting){const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);activate(raycaster.intersectObjects(hotspotObjects,false)[0]?.object)}down=false});addEventListener('pointermove',e=>{if(down&&(Math.abs(e.clientX-x0)>5||Math.abs(e.clientY-y0)>5))moved=true;if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){lon=lon0+(x0-e.clientX)*.12;lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}});
 
 
