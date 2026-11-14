@@ -513,6 +513,30 @@ function installParallaxQualityControl(){
  document.body.appendChild(select);
 }
 installParallaxQualityControl();
+// Experimental depth-surface reconstruction is opt-in until it has been
+// checked against thin foliage, railings and other difficult silhouettes.
+const experimentalDepthSurfaces=new URLSearchParams(location.search).get('depth_surfaces')==='1';
+function shapeDepthBandSurface(geo,band,count){
+ const position=geo.getAttribute('position'),uv=geo.getAttribute('uv');
+ const center=(band+.5)/count;
+ // Map each band to a separate inverse-depth surface, retaining some local
+ // depth variation. Keep all triangles connected: removing them created holes.
+ const near=8,far=58;
+ const bandRadius=1/((1/far)+(1/near-1/far)*center);
+ for(let i=0;i<position.count;i++){
+  const d=remapParallaxDepth(sampleDepthBilinear(uv.getX(i),uv.getY(i)));
+  const local=Math.max(-.5/count,Math.min(.5/count,d-center));
+  const targetDepth=Math.max(0,Math.min(1,center+local*.35));
+  const targetRadius=1/((1/far)+(1/near-1/far)*targetDepth);
+  const radius=Math.hypot(position.getX(i),position.getY(i),position.getZ(i))||1;
+  const newRadius=THREE.MathUtils.lerp(radius,targetRadius,.65);
+  const scale=newRadius/radius;
+  position.setXYZ(i,position.getX(i)*scale,position.getY(i)*scale,position.getZ(i)*scale);
+ }
+ position.needsUpdate=true;
+ geo.computeVertexNormals();
+ geo.computeBoundingSphere();
+}
 function makeHybridDepthGroups(source){
  const budget=parallaxQualityBudget();
  const count=Math.max(2,Math.min(budget.layers,Number(effectSettings.parallaxGroups)||5));
@@ -580,6 +604,7 @@ function makeHybridDepthGroups(source){
   ctx.putImageData(frame,0,0);
   const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
   const geo=geometry();
+  if(experimentalDepthSurfaces&&desktopReliefEnabled())shapeDepthBandSurface(geo,band,count);
   if(occlusion>0){
    // Shift each band to a progressively closer shell. Foreground silhouettes
    // occlude more of the distant bands during existing camera parallax.
