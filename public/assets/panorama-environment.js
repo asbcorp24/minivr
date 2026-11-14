@@ -210,8 +210,7 @@ export function createEnvironment(scene,settings={}){
   });
 
  }
- if(settings.lightBeams)makeLayer('light',clamp(settings.beamIntensity??40,0,100)/100,'#ffe6b5',
-  `float center=(${Number(settings.sunYaw||0).toFixed(2)}+180.)/360.;float dx=abs(fract(vUv.x-center+.5)-.5);float rays=pow(max(0.,sin(dx*390.+sin(vUv.y*13.)*1.5)),14.);float cone=exp(-dx*dx*150.)*smoothstep(.1,.65,vUv.y);alpha=(.12+rays*.38)*cone;`);
+ // Light beams are now spatial shafts owned by panorama-atmosphere.js.
  if(settings.lampGlow){
   const lamps=Array.isArray(settings.lamps)?settings.lamps.filter(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)).slice(0,20):[];
   // Two independently textured glows: a broad soft halo and a compact bright core.

@@ -57,6 +57,52 @@ export function createAtmosphere(scene,settings={}){
   let next=3+Math.random()*7,start=-100;
   updates.push((time,camera)=>{const t=time*.001;if(t>next){start=t;next=t+4+Math.random()*11/(intensity+.15)}const dt=t-start;flash.material.opacity=dt>=0&&dt<.36?intensity*(dt<.07?.24:dt<.14?.04:dt<.23?.14:.0):0;camera.updateMatrixWorld(true);camera.getWorldPosition(flash.position)});
  }
+ // Low-cost, camera-relative 3D light shafts. No source pixels are blurred
+ // or modified, and the effect is only enabled by the existing lightBeams switch.
+ if(settings.lightBeams){
+  const strength=clamp(settings.beamIntensity??40,0,100)/100;
+  const yaw=THREE.MathUtils.degToRad(clamp(settings.sunYaw??0,-180,180));
+  const pitch=THREE.MathUtils.degToRad(clamp(settings.sunPitch??35,-90,90));
+  const sunDir=new THREE.Vector3(Math.cos(pitch)*Math.cos(yaw),Math.sin(pitch),-Math.cos(pitch)*Math.sin(yaw));
+  const beams=new THREE.Group();beams.layers.enableAll();scene.add(beams);
+  const beamGeo=new THREE.PlaneGeometry(1,1,1,1);
+  const mats=[];
+  // Multiple angled, overlapping translucent planes produce parallax
+  // without destructive depth cutouts or screen-space bloom.
+  for(let i=0;i<9;i++){
+   const material=new THREE.ShaderMaterial({
+    uniforms:{uTime:{value:0},uStrength:{value:strength},uSeed:{value:i*2.39996}},
+    vertexShader:`precision mediump float;varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+    fragmentShader:`precision mediump float;varying vec2 vUv;uniform float uTime;uniform float uStrength;uniform float uSeed;
+     void main(){
+      float x=abs(vUv.x-.5)*2.;
+      float across=pow(max(0.,1.-x*x),3.);
+      float along=smoothstep(0.,.18,vUv.y)*(1.-smoothstep(.7,1.,vUv.y));
+      float drift=.84+.16*sin(uTime*.24+uSeed+vUv.y*5.);
+      float streak=.78+.22*sin(vUv.x*18.+uSeed*3.+vUv.y*2.);
+      float alpha=uStrength*.038*across*along*drift*streak;
+      gl_FragColor=vec4(1.,.88,.65,alpha);
+     }`,
+    transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,blending:THREE.AdditiveBlending
+   });
+   const plane=new THREE.Mesh(beamGeo,material);
+   const angle=i*2.39996;
+   const distance=13+(i%3)*3.5;
+   plane.position.copy(sunDir).multiplyScalar(distance);
+   plane.position.x+=Math.cos(angle)*4.5;
+   plane.position.z+=Math.sin(angle)*4.5;
+   plane.position.y-=3.5;
+   plane.scale.set(2.4+(i%4)*1.1,19+(i%3)*6,1);
+   plane.rotation.y=angle;
+   plane.rotation.z=.16*Math.sin(angle);
+   plane.renderOrder=6;plane.layers.enableAll();beams.add(plane);mats.push(material);
+  }
+  updates.push((time,camera)=>{
+   camera.getWorldPosition(beams.position);
+   for(const mat of mats)mat.uniforms.uTime.value=time*.001;
+  });
+  parts.push({object:beams,geo:beamGeo,mat:{dispose(){for(const mat of mats)mat.dispose()}}});
+ }
  if(settings.sunRays){
   const intensity=clamp(settings.sunIntensity,0,100)/100;
   const sun=new THREE.Sprite(new THREE.SpriteMaterial({color:0xffdfa0,transparent:true,opacity:intensity*.13,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending}));
