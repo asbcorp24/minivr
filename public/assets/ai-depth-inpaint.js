@@ -33,12 +33,23 @@ if(panel){
  panel.querySelector('[data-ai-show-original]')?.addEventListener('click',()=>drawCompare(false));
  panel.querySelector('[data-ai-show-result]')?.addEventListener('click',()=>drawCompare(true));
  const showResult=async url=>{resultImage=await loadImage(url);drawCompare(true);};
+ // Draw the translucent mask on a separate canvas: putImageData directly
+ // onto the photo would replace all unmasked pixels with transparent black.
+ const maskOverlay=document.createElement('canvas');
+ maskOverlay.width=1024;maskOverlay.height=512;
+ const maskOverlayCtx=maskOverlay.getContext('2d');
  const paintMask=()=>{
   if(!maskCanvas||!originalImage)return;
-  const ctx=maskCanvas.getContext('2d');ctx.clearRect(0,0,1024,512);ctx.drawImage(originalImage,0,0,1024,512);
-  const overlay=ctx.createImageData(1024,512);
-  for(let i=0;i<maskPixels.length;i++)if(maskPixels[i]){overlay.data[i*4]=255;overlay.data[i*4+3]=125;}
-  ctx.putImageData(overlay,0,0);
+  const ctx=maskCanvas.getContext('2d');
+  ctx.clearRect(0,0,1024,512);
+  ctx.drawImage(originalImage,0,0,1024,512);
+  const overlay=maskOverlayCtx.createImageData(1024,512);
+  for(let i=0;i<maskPixels.length;i++)if(maskPixels[i]){
+   overlay.data[i*4]=255;
+   overlay.data[i*4+3]=125;
+  }
+  maskOverlayCtx.putImageData(overlay,0,0);
+  ctx.drawImage(maskOverlay,0,0);
  };
  const resetMask=async()=>{
   if(!panel.dataset.depth)return;
