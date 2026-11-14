@@ -164,6 +164,13 @@ function remapParallaxDepth(depth){
  // Smoothly preserve distant geometry while expanding the near-field response.
  return THREE.MathUtils.lerp(depth,Math.pow(depth,2.2),strength);
 }
+// Relief is opt-in and only built for the desktop mono 360 viewer.
+// The toggle reloads the scene, so old geometry is never mutated in place.
+function desktopReliefEnabled(){
+ if(projection!=='360'||stereoMode!=='mono'||!parallaxDepthPixels||!effectSettings.parallaxEnabled)return false;
+ if(getViewerMode()!==ViewerMode.DESKTOP)return false;
+ try{return localStorage.getItem('minivr:desktop-3d-window:v1')==='1'}catch{return false}
+}
 function applyDepthGeometry(g){
  if(!parallaxDepthPixels)return;
  const uv=g.getAttribute('uv'),pos=g.getAttribute('position');
@@ -171,7 +178,8 @@ function applyDepthGeometry(g){
  if(strength<=0)return;
  // Depth-map values are relative, not metric distances. Map them to a bounded
  // inverse-depth shell: nearby pixels move more than distant pixels.
- const near=12,far=46;
+ const relief=desktopReliefEnabled();
+ const near=relief?8:12,far=relief?58:46;
  const radii=new Float32Array(pos.count);
  for(let i=0;i<pos.count;i++){
   const u=uv.getX(i),v=uv.getY(i);
@@ -182,16 +190,28 @@ function applyDepthGeometry(g){
   depth=remapParallaxDepth(depth);
   const inverseDistance=(1/far)+(1/near-1/far)*depth;
   const mapped=1/inverseDistance;
-  radii[i]=THREE.MathUtils.lerp(26,mapped,strength);
+  radii[i]=THREE.MathUtils.lerp(26,mapped,relief?Math.min(1,strength*1.55):strength);
  }
  // One mild mesh-space smoothing pass avoids jagged depth steps and cracks.
- const width=257,height=129;
+ const width=relief?385:257,height=relief?193:129;
  if(pos.count===width*height){
   const smooth=new Float32Array(radii);
   for(let y=1;y<height-1;y++)for(let x=0;x<width;x++){
    const i=y*width+x;
    const left=y*width+(x===0?width-2:x-1),right=y*width+(x===width-1?1:x+1);
-   smooth[i]=radii[i]*.7+(radii[left]+radii[right]+radii[i-width]+radii[i+width])*.075;
+   if(relief){
+    // Bilateral radius smoothing: smooth texture noise, but do not pull a
+    // foreground silhouette into the background across a depth jump.
+    const center=radii[i],neighbors=[left,right,i-width,i+width];
+    let total=center*4,weight=4;
+    for(const n of neighbors){
+     const difference=Math.abs(center-radii[n]);
+     if(difference>1.6)continue;
+     const w=Math.exp(-difference*difference/1.28);
+     total+=radii[n]*w;weight+=w;
+    }
+    smooth[i]=total/weight;
+   }else smooth[i]=radii[i]*.7+(radii[left]+radii[right]+radii[i-width]+radii[i+width])*.075;
   }
   radii.set(smooth);
   // The duplicated longitude seam must have exactly identical positions.
@@ -210,7 +230,8 @@ function applyDepthGeometry(g){
 function geometry(aspect=16/9){
  if(projection==='flat'){const h=2.7,w=h*aspect;return new THREE.PlaneGeometry(w,h)}
  if(projection==='180') return new THREE.SphereGeometry(500,64,40,0,Math.PI);
- const g=new THREE.SphereGeometry(500,parallaxDepthPixels?256:64,parallaxDepthPixels?128:40);applyDepthGeometry(g);return g;
+ const relief=desktopReliefEnabled();
+ const g=new THREE.SphereGeometry(500,parallaxDepthPixels?(relief?384:256):64,parallaxDepthPixels?(relief?192:128):40);applyDepthGeometry(g);return g;
 }
 function sourceAspect(source){const im=source.image;if(!im?.width||!im?.height)return 16/9;let w=im.width,h=im.height;if(stereoMode==='sbs')w/=2;else if(stereoMode==='tb')h/=2;return w/h}
 function makeEye(source,eye){
