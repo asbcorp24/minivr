@@ -406,6 +406,8 @@ function installMicroMotion(material,band,count){
  const showMask=preview.get('micro_motion_mask')==='1';
  const phase={value:0},strength={value:boosted?1:THREE.MathUtils.clamp(Number(effectSettings.parallaxMicroMotionStrength??60),0,100)/100};
  const speed=THREE.MathUtils.clamp(Number(effectSettings.parallaxMicroMotionSpeed??1),.1,5);
+ // Motion is strongest in the nearest depth band; distant foliage stays calmer.
+ const depthWeight=manualFoliageMaskImage?1:THREE.MathUtils.lerp(.38,1,band/Math.max(1,count-1));
  material.onBeforeCompile=shader=>{
   shader.uniforms.microMotionTime=phase;
   shader.uniforms.microMotionStrength=strength;
@@ -419,7 +421,9 @@ function installMicroMotion(material,band,count){
   float phaseA = microMotionTime*1.3 + windUv.y*34.0 + sin(windUv.x*38.0);
   float phaseB = microMotionTime*.8 + windUv.x*51.0;
   vec2 windShift = vec2(sin(phaseA)*.006 + sin(phaseB)*.002,cos(phaseB)*.003);
-  windUv += windShift*windMask*microMotionStrength;
+  float gust = 0.72 + 0.18*sin(microMotionTime*0.31 + windUv.x*12.0)
+                     + 0.10*sin(microMotionTime*0.17 - windUv.y*9.0);
+  windUv += windShift*windMask*microMotionStrength*${depthWeight.toFixed(4)}*gust;
   vec4 sampledDiffuseColor = texture2D(map,windUv);
   diffuseColor *= sampledDiffuseColor;
   ${showMask ? 'diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.1, 0.75), windMask * 0.8);' : ''}
@@ -454,7 +458,7 @@ function installWaterMotion(material){
   ${kind===2?'waterShift += flowDirection * (0.003*sin(wt*1.8+vMapUv.y*100.0));':''}
   ${kind===3?'waterShift += vec2(ripples*0.001,0.005*sin(wt*2.5+vMapUv.y*90.0));':''}
   ${kind===4?'waterShift *= 0.45;':''}
-  waterShift *= waterCoverage * waterMotionStrength;
+  waterShift *= waterCoverage * waterMotionStrength * (0.88 + 0.12*sin(wt*0.23 + vMapUv.x*17.0));
   `;
   // Inject before the foliage map sample when present; otherwise replace standard map chunk.
   if(shader.fragmentShader.includes('vec4 sampledDiffuseColor = texture2D(map,windUv);')){
