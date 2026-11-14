@@ -3,6 +3,7 @@ import {createMoonlight} from '/assets/panorama-moonlight.js';
 import {createAtmosphere} from '/assets/panorama-atmosphere.js';
 import {createPanoramaEffects} from '/assets/panorama-effects.js';
 import {createTiledPanorama} from '/assets/tiled-panorama.js';
+import {createDesktop3DWindow} from '/assets/desktop-3d-window.js';
 import * as THREE from '/assets/vendor/three/three.module.js';
 import DeviceOrientationControls from '/assets/vendor/three/DeviceOrientationControls.js';
 import VREffect from '/assets/vendor/three/effects/VREffect.js';
@@ -688,8 +689,8 @@ renderer.domElement.addEventListener('pointermove',e=>{if(!activeTouches.has(e.p
 const releaseTouch=e=>{activeTouches.delete(e.pointerId);if(activeTouches.size<2)pinchDistance=0;};
 renderer.domElement.addEventListener('pointerup',releaseTouch);
 renderer.domElement.addEventListener('pointercancel',releaseTouch);
-let moved=false;renderer.domElement.addEventListener('pointerdown',e=>{down=true;moved=false;x0=e.clientX;y0=e.clientY;lon0=lon;lat0=lat});
-addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboard&&!renderer.xr.isPresenting){const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);activate(raycaster.intersectObjects(hotspotObjects,false)[0]?.object)}down=false});addEventListener('pointermove',e=>{if(down&&(Math.abs(e.clientX-x0)>5||Math.abs(e.clientY-y0)>5))moved=true;if(down&&activeTouches.size<2&&!orientation){lon=lon0+(x0-e.clientX)*.12;lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}});
+let moved=false;renderer.domElement.addEventListener('pointerdown',e=>{if(desktop3DWindow.isDragging())return;down=true;moved=false;x0=e.clientX;y0=e.clientY;lon0=lon;lat0=lat});
+addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboard&&!renderer.xr.isPresenting){const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);activate(raycaster.intersectObjects(hotspotObjects,false)[0]?.object)}down=false});addEventListener('pointermove',e=>{if(down&&(Math.abs(e.clientX-x0)>5||Math.abs(e.clientY-y0)>5))moved=true;if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){lon=lon0+(x0-e.clientX)*.12;lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}});
 
 
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}addEventListener('resize',resize);resize();
@@ -908,6 +909,7 @@ function syncHudPose(){
 }
 // Visible day/night grading on the actual panorama canvas, including tiled panoramas.
 // Subtle desktop 2.5D movement; no positional offsets in device-orientation or VR modes.
+const desktop3DWindow=createDesktop3DWindow(renderer.domElement);
 const depthPointer=new THREE.Vector2();
 const depthPointerSmooth=new THREE.Vector2();
 const depthCameraOffset=new THREE.Vector3();
@@ -942,6 +944,8 @@ renderer.setAnimationLoop((time)=>{
  // than remaining pinned to the world X/Z axes.
  const motionDt=depthAutoLastTime?Math.min(.05,Math.max(0,(time-depthAutoLastTime)/1000)):1/60;
  depthAutoLastTime=time;
+ const desktopWindowEligible=mode===ViewerMode.DESKTOP&&!orientation&&projection==='360'&&stereoMode==='mono'&&!!parallaxDepthPixels&&effectSettings.parallaxEnabled===true;
+ const desktopWindowOffset=desktop3DWindow.update(motionDt,desktopWindowEligible);
  if(mode===ViewerMode.DESKTOP&&!orientation){
   // Portrait phones need a stronger positional depth cue than desktop.
   // Keep landscape, tablets, Cardboard and WebXR unchanged.
@@ -964,8 +968,8 @@ renderer.setAnimationLoop((time)=>{
   // Avoid large head bobbing; foreground objects should move more than far ones.
   const sway=autoEnabled?amount*autoAmplitude:0;
   depthLocalOffset.set(
-   depthPointerSmooth.x*amount*1.15+Math.sin(depthAutoPhase)*sway*.85,
-   depthPointerSmooth.y*amount*(.55+depthWindow*.15)+Math.sin(depthAutoPhase*.65+.4)*sway*.18,
+   depthPointerSmooth.x*amount*1.15+Math.sin(depthAutoPhase)*sway*.85+desktopWindowOffset.x,
+   depthPointerSmooth.y*amount*(.55+depthWindow*.15)+Math.sin(depthAutoPhase*.65+.4)*sway*.18+desktopWindowOffset.y,
    Math.cos(depthAutoPhase)*sway*.2+depthWindow*amount*.12
   );
   const yaw=THREE.MathUtils.degToRad(lon);
