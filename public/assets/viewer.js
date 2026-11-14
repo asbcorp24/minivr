@@ -426,7 +426,7 @@ function installWaterMotion(material){
  if(!waterMotionMask||new URLSearchParams(location.search).get('water_motion')==='0')return;
  const phase={value:0},strength={value:THREE.MathUtils.clamp(Number(effectSettings.parallaxWaterStrength??45),0,100)/100};
  const speed=THREE.MathUtils.clamp(Number(effectSettings.parallaxWaterSpeed??1),.1,5);
- const kind=({calm:0,sea:1,river:2,waterfall:3,underwater:4})[effectSettings.parallaxWaterType]??0;
+ const kind=({calm:0,sea:1,surf:5,river:2,waterfall:3,underwater:4})[effectSettings.parallaxWaterType]??0;
  const direction=THREE.MathUtils.degToRad(Number(effectSettings.parallaxWaterDirection)||0);
  const previous=material.onBeforeCompile;
  material.onBeforeCompile=shader=>{
@@ -444,6 +444,22 @@ function installWaterMotion(material){
   vec2 flowDirection = vec2(cos(${direction.toFixed(6)}),sin(${direction.toFixed(6)}));
   vec2 waterShift = vec2(waves*0.0025+ripples*0.0008,ripples*0.0013);
   ${kind===1?'waterShift += vec2(sin(vMapUv.y*52.0+wt*2.5)*0.003,cos(vMapUv.x*30.0-wt)*0.001);':''}
+  ${kind===5?`
+  // Shore break: advancing, staggered wave fronts rather than global jitter.
+  // The selected mask protects the sky, shoreline and all non-water pixels.
+  float shoreY=clamp(vMapUv.y,0.0,1.0);
+  float surfNear=smoothstep(0.18,0.78,1.0-shoreY);
+  float phaseA=(shoreY*21.0-wt*1.18)+sin(vMapUv.x*12.0+wt*.17)*.24;
+  float phaseB=(shoreY*35.0-wt*1.67)+sin(vMapUv.x*17.0-wt*.11)*.17;
+  float crestA=pow(max(0.0,cos(phaseA)),12.0);
+  float crestB=pow(max(0.0,cos(phaseB+1.7)),16.0);
+  float forward=(.0018+.0024*surfNear)*(crestA*.85+crestB*.35);
+  float backwash=sin(phaseA-1.0)*(.0005+.0007*surfNear);
+  float foamDrift=sin(vMapUv.x*78.0+phaseB*1.3)*crestA*.0007;
+  waterShift=vec2(foamDrift+sin(phaseA)*.00055,forward+backwash);
+  waterShift+=flowDirection*(.0015+.0012*surfNear)*(crestA+crestB*.4);
+  `:''}
+
   ${kind===2?'waterShift += flowDirection * (0.003*sin(wt*1.8+vMapUv.y*100.0));':''}
   ${kind===3?'waterShift += vec2(ripples*0.001,0.005*sin(wt*2.5+vMapUv.y*90.0));':''}
   ${kind===4?'waterShift *= 0.45;':''}
@@ -462,7 +478,7 @@ function installWaterMotion(material){
   }
  };
  const prevKey=material.customProgramCacheKey?.bind(material);
- material.customProgramCacheKey=()=> (prevKey?prevKey():'minivr-water')+'-water-v1-'+kind+'-'+direction.toFixed(4);
+ material.customProgramCacheKey=()=> (prevKey?prevKey():'minivr-water')+'-water-v2-'+kind+'-'+direction.toFixed(4);
  microMotionMaterials.push({material,phase,speed});
 }
 // Parallax quality is independent of the original 360° texture resolution.
