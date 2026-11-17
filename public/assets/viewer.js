@@ -760,7 +760,23 @@ function hotspotSprite(h){
   const sparks=new THREE.Points(sparkGeometry,new THREE.PointsMaterial({color:0xa7f5ff,size:.62,transparent:true,opacity:.38,depthTest:false,depthWrite:false,blending:THREE.NormalBlending,sizeAttenuation:true}));
   portal.add(aura,outer,inner,arc,arc2,surface,sparks,hit);portal.layers.enableAll();portal.traverse(o=>{o.layers.enableAll();if(o.isMesh||o.isSprite||o.isPoints){o.renderOrder=120;o.material.depthTest=false;o.material.depthWrite=false;}});scene.add(portal);hotspotObjects.push(hit);hotspotVisuals.push(portal);
   const target=tourData.scenes.find(s=>Number(s.id)===Number(h.target_scene_id));if(target?.preview||target?.image)new THREE.TextureLoader().load(target.preview||target.image,t=>{t.colorSpace=THREE.SRGBColorSpace;surface.material.map=t;surface.material.color.set(0xffffff);surface.material.opacity=.28;surface.material.needsUpdate=true});
-  const cv=document.createElement('canvas');cv.width=768;cv.height=128;const c=cv.getContext('2d');c.fillStyle='#03151ddd';c.fillRect(0,0,768,128);c.strokeStyle='#5cefff';c.lineWidth=4;c.strokeRect(3,3,762,122);c.fillStyle='#eaffff';c.textAlign='center';c.font='bold 34px sans-serif';c.fillText((h.label||target?.title||'Перейти').slice(0,34),384,78);const label=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));label.scale.set(15,2.5,1);label.position.set(0,-12,.3);portal.add(label);label.renderOrder=121;label.material.depthWrite=false;
+  // Opaque, high-contrast title plate with readable text at panorama scale.
+  const cv=document.createElement('canvas');cv.width=1024;cv.height=224;
+  const c=cv.getContext('2d');c.clearRect(0,0,cv.width,cv.height);
+  c.fillStyle='rgba(2,18,28,.96)';c.beginPath();c.roundRect(12,14,1000,196,28);c.fill();
+  c.strokeStyle='#72e5f0';c.lineWidth=8;c.stroke();
+  const title=(h.label||target?.title||'Перейти').trim();
+  c.font='bold 66px sans-serif';c.textAlign='center';c.textBaseline='middle';
+  const maxWidth=910;let shown=title;
+  while(shown.length>1&&c.measureText(shown).width>maxWidth)shown=shown.slice(0,-1);
+  if(shown!==title)shown=shown.slice(0,-1)+'…';
+  c.shadowColor='#000';c.shadowBlur=12;c.lineWidth=5;c.strokeStyle='#001018';c.strokeText(shown,512,110,maxWidth);
+  c.fillStyle='#ffffff';c.fillText(shown,512,110,maxWidth);c.shadowBlur=0;
+  const labelTexture=new THREE.CanvasTexture(cv);labelTexture.colorSpace=THREE.SRGBColorSpace;
+  const label=new THREE.Sprite(new THREE.SpriteMaterial({map:labelTexture,transparent:true,opacity:1,depthTest:false,depthWrite:false}));
+  label.scale.set(20,4.4,1);label.position.set(0,-13.2,.5);portal.add(label);
+  label.renderOrder=130;
+
   portal.userData.animate=(time,active)=>{
    const t=time*.001,scale=active?1.075:1+.012*Math.sin(t*1.4);
    portal.scale.setScalar(THREE.MathUtils.lerp(portal.scale.x,scale,.09));
