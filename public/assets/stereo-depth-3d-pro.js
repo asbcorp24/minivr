@@ -131,60 +131,98 @@ export function stabilizeDepth(depth,width,height,textureCanvas){
   return filtered;
 }
 
+// Shader-based depth-image parallax: the plane is never displaced in Z.
+// Sampling a continuous depth texture removes stretched mesh triangles and
+// keeps the existing SBS/TB, slider, mouse and smoothing interfaces.
 export function createStereo3DPro(canvas,image,format,{strength=35,smoothness=75,depthImage=null}={}) {
   const result=depthImage?loadPreparedDepth(image,format,depthImage):estimateStereoDepth(image,format);
   const {width,height,depth,textureCanvas}=result;
-  // Stabilize at mesh resolution, not at full AI PNG resolution: avoids a
-  // long blocking CPU pass on 768px maps and matches the rendered geometry.
-  const stableWidth=Math.min(161,width),stableHeight=Math.min(101,height);
-  const meshDepth=new Float32Array(stableWidth*stableHeight);
+  const stableWidth=Math.min(256,width),stableHeight=Math.min(144,height);
+  const reduced=new Float32Array(stableWidth*stableHeight);
   for(let y=0;y<stableHeight;y++)for(let x=0;x<stableWidth;x++){
-    const sx=Math.min(width-1,Math.round(x*(width-1)/(stableWidth-1)));
-    const sy=Math.min(height-1,Math.round(y*(height-1)/(stableHeight-1)));
-    meshDepth[y*stableWidth+x]=depth[sy*width+sx];
+    const sx=Math.min(width-1,Math.round((x+.5)*width/stableWidth-.5));
+    const sy=Math.min(height-1,Math.round((y+.5)*height/stableHeight-.5));
+    reduced[y*stableWidth+x]=depth[sy*width+sx];
   }
-  const stableDepth=stabilizeDepth(meshDepth,stableWidth,stableHeight,textureCanvas);
+  const stable=stabilizeDepth(reduced,stableWidth,stableHeight,textureCanvas);
+  const depthCanvas=document.createElement('canvas');
+  depthCanvas.width=stableWidth;depthCanvas.height=stableHeight;
+  const dc=depthCanvas.getContext('2d'),pixels=dc.createImageData(stableWidth,stableHeight);
+  for(let i=0;i<stable.length;i++){
+    const v=Math.round(Math.max(0,Math.min(1,stable[i]))*255),k=i*4;
+    pixels.data[k]=v;pixels.data[k+1]=v;pixels.data[k+2]=v;pixels.data[k+3]=255;
+  }
+  dc.putImageData(pixels,0,0);
   const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
-  const scene=new THREE.Scene();scene.background=new THREE.Color(0x020b11);
-  const camera=new THREE.PerspectiveCamera(38,1,.1,100);
-  camera.position.set(0,0,6.5);
-  const aspect=width/height,planeHeight=3.8,planeWidth=planeHeight*aspect;
-  const cols=Math.min(160,width-1),rows=Math.min(100,height-1);
-  const geometry=new THREE.PlaneGeometry(planeWidth,planeHeight,cols,rows);
-  const positions=geometry.attributes.position,uv=geometry.attributes.uv;
-  const vertexDepth=new Float32Array(positions.count);
-  for(let i=0;i<positions.count;i++){
-    const u=uv.getX(i),v=uv.getY(i);
-    const x=Math.max(0,Math.min(stableWidth-1,Math.round(u*(stableWidth-1))));
-    const y=Math.max(0,Math.min(stableHeight-1,Math.round((1-v)*(stableHeight-1))));
-    const edge=Math.min(1,Math.min(u,1-u,v,1-v)*12);
-    vertexDepth[i]=stableDepth[y*stableWidth+x]*edge;
-    positions.setZ(i,vertexDepth[i]*1.45*(strength/100));
-  }
-  geometry.computeVertexNormals();
-  const texture=new THREE.CanvasTexture(textureCanvas);texture.colorSpace=THREE.SRGBColorSpace;
-  texture.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
-  const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide});
-  const mesh=new THREE.Mesh(geometry,material);scene.add(mesh);
+  const scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x020b11);
+  const camera=new THREE.OrthographicCamera(-1,1,1,-1,.1,10);
+  camera.position.z=2;
+  const imageTexture=new THREE.CanvasTexture(textureCanvas);
+  imageTexture.colorSpace=THREE.SRGBColorSpace;
+  imageTexture.minFilter=THREE.LinearFilter;
+  imageTexture.magFilter=THREE.LinearFilter;
+  const depthTexture=new THREE.CanvasTexture(depthCanvas);
+  depthTexture.colorSpace=THREE.NoColorSpace;
+  depthTexture.minFilter=THREE.LinearFilter;
+  depthTexture.magFilter=THREE.LinearFilter;
+  const uniforms={
+    imageMap:{value:imageTexture},
+    depthMap:{value:depthTexture},
+    pointer:{value:new THREE.Vector2()},
+    amount:{value:Math.max(0,Math.min(100,Number(strength)||0))/100},
+    texel:{value:new THREE.Vector2(1/textureCanvas.width,1/textureCanvas.height)}
+  };
+  const material=new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader:`
+      varying vec2 vUv;
+      void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}
+    `,
+    fragmentShader:`
+      uniform sampler2D imageMap;
+      uniform sampler2D depthMap;
+      uniform vec2 pointer;
+      uniform float amount;
+      uniform vec2 texel;
+      varying vec2 vUv;
+      void main(){
+        // UV warp, not vertex displacement: no diagonal triangle stretching.
+        // Depth maps are encoded white=near, black=far.
+        vec2 movement=pointer*amount*0.055;
+        vec2 uv=vUv;
+        for(int i=0;i<3;i++){
+          float d=texture2D(depthMap,uv).r;
+          vec2 delta=movement*(d-0.38);
+          uv=clamp(vUv-delta,texel*1.5,vec2(1.0)-texel*1.5);
+        }
+        vec4 color=texture2D(imageMap,uv);
+        gl_FragColor=color;
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `
+  });
+  const ratio=textureCanvas.width/textureCanvas.height;
+  const geometry=new THREE.PlaneGeometry(2*ratio,2,1,1);
+  const mesh=new THREE.Mesh(geometry,material);
+  scene.add(mesh);
   let targetX=0,targetY=0,actualX=0,actualY=0,raf=0,disposed=false;
   const setStrength=value=>{
     strength=Math.max(0,Math.min(100,Number(value)||0));
-    for(let i=0;i<positions.count;i++)positions.setZ(i,vertexDepth[i]*1.45*(strength/100));
-    positions.needsUpdate=true;geometry.computeVertexNormals();
+    uniforms.amount.value=strength/100;
   };
   const resize=()=>{
     if(disposed)return;
     const w=Math.max(1,window.innerWidth-32),h=Math.max(1,window.innerHeight-160);
-    const ratio=planeWidth/planeHeight;
     const displayWidth=Math.min(w,h*ratio),displayHeight=displayWidth/ratio;
     renderer.setSize(displayWidth,displayHeight,false);
     canvas.style.width=displayWidth+'px';canvas.style.height=displayHeight+'px';
-    camera.aspect=displayWidth/displayHeight;camera.updateProjectionMatrix();
-    // Fit full image with some overscan to avoid exposing mesh edges on tilt.
-    const vertical=2*Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
-    const distance=Math.max(planeHeight/vertical,planeWidth/(vertical*camera.aspect))*1.12;
-    camera.position.z=distance;
+    const visibleHeight=2.08,visibleWidth=visibleHeight*ratio;
+    camera.left=-visibleWidth/2;camera.right=visibleWidth/2;
+    camera.top=visibleHeight/2;camera.bottom=-visibleHeight/2;
+    camera.updateProjectionMatrix();
   };
   const move=e=>{
     const bounds=canvas.getBoundingClientRect();
@@ -196,9 +234,7 @@ export function createStereo3DPro(canvas,image,format,{strength=35,smoothness=75
     if(disposed)return;
     const damping=.025+(100-smoothness)*.002;
     actualX+=(targetX-actualX)*damping;actualY+=(targetY-actualY)*damping;
-    const travel=1.05*(strength/100);
-    camera.position.x=actualX*travel;camera.position.y=-actualY*travel*.65;
-    camera.lookAt(0,0,0);
+    uniforms.pointer.value.set(actualX,-actualY*.65);
     renderer.render(scene,camera);raf=requestAnimationFrame(render);
   };
   canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerleave',reset);
@@ -207,6 +243,6 @@ export function createStereo3DPro(canvas,image,format,{strength=35,smoothness=75
     disposed=true;cancelAnimationFrame(raf);
     canvas.removeEventListener('pointermove',move);canvas.removeEventListener('pointerleave',reset);
     window.removeEventListener('resize',resize);
-    geometry.dispose();material.dispose();texture.dispose();renderer.dispose();
+    geometry.dispose();material.dispose();imageTexture.dispose();depthTexture.dispose();renderer.dispose();
   }};
 }
