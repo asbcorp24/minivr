@@ -731,7 +731,7 @@ function sceneCard(s,index,x,y,buildId){const cv=document.createElement('canvas'
 function galleryButton(label,x,y,action,type='gallery-control'){const g=new THREE.Group(),m=new THREE.Mesh(new THREE.CircleGeometry(.12,32),new THREE.MeshBasicMaterial({color:0x2a2a2a,opacity:.92,transparent:true,depthTest:false}));m.userData={interactive:true,type,action,baseColor:0x2a2a2a,hoverColor:0x444444};g.add(m);const ring=new THREE.Mesh(new THREE.RingGeometry(.116,.123,32),new THREE.MeshBasicMaterial({color:0xffffff,opacity:.15,transparent:true,depthTest:false}));ring.position.z=.001;g.add(ring);const cv=document.createElement('canvas');cv.width=cv.height=64;const c=cv.getContext('2d');c.fillStyle='#fff';c.font='36px Arial';c.textAlign='center';c.textBaseline='middle';c.fillText(label,32,32);const lm=new THREE.Mesh(new THREE.PlaneGeometry(.14,.14),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));lm.position.z=.002;g.add(lm);g.position.set(x,y,-3.12);g.renderOrder=126;menuGroup.add(g);interactive.push(m);return g}
 function buildMenu(){const buildId=++menuBuildId;clearGroup(menuGroup);const pages=Math.max(1,Math.ceil(tourData.scenes.length/6));menuPage=Math.max(0,Math.min(menuPage,pages-1));const start=menuPage*6;tourData.scenes.slice(start,start+6).forEach((s,k)=>sceneCard(s,start+k,(k%3-1)*1.95,1.05-Math.floor(k/3)*1.15,buildId));galleryButton('‹',-1.55,-1.28,()=>{if(menuPage>0){menuPage--;buildMenu()}},'gallery-prev');galleryButton('›',1.55,-1.28,()=>{if(menuPage<pages-1){menuPage++;buildMenu()}},'gallery-next');galleryButton('✕',0,-1.68,()=>{menuGroup.visible=false;menuOpen=false},'gallery-close')}
 buildMenu();hud.visible=false;
-const hotspotObjects=[];let activeHotspot=null,hoveredPortal=null;
+const hotspotObjects=[],hotspotVisuals=[];let activeHotspot=null,hoveredPortal=null;
 function markerTexture(h,active=false){const cv=document.createElement('canvas');cv.width=512;cv.height=512;const c=cv.getContext('2d');c.clearRect(0,0,512,512);if(h.type==='scene'){const glow=c.createRadialGradient(256,256,40,256,256,205);glow.addColorStop(0,active?'#6fffff88':'#35eaff55');glow.addColorStop(.52,'#083c4c88');glow.addColorStop(.7,'#07141c33');glow.addColorStop(1,'#0000');c.fillStyle=glow;c.fillRect(0,0,512,512);for(let i=0;i<3;i++){c.beginPath();c.ellipse(256,256,118+i*22,184+i*9,0,0,Math.PI*2);c.lineWidth=active?12-i*2:8-i;c.strokeStyle=i===0?'#c9ffff':i===1?'#55ecff':'#1a8298';c.globalAlpha=1-i*.22;c.stroke()}c.globalAlpha=1;c.beginPath();c.moveTo(220,256);c.lineTo(292,256);c.moveTo(272,232);c.lineTo(296,256);c.lineTo(272,280);c.lineWidth=9;c.lineCap='round';c.strokeStyle='#eaffff';c.stroke()}else{c.beginPath();c.arc(256,256,150,0,Math.PI*2);c.fillStyle=active?'#29ddec':'#052530dd';c.fill();c.lineWidth=active?18:11;c.strokeStyle='#72f5ff';c.stroke();c.fillStyle='#eaffff';c.textAlign='center';c.textBaseline='middle';c.font='bold 142px sans-serif';c.fillText(h.type==='info'?'i':'▣',256,266)}return new THREE.CanvasTexture(cv)}
 function hotspotSprite(h){
  const yaw=THREE.MathUtils.degToRad(Number(h.yaw)),pitch=THREE.MathUtils.degToRad(Number(h.pitch)),rad=110;
@@ -752,7 +752,7 @@ function hotspotSprite(h){
   for(let i=0;i<24;i++){const angle=i/24*Math.PI*2;const radius=8.1+(i%5)*.33;sparkPositions[i*3]=Math.cos(angle)*radius;sparkPositions[i*3+1]=Math.sin(angle)*radius;sparkPositions[i*3+2]=.25;}
   sparkGeometry.setAttribute('position',new THREE.BufferAttribute(sparkPositions,3));
   const sparks=new THREE.Points(sparkGeometry,new THREE.PointsMaterial({color:0xa7f5ff,size:1.15,transparent:true,opacity:.62,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true}));
-  portal.add(aura,outer,inner,arc,surface,sparks,hit);portal.layers.enableAll();portal.traverse(o=>{o.layers.enableAll();if(o.isMesh||o.isSprite||o.isPoints){o.renderOrder=120;o.material.depthTest=false;o.material.depthWrite=false;}});scene.add(portal);hotspotObjects.push(hit);
+  portal.add(aura,outer,inner,arc,surface,sparks,hit);portal.layers.enableAll();portal.traverse(o=>{o.layers.enableAll();if(o.isMesh||o.isSprite||o.isPoints){o.renderOrder=120;o.material.depthTest=false;o.material.depthWrite=false;}});scene.add(portal);hotspotObjects.push(hit);hotspotVisuals.push(portal);
   const target=tourData.scenes.find(s=>Number(s.id)===Number(h.target_scene_id));if(target?.preview||target?.image)new THREE.TextureLoader().load(target.preview||target.image,t=>{t.colorSpace=THREE.SRGBColorSpace;surface.material.map=t;surface.material.color.set(0xffffff);surface.material.opacity=.9;surface.material.needsUpdate=true});
   const cv=document.createElement('canvas');cv.width=768;cv.height=128;const c=cv.getContext('2d');c.fillStyle='#03151ddd';c.fillRect(0,0,768,128);c.strokeStyle='#5cefff';c.lineWidth=4;c.strokeRect(3,3,762,122);c.fillStyle='#eaffff';c.textAlign='center';c.font='bold 34px sans-serif';c.fillText((h.label||target?.title||'Перейти').slice(0,34),384,78);const label=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));label.scale.set(15,2.5,1);label.position.set(0,-12,.3);portal.add(label);label.renderOrder=121;label.material.depthWrite=false;
   portal.userData.animate=(time,active)=>{
@@ -767,7 +767,7 @@ function hotspotSprite(h){
    surface.material.opacity=surface.material.map?(active?.72:.48):(active?.3:.18);
   };
  }else{
-  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:markerTexture(h),transparent:true,depthTest:false}));const base=11;sp.scale.set(base,base,1);sp.position.copy(pos);sp.renderOrder=120;sp.material.depthWrite=false;sp.userData=h;sp.userData.baseScale=base;sp.layers.enableAll();scene.add(sp);hotspotObjects.push(sp)
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:markerTexture(h),transparent:true,depthTest:false}));const base=11;sp.scale.set(base,base,1);sp.position.copy(pos);sp.renderOrder=120;sp.material.depthWrite=false;sp.userData=h;sp.userData.baseScale=base;sp.layers.enableAll();scene.add(sp);hotspotObjects.push(sp);hotspotVisuals.push(sp)
  }
 }
 hotspotData.forEach(hotspotSprite);
@@ -935,8 +935,8 @@ async function switchSceneInPlace(url){
  resetTourTimer();
  window.dispatchEvent(new CustomEvent('minivr:scene-music',{detail:{trackId:Number(next.dataset.musicTrack||0)}}));
  hotspotData=JSON.parse(doc.querySelector('#hotspots-data')?.textContent||'[]');
- for(const obj of hotspotObjects){scene.remove(obj);obj.material.map?.dispose();obj.material.dispose()}
- hotspotObjects.length=0;activeHotspot=null;hoveredPortal=null;
+ for(const obj of hotspotVisuals){scene.remove(obj);obj.traverse(node=>{if(node.geometry)node.geometry.dispose();if(node.material){const materials=Array.isArray(node.material)?node.material:[node.material];for(const material of materials){material.map?.dispose();material.dispose()}}});}
+ hotspotVisuals.length=0;hotspotObjects.length=0;activeHotspot=null;hoveredPortal=null;
  hotspotData.forEach(hotspotSprite);
  closePanels();menuPage=Math.max(0,Math.floor(Math.max(0,tourData.current)/6));buildMenu();
  root.dataset.image=image;root.dataset.projection=projection;root.dataset.stereo=stereoMode;
