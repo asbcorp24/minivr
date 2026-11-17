@@ -53,8 +53,25 @@ export function estimateStereoDepth(image, format, width=192) {
   return {width,height,depth,textureCanvas};
 }
 
-export function createStereo3DPro(canvas,image,format,{strength=35,smoothness=75}={}) {
-  const result=estimateStereoDepth(image,format);
+// Prepared AI maps are grayscale relative disparities: brighter pixels are closer.
+export function loadPreparedDepth(image,format,depthImage) {
+  const width=depthImage.naturalWidth,height=depthImage.naturalHeight;
+  const c=document.createElement('canvas');c.width=width;c.height=height;
+  const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(depthImage,0,0);
+  const rgba=ctx.getImageData(0,0,width,height).data,depth=new Float32Array(width*height);
+  for(let i=0;i<depth.length;i++)depth[i]=rgba[i*4]/255;
+  const eyeWidth=format==='sbs'?image.naturalWidth/2:image.naturalWidth;
+  const eyeHeight=format==='tb'?image.naturalHeight/2:image.naturalHeight;
+  const textureCanvas=document.createElement('canvas');
+  textureCanvas.width=Math.min(2048,Math.round(eyeWidth));
+  textureCanvas.height=Math.round(textureCanvas.width*eyeHeight/eyeWidth);
+  const sy=format==='tb'?0:0;
+  textureCanvas.getContext('2d').drawImage(image,0,sy,eyeWidth,eyeHeight,0,0,textureCanvas.width,textureCanvas.height);
+  return {width,height,depth,textureCanvas};
+}
+
+export function createStereo3DPro(canvas,image,format,{strength=35,smoothness=75,depthImage=null}={}) {
+  const result=depthImage ? loadPreparedDepth(image,format,depthImage) : estimateStereoDepth(image,format);
   const {width,height,depth,textureCanvas}=result;
   const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
