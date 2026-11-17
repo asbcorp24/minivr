@@ -40,6 +40,46 @@ if(new URLSearchParams(location.search).has('effects_debug')){
 let projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'mono';
 const tour=Number(root.dataset.tour||0),backUrl=root.dataset.back||'/';let hotspotData=JSON.parse(document.querySelector('#hotspots-data')?.textContent||'[]');
 const tourData=JSON.parse(document.querySelector('#tour-data')?.textContent||'{"scenes":[],"current":-1}');
+// Each panorama may contain its own ordered narrative stops.
+let guidedPoints=Array.isArray(effectSettings.guidedPoints)?effectSettings.guidedPoints.filter(p=>Number.isFinite(Number(p.yaw))&&Number.isFinite(Number(p.pitch))&&Number(p.duration)>0).slice(0,50):[];
+let guidedIndex=-1,guidedTimer=null,guidedTarget=null,guidedPanel=null,guidedAudio=null;
+let guidedEnabled=!!tour&&guidedPoints.length>0;
+function guidedClearTimer(){if(guidedTimer){clearTimeout(guidedTimer);guidedTimer=null}}
+function guidedStopAudio(){if(guidedAudio){guidedAudio.pause();guidedAudio.removeAttribute('src');guidedAudio.load();guidedAudio=null}}
+function guidedShow(index){
+ guidedClearTimer();guidedStopAudio();
+ if(index>=guidedPoints.length){guidedIndex=guidedPoints.length;guidedTarget=null;if(guidedPanel)guidedPanel.hidden=true;resetTourTimer();return}
+ guidedIndex=index;const p=guidedPoints[index];
+ guidedTarget={yaw:Number(p.yaw),pitch:Number(p.pitch)};
+ if(guidedPanel){
+  guidedPanel.hidden=false;guidedPanel.querySelector('[data-guided-heading]').textContent=(index+1)+' / '+guidedPoints.length+' · '+(p.title||'Точка экскурсии');
+  guidedPanel.querySelector('[data-guided-text]').textContent=p.text||'';
+  guidedPanel.querySelector('[data-guided-next]').textContent=index===guidedPoints.length-1?'Завершить рассказ →':'Следующая точка →';
+ }
+ if(p.audio&&/^\/uploads\/[a-zA-Z0-9_./-]+\.(mp3|ogg|wav)$/i.test(p.audio)){
+  guidedAudio=new Audio(p.audio);guidedAudio.preload='auto';guidedAudio.play().catch(()=>{if(guidedPanel){const hint=guidedPanel.querySelector('[data-guided-audio]');hint.hidden=false;hint.onclick=()=>guidedAudio?.play().catch(()=>{})}});
+ }
+ if(!tourPaused)guidedTimer=setTimeout(()=>guidedShow(index+1),Math.max(1,Math.min(600,Number(p.duration)))*1000);
+}
+function guidedPauseResume(){
+ guidedClearTimer();
+ if(guidedAudio){if(tourPaused)guidedAudio.pause();else guidedAudio.play().catch(()=>{})}
+ if(!tourPaused&&guidedIndex>=0&&guidedIndex<guidedPoints.length)guidedTimer=setTimeout(()=>guidedShow(guidedIndex+1),Math.max(1,Math.min(600,Number(guidedPoints[guidedIndex].duration)))*1000);
+}
+function guidedSetup(){
+ guidedClearTimer();guidedStopAudio();guidedPanel?.remove();guidedPanel=null;guidedIndex=-1;guidedTarget=null;
+ if(!guidedEnabled)return;
+ guidedPanel=document.createElement('aside');guidedPanel.id='minivr-guided-points';
+ guidedPanel.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);width:min(540px,90vw);z-index:850;color:white;background:rgba(12,29,42,.89);border:1px solid #6ca6b7;border-radius:14px;padding:16px;box-shadow:0 8px 28px #0008;backdrop-filter:blur(8px)';
+ const heading=document.createElement('strong');heading.dataset.guidedHeading='';heading.style.display='block';
+ const description=document.createElement('p');description.dataset.guidedText='';description.style.whiteSpace='pre-wrap';
+ const controls=document.createElement('div');controls.style.cssText='display:flex;gap:8px;flex-wrap:wrap';
+ const next=document.createElement('button');next.type='button';next.dataset.guidedNext='';next.onclick=()=>guidedShow(guidedIndex+1);
+ const pause=document.createElement('button');pause.type='button';pause.textContent='⏯ Пауза / продолжить';pause.onclick=()=>{tourPaused=!tourPaused;guidedPauseResume();resetTourTimer()};
+ const audio=document.createElement('button');audio.type='button';audio.dataset.guidedAudio='';audio.textContent='▶ Включить аудио';audio.hidden=true;
+ controls.append(next,pause,audio);guidedPanel.append(heading,description,controls);document.body.append(guidedPanel);
+ guidedShow(0);
+}
 // Guided tour: each scene has its own duration; 0 disables automatic advance.
 let tourTimer=null,tourDeadline=0,tourPaused=false;
 function currentTourDuration(){
@@ -50,9 +90,10 @@ function currentTourDuration(){
 }
 const tourButton=document.createElement('button');
 tourButton.type='button';tourButton.id='tour-autoplay';tourButton.style.cssText='background:#153849;color:white;border:1px solid #43849d;border-radius:8px;padding:7px 10px;cursor:pointer';
-tourButton.addEventListener('click',()=>{tourPaused=!tourPaused;resetTourTimer()});
+tourButton.addEventListener('click',()=>{tourPaused=!tourPaused;if(guidedEnabled&&guidedIndex<guidedPoints.length)guidedPauseResume();resetTourTimer()});
 function resetTourTimer(){
  if(tourTimer){clearTimeout(tourTimer);tourTimer=null}
+ if(guidedEnabled&&guidedIndex<guidedPoints.length)return;
  const duration=currentTourDuration();
  const next=tourData.current+1<tourData.scenes.length;
  tourButton.textContent=tourPaused?'▶ Продолжить экскурсию':'⏸ Авто: '+duration+' с';
@@ -868,6 +909,9 @@ async function switchSceneInPlace(url){
  effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();dayCycleStarted=null;dayGradeLast=-1;dayPhaseOverride=null;try{effectSettings=JSON.parse(next.dataset.effects||'{}');effectSettings.timeOfDay=false;effectSettings.dayCycle=false}catch(e){effectSettings={}}effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);root.dataset.effects=next.dataset.effects||'{}';
  const nextTour=JSON.parse(doc.querySelector('#tour-data')?.textContent||'{}');
  tourData.current=nextTour.current??-1;
+ guidedPoints=Array.isArray(effectSettings.guidedPoints)?effectSettings.guidedPoints.filter(p=>Number.isFinite(Number(p.yaw))&&Number.isFinite(Number(p.pitch))&&Number(p.duration)>0).slice(0,50):[];
+ guidedEnabled=!!tour&&guidedPoints.length>0;
+ guidedSetup();
  resetTourTimer();
  window.dispatchEvent(new CustomEvent('minivr:scene-music',{detail:{trackId:Number(next.dataset.musicTrack||0)}}));
  hotspotData=JSON.parse(doc.querySelector('#hotspots-data')?.textContent||'[]');
@@ -978,7 +1022,9 @@ renderer.domElement.addEventListener('pointermove',event=>{
  depthPointer.set(THREE.MathUtils.clamp((event.clientX-bounds.left)/bounds.width*2-1,-1,1),THREE.MathUtils.clamp(1-(event.clientY-bounds.top)/bounds.height*2,-1,1));
 });
 renderer.domElement.addEventListener('pointerleave',()=>depthPointer.set(0,0));
+guidedSetup();
 renderer.setAnimationLoop((time)=>{
+ if(guidedTarget&&getViewerMode()===ViewerMode.DESKTOP&&!orientation){const delta=((guidedTarget.yaw-lon+540)%360)-180;lon+=delta*.045;lat+=(guidedTarget.pitch-lat)*.045;if(Math.abs(delta)<.12&&Math.abs(guidedTarget.pitch-lat)<.12)guidedTarget=null;}
  // GPU-side micro-motion for the nearest depth groups; no CPU texture updates.
  for(const entry of microMotionMaterials)entry.phase.value=time*.001*entry.speed;
  tiledPanorama?.update();
