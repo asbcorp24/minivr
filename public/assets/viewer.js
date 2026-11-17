@@ -802,10 +802,28 @@ function actionSprite(label,x,action,parent,y=-1.62,z=-3.02,width=1.15){
  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));
  sp.position.set(x,y,z);sp.scale.set(width,.36,1);sp.renderOrder=140;sp.userData.action=action;sp.layers.enableAll();parent.add(sp);interactive.push(sp);return sp;
 }
-function contentPanel(h){closePanels(contentGroup);clearGroup(contentGroup);contentGroup.visible=true;
+function contentPanel(h){closePanels(contentGroup);clearGroup(contentGroup);contentGroup.userData.stereoPictures=null;contentGroup.visible=true;
  const head=document.createElement('canvas');head.width=1000;head.height=190;const c=head.getContext('2d');c.fillStyle='#031720f4';c.fillRect(0,0,1000,190);c.strokeStyle='#5cecff';c.lineWidth=6;c.strokeRect(5,5,990,185);c.fillStyle='#65efff';c.font='bold 24px monospace';c.fillText(h.type==='image'?'IMAGE':'INFORMATION',42,48);c.fillStyle='#fff';c.font='bold 43px sans-serif';c.fillText((h.label||'').slice(0,36),42,118);
  const hs=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(head),transparent:true,depthTest:false}));hs.scale.set(4.3,.82,1);hs.position.set(0,1.12,-3.08);hs.renderOrder=132;contentGroup.add(hs);
- if(h.type==='image'&&h.content){new THREE.TextureLoader().load(h.content,t=>{if(!contentGroup.visible)return;t.colorSpace=THREE.SRGBColorSpace;const im=t.image||{},aspect=im.width&&im.height?im.width/im.height:16/9,maxW=4.15,maxH=2.25;let w=maxW,hg=w/aspect;if(hg>maxH){hg=maxH;w=hg*aspect}const pic=new THREE.Sprite(new THREE.SpriteMaterial({map:t,transparent:true,depthTest:false}));pic.scale.set(w,hg,1);pic.position.set(0,-.18,-3.04);pic.renderOrder=131;contentGroup.add(pic)},undefined,()=>addInfoText('Не удалось загрузить изображение'))}
+ if(h.type==='image'&&h.content){new THREE.TextureLoader().load(h.content,t=>{
+  if(!contentGroup.visible){t.dispose();return}
+  t.colorSpace=THREE.SRGBColorSpace;
+  const stereo=['sbs','tb'].includes(h.image_stereo)?h.image_stereo:'mono';
+  const im=t.image||{},aspect=im.width&&im.height?im.width/im.height:16/9;
+  const eyeAspect=stereo==='sbs'?aspect/2:stereo==='tb'?aspect*2:aspect;
+  const maxW=4.15,maxH=2.25;let w=maxW,hg=w/eyeAspect;if(hg>maxH){hg=maxH;w=hg*eyeAspect}
+  const addPicture=(texture,layer)=>{
+   const pic=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false,depthWrite:false}));
+   pic.scale.set(w,hg,1);pic.position.set(0,-.18,-3.04);pic.renderOrder=131;pic.layers.set(layer);contentGroup.add(pic);return pic;
+  };
+  if(stereo==='mono'){addPicture(t,0);contentGroup.userData.stereoPictures=null;return}
+  // Desktop: left eye as a normal 2D preview. Cardboard/WebXR: separate texture per eye.
+  const left=t.clone();left.needsUpdate=true;left.repeat.set(stereo==='sbs'?.5:1,stereo==='tb'?.5:1);left.offset.set(0,stereo==='tb'?.5:0);
+  const right=t.clone();right.needsUpdate=true;right.repeat.set(stereo==='sbs'?.5:1,stereo==='tb'?.5:1);right.offset.set(stereo==='sbs'?.5:0,0);
+  const desktop=addPicture(left.clone(),0),leftPic=addPicture(left,1),rightPic=addPicture(right,2);
+  contentGroup.userData.stereoPictures={desktop,leftPic,rightPic};
+  t.dispose();
+ },undefined,()=>addInfoText('Не удалось загрузить изображение'))}
  else addInfoText(h.content||'Нет информации');
  actionSprite('CLOSE',0,()=>{contentGroup.visible=false;clearGroup(contentGroup)},contentGroup,-1.62,-3.02,1.15);
  function addInfoText(text){const cv=document.createElement('canvas');cv.width=1000;cv.height=560;const x=cv.getContext('2d');x.fillStyle='#031720f4';x.fillRect(0,0,1000,560);x.strokeStyle='#5cecff';x.lineWidth=5;x.strokeRect(4,4,992,552);x.fillStyle='#e9ffff';x.font='28px sans-serif';const words=String(text).split(' ');let line='',y=60;for(const w of words){const test=line+w+' ';if(x.measureText(test).width>890){x.fillText(line,45,y);line=w+' ';y+=43}else line=test;if(y>500)break}x.fillText(line,45,y);const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));sp.scale.set(4.3,2.4,1);sp.position.set(0,-.12,-3.04);sp.renderOrder=131;contentGroup.add(sp)}
@@ -813,7 +831,7 @@ function contentPanel(h){closePanels(contentGroup);clearGroup(contentGroup);cont
 const raycaster=new THREE.Raycaster();let gazeTarget=null,gazeStart=0;
 const gazeCursor=new THREE.Group();const gazeBase=new THREE.Mesh(new THREE.RingGeometry(.018,.025,48),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.72,depthTest:false}));const gazeProgress=new THREE.Mesh(new THREE.RingGeometry(.028,.034,48,1,Math.PI/2,0.001),new THREE.MeshBasicMaterial({color:0x66f4ff,transparent:true,opacity:.95,depthTest:false}));gazeBase.renderOrder=gazeProgress.renderOrder=200;gazeCursor.add(gazeBase,gazeProgress);gazeCursor.position.set(0,0,-1.25);gazeCursor.visible=false;camera.add(gazeCursor);
 function updateGazeCursor(hit,progress){gazeCursor.visible=false;gazeProgress.geometry.dispose();gazeProgress.geometry=new THREE.RingGeometry(.028,.034,48,1,Math.PI/2,Math.max(.001,Math.PI*2*progress));gazeBase.material.color.setHex(hit?0x66f4ff:0xffffff)}const pickables=()=>[...hotspotObjects,...interactive.filter(o=>o.visible&&o.parent?.visible!==false)];
-function activate(o){if(o?.userData?.action)return o.userData.action();const h=o?.userData;if(!h)return;if(h.type==='scene'&&h.target_panorama_id)return navigate('/viewer.php?id='+h.target_panorama_id+'&tour='+tour+'&scene='+h.target_scene_id);if(h.type==='info'||h.type==='image'){contentPanel(h);const modal=document.querySelector('#hotspot-modal');document.querySelector('#hotspot-modal-type').textContent=h.type==='image'?'ИЗОБРАЖЕНИЕ':'ИНФОРМАЦИЯ';document.querySelector('#hotspot-modal-title').textContent=h.label||'';const box=document.querySelector('#hotspot-modal-content');box.innerHTML=h.type==='image'&&h.content?'<img alt="">':'';if(h.type==='image'&&h.content)box.querySelector('img').src=h.content;else box.textContent=h.content||'';if(!cardboard&&!renderer.xr.isPresenting)modal.classList.add('open')}}
+function activate(o){if(o?.userData?.action)return o.userData.action();const h=o?.userData;if(!h)return;if(h.type==='scene'&&h.target_panorama_id)return navigate('/viewer.php?id='+h.target_panorama_id+'&tour='+tour+'&scene='+h.target_scene_id);if(h.type==='info'||h.type==='image'){contentPanel(h);const modal=document.querySelector('#hotspot-modal');document.querySelector('#hotspot-modal-type').textContent=h.type==='image'?'ИЗОБРАЖЕНИЕ':'ИНФОРМАЦИЯ';document.querySelector('#hotspot-modal-title').textContent=h.label||'';const box=document.querySelector('#hotspot-modal-content');box.replaceChildren();if(h.type==='image'&&h.content){const img=document.createElement('img');img.alt=h.label||'Фото';img.src=h.content;img.style.maxWidth='100%';box.append(img);if(['sbs','tb'].includes(h.image_stereo)){const note=document.createElement('p');note.textContent='Стереофото '+h.image_stereo.toUpperCase()+': для объёмного просмотра откройте Cardboard или VR. Здесь показана исходная стереопара.';box.append(note)}}else box.textContent=h.content||'';if(!cardboard&&!renderer.xr.isPresenting)modal.classList.add('open')}}
 document.querySelector('#hotspot-close').onclick=()=>document.querySelector('#hotspot-modal').classList.remove('open');
 for(let i=0;i<2;i++){const ctl=renderer.xr.getController(i);const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-1)]),new THREE.LineBasicMaterial({color:0x66eeff}));line.scale.z=4;ctl.add(line);ctl.addEventListener('select',()=>{raycaster.setFromXRController(ctl);activate(raycaster.intersectObjects(pickables(),false)[0]?.object)});scene.add(ctl)}
 
@@ -1079,6 +1097,8 @@ renderer.setAnimationLoop((time)=>{
  }
  lastEffectTime=time;
  const mode=getViewerMode();
+ const stereoPictures=contentGroup.userData.stereoPictures;
+ if(stereoPictures){const headset=mode!==ViewerMode.DESKTOP;stereoPictures.desktop.visible=!headset;stereoPictures.leftPic.visible=headset;stereoPictures.rightPic.visible=headset}
  if(mode===ViewerMode.CARDBOARD&&cardboard){const canvas=renderer.domElement;canvas.style.position='fixed';canvas.style.inset='0';canvas.style.width='100vw';canvas.style.height='100dvh';canvas.style.zIndex='1'}
  if(mode===ViewerMode.CARDBOARD&&legacyCardboard){legacyVRControls.update();camera.updateMatrixWorld(true);hud.visible=false}
  syncHudPose();syncCardboardDebug();syncXRDebug();
