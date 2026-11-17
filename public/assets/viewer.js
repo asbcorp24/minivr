@@ -731,23 +731,43 @@ function sceneCard(s,index,x,y,buildId){const cv=document.createElement('canvas'
 function galleryButton(label,x,y,action,type='gallery-control'){const g=new THREE.Group(),m=new THREE.Mesh(new THREE.CircleGeometry(.12,32),new THREE.MeshBasicMaterial({color:0x2a2a2a,opacity:.92,transparent:true,depthTest:false}));m.userData={interactive:true,type,action,baseColor:0x2a2a2a,hoverColor:0x444444};g.add(m);const ring=new THREE.Mesh(new THREE.RingGeometry(.116,.123,32),new THREE.MeshBasicMaterial({color:0xffffff,opacity:.15,transparent:true,depthTest:false}));ring.position.z=.001;g.add(ring);const cv=document.createElement('canvas');cv.width=cv.height=64;const c=cv.getContext('2d');c.fillStyle='#fff';c.font='36px Arial';c.textAlign='center';c.textBaseline='middle';c.fillText(label,32,32);const lm=new THREE.Mesh(new THREE.PlaneGeometry(.14,.14),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));lm.position.z=.002;g.add(lm);g.position.set(x,y,-3.12);g.renderOrder=126;menuGroup.add(g);interactive.push(m);return g}
 function buildMenu(){const buildId=++menuBuildId;clearGroup(menuGroup);const pages=Math.max(1,Math.ceil(tourData.scenes.length/6));menuPage=Math.max(0,Math.min(menuPage,pages-1));const start=menuPage*6;tourData.scenes.slice(start,start+6).forEach((s,k)=>sceneCard(s,start+k,(k%3-1)*1.95,1.05-Math.floor(k/3)*1.15,buildId));galleryButton('‹',-1.55,-1.28,()=>{if(menuPage>0){menuPage--;buildMenu()}},'gallery-prev');galleryButton('›',1.55,-1.28,()=>{if(menuPage<pages-1){menuPage++;buildMenu()}},'gallery-next');galleryButton('✕',0,-1.68,()=>{menuGroup.visible=false;menuOpen=false},'gallery-close')}
 buildMenu();hud.visible=false;
-const hotspotObjects=[];let activeHotspot=null;
+const hotspotObjects=[],hotspotVisuals=[];let activeHotspot=null,hoveredPortal=null;
 function markerTexture(h,active=false){const cv=document.createElement('canvas');cv.width=512;cv.height=512;const c=cv.getContext('2d');c.clearRect(0,0,512,512);if(h.type==='scene'){const glow=c.createRadialGradient(256,256,40,256,256,205);glow.addColorStop(0,active?'#6fffff88':'#35eaff55');glow.addColorStop(.52,'#083c4c88');glow.addColorStop(.7,'#07141c33');glow.addColorStop(1,'#0000');c.fillStyle=glow;c.fillRect(0,0,512,512);for(let i=0;i<3;i++){c.beginPath();c.ellipse(256,256,118+i*22,184+i*9,0,0,Math.PI*2);c.lineWidth=active?12-i*2:8-i;c.strokeStyle=i===0?'#c9ffff':i===1?'#55ecff':'#1a8298';c.globalAlpha=1-i*.22;c.stroke()}c.globalAlpha=1;c.beginPath();c.moveTo(220,256);c.lineTo(292,256);c.moveTo(272,232);c.lineTo(296,256);c.lineTo(272,280);c.lineWidth=9;c.lineCap='round';c.strokeStyle='#eaffff';c.stroke()}else{c.beginPath();c.arc(256,256,150,0,Math.PI*2);c.fillStyle=active?'#29ddec':'#052530dd';c.fill();c.lineWidth=active?18:11;c.strokeStyle='#72f5ff';c.stroke();c.fillStyle='#eaffff';c.textAlign='center';c.textBaseline='middle';c.font='bold 142px sans-serif';c.fillText(h.type==='info'?'i':'▣',256,266)}return new THREE.CanvasTexture(cv)}
 function hotspotSprite(h){
  const yaw=THREE.MathUtils.degToRad(Number(h.yaw)),pitch=THREE.MathUtils.degToRad(Number(h.pitch)),rad=110;
  const pos=new THREE.Vector3(rad*Math.cos(pitch)*Math.cos(yaw),rad*Math.sin(pitch),rad*Math.cos(pitch)*Math.sin(yaw));
  if(h.type==='scene'){
   const portal=new THREE.Group();portal.position.copy(pos);portal.lookAt(0,0,0);portal.userData=h;portal.userData.baseScale=1;
-  const outer=new THREE.Mesh(new THREE.TorusGeometry(8.8,1.05,20,64),new THREE.MeshBasicMaterial({color:0x50efff,transparent:true,opacity:.9,depthTest:false}));
-  const inner=new THREE.Mesh(new THREE.TorusGeometry(7.25,.35,16,64),new THREE.MeshBasicMaterial({color:0xd9ffff,transparent:true,opacity:.82,depthTest:false}));
-  const surface=new THREE.Mesh(new THREE.CircleGeometry(7.05,64),new THREE.MeshBasicMaterial({color:0x073a4b,transparent:true,opacity:.62,side:THREE.DoubleSide,depthTest:false}));surface.position.z=.08;
-  const hit=new THREE.Mesh(new THREE.CircleGeometry(9.8,48),new THREE.MeshBasicMaterial({transparent:true,opacity:0,side:THREE.DoubleSide,depthTest:false}));hit.position.z=.16;hit.userData=h;hit.userData.portal=portal;
-  portal.add(outer,inner,surface,hit);portal.layers.enableAll();portal.traverse(o=>{o.layers.enableAll();if(o.isMesh||o.isSprite){o.renderOrder=120;o.material.depthTest=false;o.material.depthWrite=false;}});scene.add(portal);hotspotObjects.push(hit);
+  // Three concentric transparent rings, a moving energy shell and small orbiting sparks.
+  const ringMaterial=(color,opacity)=>new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
+  const outer=new THREE.Mesh(new THREE.TorusGeometry(8.8,.78,12,96),ringMaterial(0x55e9ff,.7));
+  const inner=new THREE.Mesh(new THREE.TorusGeometry(7.35,.26,10,96),ringMaterial(0xe2ffff,.78));
+  const arc=new THREE.Mesh(new THREE.TorusGeometry(8.15,.13,8,96,Math.PI*1.28),ringMaterial(0x79d9ff,.8));
+  const aura=new THREE.Mesh(new THREE.RingGeometry(8.7,10.8,96),ringMaterial(0x18b9ed,.13));
+  aura.position.z=-.2;
+  const surface=new THREE.Mesh(new THREE.CircleGeometry(7.05,64),new THREE.MeshBasicMaterial({color:0x125b77,transparent:true,opacity:.22,side:THREE.DoubleSide,depthTest:false,depthWrite:false}));
+  surface.position.z=.08;
+  const hit=new THREE.Mesh(new THREE.CircleGeometry(9.8,48),new THREE.MeshBasicMaterial({transparent:true,opacity:0,side:THREE.DoubleSide,depthTest:false,depthWrite:false}));hit.position.z=.16;hit.userData=h;hit.userData.portal=portal;
+  const sparkGeometry=new THREE.BufferGeometry(),sparkPositions=new Float32Array(24*3);
+  for(let i=0;i<24;i++){const angle=i/24*Math.PI*2;const radius=8.1+(i%5)*.33;sparkPositions[i*3]=Math.cos(angle)*radius;sparkPositions[i*3+1]=Math.sin(angle)*radius;sparkPositions[i*3+2]=.25;}
+  sparkGeometry.setAttribute('position',new THREE.BufferAttribute(sparkPositions,3));
+  const sparks=new THREE.Points(sparkGeometry,new THREE.PointsMaterial({color:0xa7f5ff,size:1.15,transparent:true,opacity:.62,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true}));
+  portal.add(aura,outer,inner,arc,surface,sparks,hit);portal.layers.enableAll();portal.traverse(o=>{o.layers.enableAll();if(o.isMesh||o.isSprite||o.isPoints){o.renderOrder=120;o.material.depthTest=false;o.material.depthWrite=false;}});scene.add(portal);hotspotObjects.push(hit);hotspotVisuals.push(portal);
   const target=tourData.scenes.find(s=>Number(s.id)===Number(h.target_scene_id));if(target?.preview||target?.image)new THREE.TextureLoader().load(target.preview||target.image,t=>{t.colorSpace=THREE.SRGBColorSpace;surface.material.map=t;surface.material.color.set(0xffffff);surface.material.opacity=.9;surface.material.needsUpdate=true});
   const cv=document.createElement('canvas');cv.width=768;cv.height=128;const c=cv.getContext('2d');c.fillStyle='#03151ddd';c.fillRect(0,0,768,128);c.strokeStyle='#5cefff';c.lineWidth=4;c.strokeRect(3,3,762,122);c.fillStyle='#eaffff';c.textAlign='center';c.font='bold 34px sans-serif';c.fillText((h.label||target?.title||'Перейти').slice(0,34),384,78);const label=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));label.scale.set(15,2.5,1);label.position.set(0,-12,.3);portal.add(label);label.renderOrder=121;label.material.depthWrite=false;
-  portal.userData.animate=(time,active)=>{const s=active?1.14:1;portal.scale.lerp(new THREE.Vector3(s,s,s),.12);outer.rotation.z=time*.00025;inner.rotation.z=-time*.0004;outer.material.opacity=active?1:.82;surface.material.opacity=active ? .98 : (surface.material.map ? .8 : .62)};
+  portal.userData.animate=(time,active)=>{
+   const t=time*.001,scale=active?1.12:1+.018*Math.sin(t*1.6);
+   portal.scale.setScalar(THREE.MathUtils.lerp(portal.scale.x,scale,.09));
+   outer.rotation.z=t*.62;inner.rotation.z=-t*.91;arc.rotation.z=t*1.23;sparks.rotation.z=-t*.31;
+   aura.material.opacity=(active?.23:.11)+.045*Math.sin(t*2.3);
+   outer.material.opacity=(active?.94:.62)+.09*Math.sin(t*2.8);
+   inner.material.opacity=active?.98:.72;
+   arc.material.opacity=(active?.94:.64)+.13*Math.sin(t*3.7);
+   sparks.material.opacity=active?.92:.56;
+   surface.material.opacity=surface.material.map?(active?.72:.48):(active?.3:.18);
+  };
  }else{
-  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:markerTexture(h),transparent:true,depthTest:false}));const base=11;sp.scale.set(base,base,1);sp.position.copy(pos);sp.renderOrder=120;sp.material.depthWrite=false;sp.userData=h;sp.userData.baseScale=base;sp.layers.enableAll();scene.add(sp);hotspotObjects.push(sp)
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:markerTexture(h),transparent:true,depthTest:false}));const base=11;sp.scale.set(base,base,1);sp.position.copy(pos);sp.renderOrder=120;sp.material.depthWrite=false;sp.userData=h;sp.userData.baseScale=base;sp.layers.enableAll();scene.add(sp);hotspotObjects.push(sp);hotspotVisuals.push(sp)
  }
 }
 hotspotData.forEach(hotspotSprite);
@@ -915,8 +935,8 @@ async function switchSceneInPlace(url){
  resetTourTimer();
  window.dispatchEvent(new CustomEvent('minivr:scene-music',{detail:{trackId:Number(next.dataset.musicTrack||0)}}));
  hotspotData=JSON.parse(doc.querySelector('#hotspots-data')?.textContent||'[]');
- for(const obj of hotspotObjects){scene.remove(obj);obj.material.map?.dispose();obj.material.dispose()}
- hotspotObjects.length=0;activeHotspot=null;
+ for(const obj of hotspotVisuals){scene.remove(obj);obj.traverse(node=>{if(node.geometry)node.geometry.dispose();if(node.material){const materials=Array.isArray(node.material)?node.material:[node.material];for(const material of materials){material.map?.dispose();material.dispose()}}});}
+ hotspotVisuals.length=0;hotspotObjects.length=0;activeHotspot=null;hoveredPortal=null;
  hotspotData.forEach(hotspotSprite);
  closePanels();menuPage=Math.max(0,Math.floor(Math.max(0,tourData.current)/6));buildMenu();
  root.dataset.image=image;root.dataset.projection=projection;root.dataset.stereo=stereoMode;
@@ -995,7 +1015,7 @@ function syncXREyes(){
   if(stereoMode!=='mono')eye.layers.enable(i===0?1:2);
  }
 }renderer.xr.addEventListener('sessionend',()=>{xrDebug.visible=false;hud.visible=cardboard;document.body.classList.remove('xr-presenting');document.querySelector('#controls').style.display='';document.querySelector('#top').style.display=''});
-renderer.domElement.addEventListener('pointermove',e=>{if(getViewerMode()!==ViewerMode.DESKTOP||down)return;const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);const hit=raycaster.intersectObjects(hotspotObjects,false)[0]?.object||null;hotspotObjects.forEach(o=>{const b=o.userData.baseScale||11,s=o===hit?b*1.23:b;o.scale.lerp(new THREE.Vector3(s,s,1),.18)});renderer.domElement.style.cursor=hit?'pointer':'grab'});
+renderer.domElement.addEventListener('pointermove',e=>{if(getViewerMode()!==ViewerMode.DESKTOP||down)return;const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);const hit=raycaster.intersectObjects(hotspotObjects,false)[0]?.object||null;hoveredPortal=hit?.userData?.portal||null;hotspotObjects.forEach(o=>{const b=o.userData.baseScale||11,s=o===hit?b*1.23:b;o.scale.lerp(new THREE.Vector3(s,s,1),.18)});renderer.domElement.style.cursor=hit?'pointer':'grab'});
 function syncXRDebug(){return;if(!renderer.xr.isPresenting)return;xrDebugCube.rotation.x+=.014;xrDebugCube.rotation.y+=.02}
 function syncCardboardDebug(){return;if(!cardboard)return;camera.updateMatrixWorld(true);camera.getWorldPosition(cardboardDebug.position);camera.getWorldQuaternion(cardboardDebug.quaternion);debugCube.rotation.x+=.012;debugCube.rotation.y+=.018}
 function placeHudInFront(){
@@ -1038,7 +1058,7 @@ renderer.setAnimationLoop((time)=>{
  if(mode===ViewerMode.CARDBOARD&&cardboard){const canvas=renderer.domElement;canvas.style.position='fixed';canvas.style.inset='0';canvas.style.width='100vw';canvas.style.height='100dvh';canvas.style.zIndex='1'}
  if(mode===ViewerMode.CARDBOARD&&legacyCardboard){legacyVRControls.update();camera.updateMatrixWorld(true);hud.visible=false}
  syncHudPose();syncCardboardDebug();syncXRDebug();
- scene.traverse(o=>{if(o.userData?.animate)o.userData.animate(time,gazeTarget?.userData?.portal===o)});
+ scene.traverse(o=>{if(o.userData?.animate)o.userData.animate(time,gazeTarget?.userData?.portal===o||hoveredPortal===o)});
  if(mode===ViewerMode.CARDBOARD&&orientation)deviceOrientation.update();
  // Update motion in view-relative coordinates: when the panorama rotates,
  // the apparent camera translation follows the viewing direction rather
