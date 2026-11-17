@@ -49,7 +49,8 @@ export function estimateStereoDepth(image, format, width=192) {
   const lo=values[Math.floor(values.length*.1)]||0,hi=values[Math.floor(values.length*.9)]||1;
   const range=Math.max(2,hi-lo);
   for(let i=0;i<depth.length;i++)depth[i]=Math.max(0,Math.min(1,(depth[i]-lo)/range));
-  return {width,height,depth,textureCanvas:left.canvas};
+  const textureCanvas=document.createElement('canvas');textureCanvas.width=Math.min(2048,Math.round(eyeWidth));textureCanvas.height=Math.round(textureCanvas.width*eyeHeight/eyeWidth);textureCanvas.getContext('2d').drawImage(image,0,0,eyeWidth,eyeHeight,0,0,textureCanvas.width,textureCanvas.height);if(format==='tb')textureCanvas.getContext('2d').drawImage(image,0,eyeHeight,eyeWidth,eyeHeight,0,0,textureCanvas.width,textureCanvas.height);
+  return {width,height,depth,textureCanvas};
 }
 
 export function createStereo3DPro(canvas,image,format,{strength=35,smoothness=75}={}) {
