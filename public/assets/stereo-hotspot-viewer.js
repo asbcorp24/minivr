@@ -1,6 +1,6 @@
 (()=>{
 'use strict';
-let overlay=null,frame=0,source=null,mode='pro',format='sbs',eye=0,run=false,last=0,pro=null,loadId=0;
+let overlay=null,frame=0,source=null,mode='pro',format='sbs',eye=0,run=false,last=0,pro=null,loadId=0,strength=35;
 function close(){loadId++;run=false;cancelAnimationFrame(frame);pro?.dispose();pro=null;overlay?.remove();overlay=null;source=null;document.removeEventListener('keydown',key)}
 function key(e){if(e.key==='Escape')close();else if(e.key==='ArrowLeft'||e.key==='ArrowRight'){eye=e.key==='ArrowLeft'?0:1;draw()}}
 function eyeRect(index){const w=source.naturalWidth,h=source.naturalHeight;return format==='sbs'?{sx:index*w/2,sy:0,sw:w/2,sh:h}:{sx:0,sy:index*h/2,sw:w,sh:h/2}}
@@ -18,13 +18,14 @@ async function activateMode(next){
   if(!overlay||!source)return;
   const previous=overlay.querySelector('canvas');const canvas=document.createElement('canvas');canvas.style.cssText=previous.style.cssText;previous.replaceWith(canvas);const hint=overlay.querySelector('[data-hint]');
   overlay.querySelectorAll('[data-mode]').forEach(x=>x.style.background=x.dataset.mode===mode?'#137b92':'#123342');
+  const controls=overlay.querySelector('[data-pro-controls]');if(controls)controls.hidden=mode!=='pro';
   if(mode==='pro'){
-    hint.textContent='Живое 3D Pro · глубина из SBS/TB, управление мышью · сила 35%, плавность 75%.';
+    hint.textContent='Живое 3D Pro · глубина из SBS/TB, управление мышью · плавность 75%.';
     const token=++loadId;
     try{
       const module=await import('/assets/stereo-depth-3d-pro.js');
       if(token!==loadId||!overlay||mode!=='pro')return;
-      pro=module.createStereo3DPro(canvas,source,format,{strength:35,smoothness:75});
+      pro=module.createStereo3DPro(canvas,source,format,{strength,smoothness:75});
     }catch(error){
       console.error('Stereo 3D Pro unavailable:',error);
       hint.textContent='Не удалось построить глубину или запустить WebGL. Открыт обычный ракурс.';
@@ -45,7 +46,9 @@ for(const [id,label] of [['pro','Живое 3D Pro'],['wiggle','Живое 3D (�
 const exit=document.createElement('button');exit.type='button';exit.textContent='✕ Закрыть';exit.style.cssText='padding:10px;background:#123342;color:white;border:1px solid #54d5e9';exit.onclick=close;bar.append(exit);
 const canvas=document.createElement('canvas');canvas.style.cssText='display:block;max-width:100%;max-height:calc(100vh - 160px);object-fit:contain;touch-action:none';
 const hint=document.createElement('small');hint.dataset.hint='';hint.style.cssText='color:#a6c8d2;text-align:center';hint.textContent='Восстановление глубины из стереопары…';
-overlay.append(bar,canvas,hint);document.body.append(overlay);document.addEventListener('keydown',key);
+const controls=document.createElement('label');controls.dataset.proControls='';controls.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center';controls.textContent='Сила 3D';
+const range=document.createElement('input');range.type='range';range.min='0';range.max='100';range.step='1';range.value=String(strength);range.style.width='min(45vw,300px)';const value=document.createElement('strong');value.textContent=strength+'%';range.addEventListener('input',()=>{strength=Number(range.value);value.textContent=strength+'%';pro?.setStrength(strength)});controls.append(range,value);
+overlay.append(bar,controls,canvas,hint);document.body.append(overlay);document.addEventListener('keydown',key);
 const img=new Image();img.onload=()=>{if(!overlay)return;source=img;activateMode('pro');run=true;frame=requestAnimationFrame(tick)};img.onerror=()=>{hint.textContent='Не удалось загрузить стереофото'};img.src=url;
 };
 })();

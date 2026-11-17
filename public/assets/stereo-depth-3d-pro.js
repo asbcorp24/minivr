@@ -65,12 +65,14 @@ export function createStereo3DPro(canvas,image,format,{strength=35,smoothness=75
   const cols=Math.min(160,width-1),rows=Math.min(100,height-1);
   const geometry=new THREE.PlaneGeometry(planeWidth,planeHeight,cols,rows);
   const positions=geometry.attributes.position,uv=geometry.attributes.uv;
+  const vertexDepth=new Float32Array(positions.count);
   for(let i=0;i<positions.count;i++){
     const u=uv.getX(i),v=uv.getY(i);
     const x=Math.max(0,Math.min(width-1,Math.round(u*(width-1))));
     const y=Math.max(0,Math.min(height-1,Math.round((1-v)*(height-1))));
     const edge=Math.min(1,Math.min(u,1-u,v,1-v)*12);
-    positions.setZ(i,depth[y*width+x]*.65*(strength/100)*edge);
+    vertexDepth[i]=depth[y*width+x]*edge;
+    positions.setZ(i,vertexDepth[i]*1.45*(strength/100));
   }
   geometry.computeVertexNormals();
   const texture=new THREE.CanvasTexture(textureCanvas);texture.colorSpace=THREE.SRGBColorSpace;
@@ -78,6 +80,11 @@ export function createStereo3DPro(canvas,image,format,{strength=35,smoothness=75
   const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide});
   const mesh=new THREE.Mesh(geometry,material);scene.add(mesh);
   let targetX=0,targetY=0,actualX=0,actualY=0,raf=0,disposed=false;
+  const setStrength=value=>{
+    strength=Math.max(0,Math.min(100,Number(value)||0));
+    for(let i=0;i<positions.count;i++)positions.setZ(i,vertexDepth[i]*1.45*(strength/100));
+    positions.needsUpdate=true;geometry.computeVertexNormals();
+  };
   const resize=()=>{
     if(disposed)return;
     const w=Math.max(1,window.innerWidth-32),h=Math.max(1,window.innerHeight-160);
@@ -101,14 +108,14 @@ export function createStereo3DPro(canvas,image,format,{strength=35,smoothness=75
     if(disposed)return;
     const damping=.025+(100-smoothness)*.002;
     actualX+=(targetX-actualX)*damping;actualY+=(targetY-actualY)*damping;
-    const travel=.28*(strength/100);
+    const travel=1.05*(strength/100);
     camera.position.x=actualX*travel;camera.position.y=-actualY*travel*.65;
     camera.lookAt(0,0,0);
     renderer.render(scene,camera);raf=requestAnimationFrame(render);
   };
   canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerleave',reset);
   window.addEventListener('resize',resize);resize();render();
-  return {dispose(){
+  return {setStrength,dispose(){
     disposed=true;cancelAnimationFrame(raf);
     canvas.removeEventListener('pointermove',move);canvas.removeEventListener('pointerleave',reset);
     window.removeEventListener('resize',resize);
