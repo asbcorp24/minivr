@@ -1,0 +1,20 @@
+(()=>{'use strict';
+const root=document.querySelector('#guided-points-editor');if(!root)return;
+const input=root.querySelector('[name="guidedPoints"]'),list=root.querySelector('[data-guided-list]'),image=root.querySelector('[data-guided-image]');
+if(root.dataset.image)image.src=root.dataset.image;
+let points=[];try{const value=JSON.parse(input.value);if(Array.isArray(value))points=value}catch{}
+let selected=0;
+const blank=()=>({yaw:0,pitch:0,duration:12,title:'',text:'',audio:''});
+const save=()=>{input.value=JSON.stringify(points)};
+const field=(label,value,type,change)=>{const wrap=document.createElement('label');wrap.style.cssText='display:flex;flex-direction:column;gap:4px;min-width:130px;flex:1';wrap.textContent=label;const el=document.createElement(type==='textarea'?'textarea':'input');if(type!=='textarea')el.type=type;el.value=value;el.style.cssText='width:100%;box-sizing:border-box;padding:8px';el.addEventListener('input',()=>change(el.value));wrap.appendChild(el);return wrap};
+function render(){list.replaceChildren();points.forEach((point,i)=>{const row=document.createElement('section');row.style.cssText='border:1px solid #567;border-radius:10px;margin:10px 0;padding:12px;background:'+(selected===i?'#244353':'transparent');const header=document.createElement('div');header.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap';const pick=document.createElement('button');pick.type='button';pick.textContent='Точка '+(i+1)+(selected===i?' ✓':'');pick.onclick=()=>{selected=i;render()};header.appendChild(pick);
+const move=(label,offset)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.disabled=i+offset<0||i+offset>=points.length;b.onclick=()=>{[points[i],points[i+offset]]=[points[i+offset],points[i]];selected=i+offset;save();render()};header.appendChild(b)};
+move('↑',-1);move('↓',1);const del=document.createElement('button');del.type='button';del.textContent='Удалить';del.onclick=()=>{points.splice(i,1);selected=Math.min(selected,points.length-1);save();render()};header.appendChild(del);row.appendChild(header);
+const coords=document.createElement('div');coords.style.cssText='display:flex;flex-wrap:wrap;gap:10px;margin-top:10px';
+for(const [name,label,min,max] of [['yaw','Горизонтальный угол',-180,180],['pitch','Вертикальный угол',-90,90],['duration','Показ, секунд',1,600]]){const wrap=field(label,point[name],'number',v=>{point[name]=Math.min(max,Math.max(min,Number(v)||0));save()});wrap.querySelector('input').min=min;wrap.querySelector('input').max=max;coords.appendChild(wrap)}row.appendChild(coords);
+for(const [name,label,type] of [['title','Заголовок','text'],['text','Текст рассказа','textarea'],['audio','Аудио (/uploads/… .mp3, .ogg, .wav)','text']])row.appendChild(field(label,point[name]||'',type,v=>{point[name]=v;save()}));
+list.appendChild(row)});save()}
+root.querySelector('[data-guided-add]').addEventListener('click',()=>{if(points.length>=50)return;points.push(blank());selected=points.length-1;render()});
+image.addEventListener('click',event=>{if(!points.length){points.push(blank());selected=0}const rect=image.getBoundingClientRect();const x=Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width));const y=Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height));points[selected].yaw=Math.round((x*360-180)*10)/10;points[selected].pitch=Math.round((90-y*180)*10)/10;render()});
+render();
+})();
