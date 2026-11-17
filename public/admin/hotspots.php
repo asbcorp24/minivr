@@ -8,6 +8,12 @@
 <?php else:?>
 <img data-stereo-depth-preview alt="Предпросмотр карты глубины" style="width:180px;max-width:100%;border-radius:6px" hidden>
 <?php endif;?>
+<label style="font-size:12px">Усиление глубины дальних объектов: <output data-stereo-far-value>35%</output>
+<input type="range" data-stereo-far-boost min="0" max="100" value="35" oninput="this.previousElementSibling.textContent=this.value+'%'"></label>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px">
+<?php foreach(['ai'=>'AI','disparity'=>'Стерео','final'=>'Итог'] as $key=>$caption):?>
+<div><small><?=htmlspecialchars($caption)?></small><img data-stereo-preview="<?=htmlspecialchars($key)?>" hidden style="width:100%;border-radius:4px" alt="<?=htmlspecialchars($caption)?>"></div>
+<?php endforeach;?></div>
 <button type="button" class="btn" data-stereo-depth-generate><?=empty($h['depth_map'])?'✦ Создать карту глубины AI':'↻ Пересоздать карту AI'?></button>
 <small data-stereo-depth-status>Обработка выполняется в браузере (WebGPU / WASM).</small>
 </div>
