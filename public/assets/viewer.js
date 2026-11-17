@@ -41,7 +41,12 @@ let projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'
 const tour=Number(root.dataset.tour||0),backUrl=root.dataset.back||'/';let hotspotData=JSON.parse(document.querySelector('#hotspots-data')?.textContent||'[]');
 const tourData=JSON.parse(document.querySelector('#tour-data')?.textContent||'{"scenes":[],"current":-1}');
 // Each panorama may contain its own ordered narrative stops.
-let guidedPoints=Array.isArray(effectSettings.guidedPoints)?effectSettings.guidedPoints.filter(p=>Number.isFinite(Number(p.yaw))&&Number.isFinite(Number(p.pitch))&&Number(p.duration)>0).slice(0,50):[];
+function sceneNarrationPoints(){
+ const raw=tourData.scenes[tourData.current]?.guided_points;
+ let points=[];try{points=typeof raw==='string'?JSON.parse(raw):raw}catch{}
+ return Array.isArray(points)?points.filter(p=>Number.isFinite(Number(p.yaw))&&Number.isFinite(Number(p.pitch))&&Number(p.duration)>0).slice(0,50):[];
+}
+let guidedPoints=sceneNarrationPoints();
 let guidedIndex=-1,guidedTimer=null,guidedTarget=null,guidedPanel=null,guidedAudio=null;
 let guidedEnabled=!!tour&&guidedPoints.length>0;
 function guidedClearTimer(){if(guidedTimer){clearTimeout(guidedTimer);guidedTimer=null}}
@@ -932,7 +937,7 @@ async function switchSceneInPlace(url){
  effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();dayCycleStarted=null;dayGradeLast=-1;dayPhaseOverride=null;try{effectSettings=JSON.parse(next.dataset.effects||'{}');effectSettings.timeOfDay=false;effectSettings.dayCycle=false}catch(e){effectSettings={}}effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);root.dataset.effects=next.dataset.effects||'{}';
  const nextTour=JSON.parse(doc.querySelector('#tour-data')?.textContent||'{}');
  tourData.current=nextTour.current??-1;
- guidedPoints=Array.isArray(effectSettings.guidedPoints)?effectSettings.guidedPoints.filter(p=>Number.isFinite(Number(p.yaw))&&Number.isFinite(Number(p.pitch))&&Number(p.duration)>0).slice(0,50):[];
+ guidedPoints=sceneNarrationPoints();
  guidedEnabled=!!tour&&guidedPoints.length>0;
  guidedSetup();
  resetTourTimer();
