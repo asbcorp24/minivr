@@ -97,6 +97,7 @@ function db(): PDO
 
     $hotspotColumns=array_column($db->query("PRAGMA table_info(hotspots)")->fetchAll(),'name');
     if(!in_array('image_stereo',$hotspotColumns,true))$db->exec("ALTER TABLE hotspots ADD COLUMN image_stereo TEXT NOT NULL DEFAULT 'mono'");
+    if(!in_array('depth_map',$hotspotColumns,true))$db->exec("ALTER TABLE hotspots ADD COLUMN depth_map TEXT DEFAULT NULL");
     // A narration sequence belongs to a tour scene, not to its shared panorama.
     $sceneColumns=array_column($db->query("PRAGMA table_info(tour_scenes)")->fetchAll(),'name');
     if(!in_array('guided_points',$sceneColumns,true)){
