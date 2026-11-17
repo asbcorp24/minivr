@@ -41,9 +41,9 @@ let projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'
 const tour=Number(root.dataset.tour||0),backUrl=root.dataset.back||'/';let hotspotData=JSON.parse(document.querySelector('#hotspots-data')?.textContent||'[]');
 const tourData=JSON.parse(document.querySelector('#tour-data')?.textContent||'{"scenes":[],"current":-1}');
 // Each panorama may contain its own ordered narrative stops.
-const guidedPoints=Array.isArray(effectSettings.guidedPoints)?effectSettings.guidedPoints.filter(p=>Number.isFinite(Number(p.yaw))&&Number.isFinite(Number(p.pitch))&&Number(p.duration)>0).slice(0,50):[];
+let guidedPoints=Array.isArray(effectSettings.guidedPoints)?effectSettings.guidedPoints.filter(p=>Number.isFinite(Number(p.yaw))&&Number.isFinite(Number(p.pitch))&&Number(p.duration)>0).slice(0,50):[];
 let guidedIndex=-1,guidedTimer=null,guidedTarget=null,guidedPanel=null,guidedAudio=null;
-const guidedEnabled=!!tour&&guidedPoints.length>0;
+let guidedEnabled=!!tour&&guidedPoints.length>0;
 function guidedClearTimer(){if(guidedTimer){clearTimeout(guidedTimer);guidedTimer=null}}
 function guidedStopAudio(){if(guidedAudio){guidedAudio.pause();guidedAudio.removeAttribute('src');guidedAudio.load();guidedAudio=null}}
 function guidedShow(index){
@@ -67,6 +67,7 @@ function guidedPauseResume(){
  if(!tourPaused&&guidedIndex>=0&&guidedIndex<guidedPoints.length)guidedTimer=setTimeout(()=>guidedShow(guidedIndex+1),Math.max(1,Math.min(600,Number(guidedPoints[guidedIndex].duration)))*1000);
 }
 function guidedSetup(){
+ guidedClearTimer();guidedStopAudio();guidedPanel?.remove();guidedPanel=null;guidedIndex=-1;guidedTarget=null;
  if(!guidedEnabled)return;
  guidedPanel=document.createElement('aside');guidedPanel.id='minivr-guided-points';
  guidedPanel.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);width:min(540px,90vw);z-index:850;color:white;background:rgba(12,29,42,.89);border:1px solid #6ca6b7;border-radius:14px;padding:16px;box-shadow:0 8px 28px #0008;backdrop-filter:blur(8px)';
@@ -908,6 +909,9 @@ async function switchSceneInPlace(url){
  effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();dayCycleStarted=null;dayGradeLast=-1;dayPhaseOverride=null;try{effectSettings=JSON.parse(next.dataset.effects||'{}');effectSettings.timeOfDay=false;effectSettings.dayCycle=false}catch(e){effectSettings={}}effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);root.dataset.effects=next.dataset.effects||'{}';
  const nextTour=JSON.parse(doc.querySelector('#tour-data')?.textContent||'{}');
  tourData.current=nextTour.current??-1;
+ guidedPoints=Array.isArray(effectSettings.guidedPoints)?effectSettings.guidedPoints.filter(p=>Number.isFinite(Number(p.yaw))&&Number.isFinite(Number(p.pitch))&&Number(p.duration)>0).slice(0,50):[];
+ guidedEnabled=!!tour&&guidedPoints.length>0;
+ guidedSetup();
  resetTourTimer();
  window.dispatchEvent(new CustomEvent('minivr:scene-music',{detail:{trackId:Number(next.dataset.musicTrack||0)}}));
  hotspotData=JSON.parse(doc.querySelector('#hotspots-data')?.textContent||'[]');
