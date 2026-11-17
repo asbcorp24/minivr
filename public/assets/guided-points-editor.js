@@ -1,5 +1,5 @@
 (()=>{'use strict';
-const root=document.querySelector('#guided-points-editor');if(!root)return;
+document.querySelectorAll('[data-guided-editor]').forEach(root=>{
 const input=root.querySelector('[name="guidedPoints"]'),list=root.querySelector('[data-guided-list]'),image=root.querySelector('[data-guided-image]');
 if(root.dataset.image)image.src=root.dataset.image;
 let points=[];try{const value=JSON.parse(input.value);if(Array.isArray(value))points=value}catch{}
@@ -18,4 +18,5 @@ list.appendChild(row)});save()}
 root.querySelector('[data-guided-add]').addEventListener('click',()=>{if(points.length>=50)return;points.push(blank());selected=points.length-1;render()});
 image.addEventListener('click',event=>{if(!points.length){points.push(blank());selected=0}const rect=image.getBoundingClientRect();const x=Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width));const y=Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height));points[selected].yaw=Math.round((x*360-180)*10)/10;points[selected].pitch=Math.round((90-y*180)*10)/10;render()});
 render();
+});
 })();
