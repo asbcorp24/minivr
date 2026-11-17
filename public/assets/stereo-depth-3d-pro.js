@@ -134,7 +134,16 @@ export function stabilizeDepth(depth,width,height,textureCanvas){
 export function createStereo3DPro(canvas,image,format,{strength=35,smoothness=75,depthImage=null}={}) {
   const result=depthImage?loadPreparedDepth(image,format,depthImage):estimateStereoDepth(image,format);
   const {width,height,depth,textureCanvas}=result;
-  const stableDepth=stabilizeDepth(depth,width,height,textureCanvas);
+  // Stabilize at mesh resolution, not at full AI PNG resolution: avoids a
+  // long blocking CPU pass on 768px maps and matches the rendered geometry.
+  const stableWidth=Math.min(161,width),stableHeight=Math.min(101,height);
+  const meshDepth=new Float32Array(stableWidth*stableHeight);
+  for(let y=0;y<stableHeight;y++)for(let x=0;x<stableWidth;x++){
+    const sx=Math.min(width-1,Math.round(x*(width-1)/(stableWidth-1)));
+    const sy=Math.min(height-1,Math.round(y*(height-1)/(stableHeight-1)));
+    meshDepth[y*stableWidth+x]=depth[sy*width+sx];
+  }
+  const stableDepth=stabilizeDepth(meshDepth,stableWidth,stableHeight,textureCanvas);
   const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
   const scene=new THREE.Scene();scene.background=new THREE.Color(0x020b11);
@@ -147,10 +156,10 @@ export function createStereo3DPro(canvas,image,format,{strength=35,smoothness=75
   const vertexDepth=new Float32Array(positions.count);
   for(let i=0;i<positions.count;i++){
     const u=uv.getX(i),v=uv.getY(i);
-    const x=Math.max(0,Math.min(width-1,Math.round(u*(width-1))));
-    const y=Math.max(0,Math.min(height-1,Math.round((1-v)*(height-1))));
+    const x=Math.max(0,Math.min(stableWidth-1,Math.round(u*(stableWidth-1))));
+    const y=Math.max(0,Math.min(stableHeight-1,Math.round((1-v)*(stableHeight-1))));
     const edge=Math.min(1,Math.min(u,1-u,v,1-v)*12);
-    vertexDepth[i]=stableDepth[y*width+x]*edge;
+    vertexDepth[i]=stableDepth[y*stableWidth+x]*edge;
     positions.setZ(i,vertexDepth[i]*1.45*(strength/100));
   }
   geometry.computeVertexNormals();
