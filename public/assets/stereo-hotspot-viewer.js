@@ -16,7 +16,7 @@ function tick(t){if(!run)return;if(mode==='wiggle'&&t-last>460){eye=1-eye;draw()
 async function activateMode(next){
   mode=next;pro?.dispose();pro=null;
   if(!overlay||!source)return;
-  const canvas=overlay.querySelector('canvas'),hint=overlay.querySelector('[data-hint]');
+  const previous=overlay.querySelector('canvas');const canvas=document.createElement('canvas');canvas.style.cssText=previous.style.cssText;previous.replaceWith(canvas);const hint=overlay.querySelector('[data-hint]');
   overlay.querySelectorAll('[data-mode]').forEach(x=>x.style.background=x.dataset.mode===mode?'#137b92':'#123342');
   if(mode==='pro'){
     hint.textContent='Живое 3D Pro · глубина из SBS/TB, управление мышью · сила 35%, плавность 75%.';
@@ -28,7 +28,7 @@ async function activateMode(next){
     }catch(error){
       console.error('Stereo 3D Pro unavailable:',error);
       hint.textContent='Не удалось построить глубину или запустить WebGL. Открыт обычный ракурс.';
-      mode='wiggle';draw();
+      activateMode('wiggle');
     }
   }else{
     ++loadId;
