@@ -95,5 +95,19 @@ function db(): PDO
         $db->exec("ALTER TABLE tours ADD COLUMN start_scene_id INTEGER");
     }
 
+    // A narration sequence belongs to a tour scene, not to its shared panorama.
+    $sceneColumns=array_column($db->query("PRAGMA table_info(tour_scenes)")->fetchAll(),'name');
+    if(!in_array('guided_points',$sceneColumns,true)){
+        $db->exec("ALTER TABLE tour_scenes ADD COLUMN guided_points TEXT");
+        // Preserve existing authored stops by copying them into independent scene records.
+        $rows=$db->query("SELECT ts.id,p.effects FROM tour_scenes ts JOIN panoramas p ON p.id=ts.panorama_id")->fetchAll();
+        $update=$db->prepare("UPDATE tour_scenes SET guided_points=? WHERE id=?");
+        foreach($rows as $row){
+            $effects=json_decode((string)$row['effects'],true);
+            $points=is_array($effects['guidedPoints']??null)?$effects['guidedPoints']:[];
+            $update->execute([json_encode($points,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),(int)$row['id']]);
+        }
+    }
+    $db->exec("UPDATE tour_scenes SET guided_points='[]' WHERE guided_points IS NULL");
     return $db;
 }
