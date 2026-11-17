@@ -69,9 +69,81 @@ export function loadPreparedDepth(image,format,depthImage){
   return {width,height,depth,textureCanvas};
 }
 
+// Repair unreliable, discontinuous depth before displacing the Three.js mesh.
+// Bilateral filtering follows image edges; a bounded slope prevents needle-like
+// triangles even when the generated PNG has abrupt jumps in the sky.
+export function stabilizeDepth(depth,width,height,textureCanvas){
+  const guide=document.createElement('canvas');guide.width=width;guide.height=height;
+  const gc=guide.getContext('2d',{willReadFrequently:true});
+  gc.drawImage(textureCanvas,0,0,width,height);
+  const rgba=gc.getImageData(0,0,width,height).data;
+  const luminance=new Float32Array(width*height);
+  const saturation=new Float32Array(width*height);
+  for(let i=0;i<luminance.length;i++){
+    const k=i*4,r=rgba[k]/255,g=rgba[k+1]/255,b=rgba[k+2]/255;
+    luminance[i]=.299*r+.587*g+.114*b;
+    saturation[i]=Math.max(r,g,b)-Math.min(r,g,b);
+  }
+  const source=Float32Array.from(depth,v=>Number.isFinite(v)?Math.max(0,Math.min(1,v)):0);
+  const filtered=new Float32Array(source.length);
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+    const i=y*width+x,center=source[i],lum=luminance[i];
+    let sum=0,total=0;
+    for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){
+      const xx=x+dx,yy=y+dy;if(xx<0||xx>=width||yy<0||yy>=height)continue;
+      const j=yy*width+xx;
+      const spatial=Math.exp(-(dx*dx+dy*dy)/8);
+      const color=Math.exp(-Math.abs(lum-luminance[j])*10);
+      const similar=Math.exp(-Math.abs(center-source[j])*4);
+      const weight=spatial*color*similar;
+      sum+=source[j]*weight;total+=weight;
+    }
+    filtered[i]=total?sum/total:center;
+  }
+  // Large, low-texture upper areas (often sky) should have gentle relief.
+  // Preserve textured clouds and tree silhouettes by using a soft weight.
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+    const i=y*width+x;
+    if(y>height*.65)continue;
+    const left=luminance[y*width+Math.max(0,x-2)];
+    const right=luminance[y*width+Math.min(width-1,x+2)];
+    const up=luminance[Math.max(0,y-2)*width+x];
+    const down=luminance[Math.min(height-1,y+2)*width+x];
+    const texture=Math.abs(left-right)+Math.abs(up-down);
+    const skyWeight=Math.max(0,1-y/(height*.65))*Math.max(0,1-texture*5)*Math.max(0,1-saturation[i]*2);
+    filtered[i]=filtered[i]*(1-.24*skyWeight);
+  }
+  // Iterative Lipschitz constraint: neighboring samples cannot form huge
+  // near-vertical walls. Changes are symmetric, so the whole scene does not
+  // collapse toward the foreground or background.
+  const limit=.065;
+  for(let pass=0;pass<4;pass++){
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+      const i=y*width+x;
+      if(x>0){const j=i-1,d=filtered[i]-filtered[j];
+        if(Math.abs(d)>limit){const correction=(Math.abs(d)-limit)*.5*Math.sign(d);filtered[i]-=correction;filtered[j]+=correction;}
+      }
+      if(y>0){const j=i-width,d=filtered[i]-filtered[j];
+        if(Math.abs(d)>limit){const correction=(Math.abs(d)-limit)*.5*Math.sign(d);filtered[i]-=correction;filtered[j]+=correction;}
+      }
+    }
+  }
+  return filtered;
+}
+
 export function createStereo3DPro(canvas,image,format,{strength=35,smoothness=75,depthImage=null}={}) {
   const result=depthImage?loadPreparedDepth(image,format,depthImage):estimateStereoDepth(image,format);
   const {width,height,depth,textureCanvas}=result;
+  // Stabilize at mesh resolution, not at full AI PNG resolution: avoids a
+  // long blocking CPU pass on 768px maps and matches the rendered geometry.
+  const stableWidth=Math.min(161,width),stableHeight=Math.min(101,height);
+  const meshDepth=new Float32Array(stableWidth*stableHeight);
+  for(let y=0;y<stableHeight;y++)for(let x=0;x<stableWidth;x++){
+    const sx=Math.min(width-1,Math.round(x*(width-1)/(stableWidth-1)));
+    const sy=Math.min(height-1,Math.round(y*(height-1)/(stableHeight-1)));
+    meshDepth[y*stableWidth+x]=depth[sy*width+sx];
+  }
+  const stableDepth=stabilizeDepth(meshDepth,stableWidth,stableHeight,textureCanvas);
   const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
   const scene=new THREE.Scene();scene.background=new THREE.Color(0x020b11);
@@ -84,10 +156,10 @@ export function createStereo3DPro(canvas,image,format,{strength=35,smoothness=75
   const vertexDepth=new Float32Array(positions.count);
   for(let i=0;i<positions.count;i++){
     const u=uv.getX(i),v=uv.getY(i);
-    const x=Math.max(0,Math.min(width-1,Math.round(u*(width-1))));
-    const y=Math.max(0,Math.min(height-1,Math.round((1-v)*(height-1))));
+    const x=Math.max(0,Math.min(stableWidth-1,Math.round(u*(stableWidth-1))));
+    const y=Math.max(0,Math.min(stableHeight-1,Math.round((1-v)*(stableHeight-1))));
     const edge=Math.min(1,Math.min(u,1-u,v,1-v)*12);
-    vertexDepth[i]=depth[y*width+x]*edge;
+    vertexDepth[i]=stableDepth[y*stableWidth+x]*edge;
     positions.setZ(i,vertexDepth[i]*1.45*(strength/100));
   }
   geometry.computeVertexNormals();
