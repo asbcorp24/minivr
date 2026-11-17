@@ -738,33 +738,36 @@ function hotspotSprite(h){
  const pos=new THREE.Vector3(rad*Math.cos(pitch)*Math.cos(yaw),rad*Math.sin(pitch),rad*Math.cos(pitch)*Math.sin(yaw));
  if(h.type==='scene'){
   const portal=new THREE.Group();portal.position.copy(pos);portal.lookAt(0,0,0);portal.userData=h;portal.userData.baseScale=1;
-  // Three concentric transparent rings, a moving energy shell and small orbiting sparks.
-  const ringMaterial=(color,opacity)=>new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
-  const outer=new THREE.Mesh(new THREE.TorusGeometry(8.8,.78,12,96),ringMaterial(0x55e9ff,.7));
-  const inner=new THREE.Mesh(new THREE.TorusGeometry(7.35,.26,10,96),ringMaterial(0xe2ffff,.78));
-  const arc=new THREE.Mesh(new THREE.TorusGeometry(8.15,.13,8,96,Math.PI*1.28),ringMaterial(0x79d9ff,.8));
-  const aura=new THREE.Mesh(new THREE.RingGeometry(8.7,10.8,96),ringMaterial(0x18b9ed,.13));
+  // Low-opacity segmented energy portal: asymmetric arcs make rotation visible.
+  const ringMaterial=(color,opacity,additive=false)=>new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthTest:false,depthWrite:false,side:THREE.DoubleSide,blending:additive?THREE.AdditiveBlending:THREE.NormalBlending});
+  const outer=new THREE.Mesh(new THREE.TorusGeometry(8.8,.20,8,96),ringMaterial(0x36bed4,.38));
+  const inner=new THREE.Mesh(new THREE.TorusGeometry(7.25,.10,8,96),ringMaterial(0x8adce7,.42));
+  const arc=new THREE.Mesh(new THREE.TorusGeometry(8.3,.16,8,64,Math.PI*.63),ringMaterial(0x70e6ef,.60));
+  const arc2=new THREE.Mesh(new THREE.TorusGeometry(7.83,.11,8,64,Math.PI*.44),ringMaterial(0x249db9,.48));
+  const aura=new THREE.Mesh(new THREE.RingGeometry(8.85,9.55,96),ringMaterial(0x168ca9,.075));
   aura.position.z=-.2;
-  const surface=new THREE.Mesh(new THREE.CircleGeometry(7.05,64),new THREE.MeshBasicMaterial({color:0x125b77,transparent:true,opacity:.22,side:THREE.DoubleSide,depthTest:false,depthWrite:false}));
+  const surface=new THREE.Mesh(new THREE.CircleGeometry(7.0,64),new THREE.MeshBasicMaterial({color:0x123d51,transparent:true,opacity:.10,side:THREE.DoubleSide,depthTest:false,depthWrite:false}));
   surface.position.z=.08;
   const hit=new THREE.Mesh(new THREE.CircleGeometry(9.8,48),new THREE.MeshBasicMaterial({transparent:true,opacity:0,side:THREE.DoubleSide,depthTest:false,depthWrite:false}));hit.position.z=.16;hit.userData=h;hit.userData.portal=portal;
   const sparkGeometry=new THREE.BufferGeometry(),sparkPositions=new Float32Array(24*3);
   for(let i=0;i<24;i++){const angle=i/24*Math.PI*2;const radius=8.1+(i%5)*.33;sparkPositions[i*3]=Math.cos(angle)*radius;sparkPositions[i*3+1]=Math.sin(angle)*radius;sparkPositions[i*3+2]=.25;}
   sparkGeometry.setAttribute('position',new THREE.BufferAttribute(sparkPositions,3));
-  const sparks=new THREE.Points(sparkGeometry,new THREE.PointsMaterial({color:0xa7f5ff,size:1.15,transparent:true,opacity:.62,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true}));
-  portal.add(aura,outer,inner,arc,surface,sparks,hit);portal.layers.enableAll();portal.traverse(o=>{o.layers.enableAll();if(o.isMesh||o.isSprite||o.isPoints){o.renderOrder=120;o.material.depthTest=false;o.material.depthWrite=false;}});scene.add(portal);hotspotObjects.push(hit);hotspotVisuals.push(portal);
-  const target=tourData.scenes.find(s=>Number(s.id)===Number(h.target_scene_id));if(target?.preview||target?.image)new THREE.TextureLoader().load(target.preview||target.image,t=>{t.colorSpace=THREE.SRGBColorSpace;surface.material.map=t;surface.material.color.set(0xffffff);surface.material.opacity=.9;surface.material.needsUpdate=true});
+  const sparks=new THREE.Points(sparkGeometry,new THREE.PointsMaterial({color:0xa7f5ff,size:.62,transparent:true,opacity:.38,depthTest:false,depthWrite:false,blending:THREE.NormalBlending,sizeAttenuation:true}));
+  portal.add(aura,outer,inner,arc,arc2,surface,sparks,hit);portal.layers.enableAll();portal.traverse(o=>{o.layers.enableAll();if(o.isMesh||o.isSprite||o.isPoints){o.renderOrder=120;o.material.depthTest=false;o.material.depthWrite=false;}});scene.add(portal);hotspotObjects.push(hit);hotspotVisuals.push(portal);
+  const target=tourData.scenes.find(s=>Number(s.id)===Number(h.target_scene_id));if(target?.preview||target?.image)new THREE.TextureLoader().load(target.preview||target.image,t=>{t.colorSpace=THREE.SRGBColorSpace;surface.material.map=t;surface.material.color.set(0xffffff);surface.material.opacity=.28;surface.material.needsUpdate=true});
   const cv=document.createElement('canvas');cv.width=768;cv.height=128;const c=cv.getContext('2d');c.fillStyle='#03151ddd';c.fillRect(0,0,768,128);c.strokeStyle='#5cefff';c.lineWidth=4;c.strokeRect(3,3,762,122);c.fillStyle='#eaffff';c.textAlign='center';c.font='bold 34px sans-serif';c.fillText((h.label||target?.title||'Перейти').slice(0,34),384,78);const label=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));label.scale.set(15,2.5,1);label.position.set(0,-12,.3);portal.add(label);label.renderOrder=121;label.material.depthWrite=false;
   portal.userData.animate=(time,active)=>{
-   const t=time*.001,scale=active?1.12:1+.018*Math.sin(t*1.6);
+   const t=time*.001,scale=active?1.075:1+.012*Math.sin(t*1.4);
    portal.scale.setScalar(THREE.MathUtils.lerp(portal.scale.x,scale,.09));
-   outer.rotation.z=t*.62;inner.rotation.z=-t*.91;arc.rotation.z=t*1.23;sparks.rotation.z=-t*.31;
-   aura.material.opacity=(active?.23:.11)+.045*Math.sin(t*2.3);
-   outer.material.opacity=(active?.94:.62)+.09*Math.sin(t*2.8);
-   inner.material.opacity=active?.98:.72;
-   arc.material.opacity=(active?.94:.64)+.13*Math.sin(t*3.7);
-   sparks.material.opacity=active?.92:.56;
-   surface.material.opacity=surface.material.map?(active?.72:.48):(active?.3:.18);
+   outer.rotation.z=t*.22;inner.rotation.z=-t*.31;
+   arc.rotation.z=t*.74;arc2.rotation.z=-t*.52+2.1;sparks.rotation.z=-t*.22;
+   aura.material.opacity=(active?.14:.065)+.015*Math.sin(t*1.8);
+   outer.material.opacity=(active?.57:.34)+.045*Math.sin(t*2.1);
+   inner.material.opacity=active?.57:.38;
+   arc.material.opacity=(active?.80:.53)+.08*Math.sin(t*2.4);
+   arc2.material.opacity=(active?.68:.43)+.06*Math.cos(t*2);
+   sparks.material.opacity=active?.58:.30;
+   surface.material.opacity=surface.material.map?(active?.40:.24):(active?.18:.09);
   };
  }else{
   const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:markerTexture(h),transparent:true,depthTest:false}));const base=11;sp.scale.set(base,base,1);sp.position.copy(pos);sp.renderOrder=120;sp.material.depthWrite=false;sp.userData=h;sp.userData.baseScale=base;sp.layers.enableAll();scene.add(sp);hotspotObjects.push(sp);hotspotVisuals.push(sp)
