@@ -1,6 +1,6 @@
 (()=>{
 'use strict';
-let overlay=null,frame=0,source=null,mode='pro',format='sbs',eye=0,run=false,last=0,pro=null,loadId=0,strength=35;
+let overlay=null,frame=0,source=null,mode='pro',format='sbs',eye=0,run=false,last=0,pro=null,loadId=0,strength=35,depthUrl=null;
 function close(){loadId++;run=false;cancelAnimationFrame(frame);pro?.dispose();pro=null;overlay?.remove();overlay=null;source=null;document.removeEventListener('keydown',key)}
 function key(e){if(e.key==='Escape')close();else if(e.key==='ArrowLeft'||e.key==='ArrowRight'){eye=e.key==='ArrowLeft'?0:1;draw()}}
 function eyeRect(index){const w=source.naturalWidth,h=source.naturalHeight;return format==='sbs'?{sx:index*w/2,sy:0,sw:w/2,sh:h}:{sx:0,sy:index*h/2,sw:w,sh:h/2}}
@@ -25,7 +25,17 @@ async function activateMode(next){
     try{
       const module=await import('/assets/stereo-depth-3d-pro.js');
       if(token!==loadId||!overlay||mode!=='pro')return;
-      pro=module.createStereo3DPro(canvas,source,format,{strength,smoothness:75});
+      let depthImage=null;
+      if(depthUrl){
+        try{
+          depthImage=await new Promise((resolve,reject)=>{
+            const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('Карта глубины недоступна'));img.src=depthUrl;
+          });
+        }catch(error){console.warn('Prepared depth unavailable:',error)}
+      }
+      if(token!==loadId||!overlay||mode!=='pro')return;
+      pro=module.createStereo3DPro(canvas,source,format,{strength,smoothness:75,depthImage});
+      hint.textContent=depthImage?'Живое 3D Pro · сохранённая AI-карта глубины · плавность 75%.':'Живое 3D Pro · локальная карта глубины · плавность 75%.';
     }catch(error){
       console.error('Stereo 3D Pro unavailable:',error);
       hint.textContent='Не удалось построить глубину или запустить WebGL. Открыт обычный ракурс.';
@@ -37,8 +47,8 @@ async function activateMode(next){
     draw();
   }
 }
-window.openMiniVRStereoPhoto=(url,stereo,title)=>{
-if(!['sbs','tb'].includes(stereo))return;close();format=stereo;mode='pro';eye=0;last=0;
+window.openMiniVRStereoPhoto=(url,stereo,title,preparedDepthUrl=null)=>{
+if(!['sbs','tb'].includes(stereo))return;close();format=stereo;depthUrl=preparedDepthUrl;mode='pro';eye=0;last=0;
 overlay=document.createElement('div');overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','Стереофото: '+(title||''));overlay.style.cssText='position:fixed;inset:0;z-index:99999;background:#020b11f7;color:#e7fbff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px;box-sizing:border-box';
 const bar=document.createElement('div');bar.style.cssText='display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:9px';
 const name=document.createElement('strong');name.textContent=title||'Стереофото';bar.append(name);
