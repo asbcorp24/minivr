@@ -32,3 +32,9 @@
  #controls{max-width:calc(100vw - 12px)}
  #controls button{font-size:8px;padding:7px 5px}
 }
+
+/* Optional phone tilt parallax; separate from GYRO/VR controls. */
+#mobile-motion-parallax{position:fixed;z-index:7;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 62px);transform:translateX(-50%);padding:8px 10px;border:1px solid #3ab8c8;border-radius:9px;background:#082836e8;color:#c8faff;white-space:nowrap;box-shadow:0 5px 18px #0007;font:600 10px system-ui}
+#mobile-motion-parallax[aria-pressed="true"]{background:#146475;border-color:#8af3ff}
+#mobile-motion-parallax:disabled{opacity:.65}
+#mobile-motion-parallax[hidden],.cardboard #mobile-motion-parallax,.xr-presenting #mobile-motion-parallax{display:none!important}
