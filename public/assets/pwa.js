@@ -45,6 +45,11 @@ if('serviceWorker' in navigator&&location.protocol==='https:'){
   button.textContent='↓ Установить приложение';
   button.setAttribute('aria-label','Установить MiniVR как приложение');
   button.style.cssText='position:fixed;z-index:900;left:16px;bottom:16px;padding:12px 16px;border:1px solid #5abbd3;border-radius:14px;background:#07364b;color:#fff;font:600 14px system-ui,sans-serif;box-shadow:0 8px 24px #0008;cursor:pointer;max-width:calc(100vw - 32px)';
+  if(document.getElementById('viewer')){
+   button.classList.add('minivr-viewer-install');
+   button.textContent='↓';
+   button.title='Установить приложение';
+  }
   button.addEventListener('click',installFromButton);
   document.body.appendChild(button);
   const nav=document.getElementById('main-nav');
