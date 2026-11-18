@@ -548,6 +548,7 @@ function parallaxQualityBudget(){
 }
 function installParallaxQualityControl(){
  const select=document.createElement('select');
+ select.id='minivr-parallax-quality';
  select.setAttribute('aria-label','Качество параллакса');
  select.title='Качество слоёв параллакса (после смены страница перезагрузится)';
  select.style.cssText='position:fixed;right:12px;bottom:12px;z-index:10002;background:#071824;color:#fff;border:1px solid #43849d;border-radius:8px;padding:7px;font:13px sans-serif;max-width:170px';
