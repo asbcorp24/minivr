@@ -29,3 +29,20 @@ body.hotspot-fullscreen-active{overflow:hidden!important}#hotspot-editor.hotspot
 .scene-guided-details [data-guided-list] label{min-width:0!important;width:100%;margin-top:8px}
 .scene-guided-details [data-guided-list] input,.scene-guided-details [data-guided-list] textarea{max-width:100%;box-sizing:border-box}
 .scene-narration-form>.scene-save-button{width:100%;min-height:42px;white-space:normal}
+
+/* Panorama editor: compact, keyboard-accessible accordion sections. */
+.editor:has(.panorama-accordion){max-width:980px;gap:12px}
+.panorama-accordion-toolbar{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.panorama-accordion-toolbar button{border-radius:8px;padding:9px 13px;font:600 12px system-ui}
+.panorama-accordion{min-width:0;border:1px solid #285568;border-radius:12px;background:#081a25;overflow:clip}
+.panorama-accordion>summary{display:list-item;cursor:pointer;padding:17px 20px;color:#d9faff;font-size:15px;font-weight:750;letter-spacing:.01em;list-style-position:inside}
+.panorama-accordion>summary:hover{background:#10303d}
+.panorama-accordion>summary:focus-visible{outline:2px solid #50eaff;outline-offset:-3px}
+.panorama-accordion[open]>summary{border-bottom:1px solid #285568;background:#0b2733;color:#71eaff}
+.panorama-accordion-body{display:grid;gap:17px;padding:18px;min-width:0}
+.panorama-accordion-body>fieldset{min-width:0;margin:0!important;border:0!important;padding:0!important;display:grid;gap:15px}
+.panorama-accordion-body>fieldset>legend{display:none}
+.panorama-accordion-body>fieldset>.panorama-accordion{margin:8px 0}
+.panorama-accordion .panorama-accordion>summary{font-size:13px;padding:13px 15px}
+.panorama-accordion .panorama-accordion>.panorama-accordion-body{padding:14px}
+@media(max-width:720px){.panorama-accordion>summary{padding:14px;font-size:13px}.panorama-accordion-body{padding:12px}}
