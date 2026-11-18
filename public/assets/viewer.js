@@ -759,7 +759,7 @@ function hotspotSprite(h){
   sparkGeometry.setAttribute('position',new THREE.BufferAttribute(sparkPositions,3));
   const sparks=new THREE.Points(sparkGeometry,new THREE.PointsMaterial({color:0xa7f5ff,size:.62,transparent:true,opacity:.38,depthTest:false,depthWrite:false,blending:THREE.NormalBlending,sizeAttenuation:true}));
   portal.add(aura,outer,inner,arc,arc2,surface,sparks,hit);portal.layers.enableAll();portal.traverse(o=>{o.layers.enableAll();if(o.isMesh||o.isSprite||o.isPoints){o.renderOrder=120;o.material.depthTest=false;o.material.depthWrite=false;}});scene.add(portal);hotspotObjects.push(hit);hotspotVisuals.push(portal);
-  const target=tourData.scenes.find(s=>Number(s.id)===Number(h.target_scene_id));if(target?.preview||target?.image)new THREE.TextureLoader().load(target.preview||target.image,t=>{t.colorSpace=THREE.SRGBColorSpace;surface.material.map=t;surface.material.color.set(0xffffff);surface.material.opacity=.28;surface.material.needsUpdate=true});
+  const target=tourData.scenes.find(s=>Number(s.id)===Number(h.target_scene_id));if(target?.preview||target?.image)new THREE.TextureLoader().load(target.preview||target.image,t=>{if(!portal.parent){t.dispose();return;}t.colorSpace=THREE.SRGBColorSpace;surface.material.map=t;surface.material.color.set(0xffffff);surface.material.opacity=.28;surface.material.needsUpdate=true});
   // Opaque, high-contrast title plate with readable text at panorama scale.
   const cv=document.createElement('canvas');cv.width=1024;cv.height=224;
   const c=cv.getContext('2d');c.clearRect(0,0,cv.width,cv.height);
@@ -956,6 +956,24 @@ function renderCardboard(){
  renderer.setViewport(0,0,size.x,size.y);
  renderer.autoClear=true;
 }
+function clearSceneHotspots(){
+ for(const obj of hotspotVisuals){
+  scene.remove(obj);
+  obj.traverse(node=>{
+   node.geometry?.dispose?.();
+   if(node.material){
+    const materials=Array.isArray(node.material)?node.material:[node.material];
+    for(const material of materials){material.map?.dispose?.();material.dispose();}
+   }
+  });
+ }
+ hotspotVisuals.length=0;hotspotObjects.length=0;
+ hotspotData=[];activeHotspot=null;hoveredPortal=null;
+ gazeTarget=null;gazeStart=0;
+ document.body.classList.remove('gazing');
+ document.querySelector('#hotspot-modal')?.classList.remove('open');
+}
+let sceneSwitchInProgress=false;
 const cardboardRestoreKey='minivr:cardboard:restore';
 async function switchSceneInPlace(url){
  const response=await fetch(url,{credentials:'same-origin'});
@@ -964,6 +982,7 @@ async function switchSceneInPlace(url){
  const next=doc.querySelector('#viewer');
  if(!next)throw new Error('Scene data missing');
  const image=next.dataset.image;
+ clearSceneHotspots();
  const texture=await new THREE.TextureLoader().loadAsync(image);
  projection=next.dataset.projection||'360';stereoMode=next.dataset.stereo||'mono';
  if(tiledPanorama){tiledPanorama.dispose();tiledPanorama=null;}
@@ -977,8 +996,6 @@ async function switchSceneInPlace(url){
  resetTourTimer();
  window.dispatchEvent(new CustomEvent('minivr:scene-music',{detail:{trackId:Number(next.dataset.musicTrack||0)}}));
  hotspotData=JSON.parse(doc.querySelector('#hotspots-data')?.textContent||'[]');
- for(const obj of hotspotVisuals){scene.remove(obj);obj.traverse(node=>{if(node.geometry)node.geometry.dispose();if(node.material){const materials=Array.isArray(node.material)?node.material:[node.material];for(const material of materials){material.map?.dispose();material.dispose()}}});}
- hotspotVisuals.length=0;hotspotObjects.length=0;activeHotspot=null;hoveredPortal=null;
  hotspotData.forEach(hotspotSprite);
  closePanels();menuPage=Math.max(0,Math.floor(Math.max(0,tourData.current)/6));buildMenu();
  root.dataset.image=image;root.dataset.projection=projection;root.dataset.stereo=stereoMode;
@@ -994,7 +1011,11 @@ function navigate(url){
  if(document.body.classList.contains('scene-leaving'))return;
  const target=new URL(url,location.href);
  if(getViewerMode()===ViewerMode.CARDBOARD&&target.origin===location.origin&&target.pathname==='/viewer.php'){
-  switchSceneInPlace(target.pathname+target.search).catch(err=>console.error('In-place scene switch failed',err));
+  if(sceneSwitchInProgress)return;
+  sceneSwitchInProgress=true;
+  switchSceneInPlace(target.pathname+target.search)
+   .catch(err=>{console.error('In-place scene switch failed',err);location.href=target.href;})
+   .finally(()=>{sceneSwitchInProgress=false;});
   return;
  }
  if(getViewerMode()===ViewerMode.CARDBOARD){
