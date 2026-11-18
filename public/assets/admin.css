@@ -46,3 +46,53 @@ body.hotspot-fullscreen-active{overflow:hidden!important}#hotspot-editor.hotspot
 .panorama-accordion .panorama-accordion>summary{font-size:13px;padding:13px 15px}
 .panorama-accordion .panorama-accordion>.panorama-accordion-body{padding:14px}
 @media(max-width:720px){.panorama-accordion>summary{padding:14px;font-size:13px}.panorama-accordion-body{padding:12px}}
+
+/* Tour builder: a sortable storyboard, independent from scene settings. */
+.tour-storyboard{max-width:none;margin:20px 0 28px;gap:16px;padding:22px;border-color:#285b69}
+.tour-storyboard-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.tour-storyboard-heading h2{font-size:24px;margin:5px 0 9px}
+.tour-storyboard-heading p,.tour-builder-hint{color:#91aeb9;line-height:1.55;margin:0}
+.tour-storyboard-count{white-space:nowrap;padding:8px 12px;background:#10303b;border:1px solid #356a79;border-radius:8px;color:#9defff}
+.tour-order-form{display:grid;gap:16px}
+.tour-storyboard-list{padding:0;margin:0;list-style:none;display:grid;gap:9px}
+.tour-storyboard-item{min-width:0;display:flex;align-items:center;gap:14px;padding:11px 12px;background:#091b26;border:1px solid #2b4c5d;border-radius:12px;transition:border-color .15s,background .15s}
+.tour-storyboard-item:hover,.tour-storyboard-item:focus-within{border-color:#55b3c8}
+.tour-storyboard-item.is-dragging{opacity:.6;border-style:dashed;border-color:#78eaff;background:#153747}
+.tour-storyboard-handle{font-size:26px;line-height:1;color:#6995a4;cursor:grab;user-select:none;touch-action:none}
+.tour-storyboard-number{font:700 17px monospace;color:#8ceaff}
+.tour-storyboard-thumb{width:112px;height:66px;object-fit:cover;border-radius:8px;background:#102a36;flex:none}
+.tour-storyboard-description{flex:1;min-width:0;display:grid;gap:7px}
+.tour-storyboard-description strong{font-size:14px;overflow-wrap:anywhere}
+.tour-storyboard-description small{font-size:11px;color:#91b4be;line-height:1.5}
+.tour-storyboard-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.tour-storyboard-actions a,.tour-storyboard-actions button{display:grid;place-items:center;min-width:35px;min-height:35px;padding:8px 10px;border:1px solid #326375;border-radius:7px;color:#abf4ff;background:#112b37;text-decoration:none;font:12px system-ui;letter-spacing:0}
+.tour-storyboard-actions a:hover,.tour-storyboard-actions button:hover:not(:disabled){border-color:#79eaff;background:#164250}
+.tour-storyboard-actions button:disabled{opacity:.28;cursor:not-allowed}
+.tour-order-footer{display:flex;gap:15px;align-items:center;flex-wrap:wrap}
+.tour-order-footer .btn:disabled{opacity:.35;cursor:not-allowed}
+.tour-order-footer span{color:#8facb6;font-size:12px}
+.tour-builder-error{padding:12px;background:#52232c;border:1px solid #c56d78;border-radius:8px;color:#ffd7dc}
+.tour-builder-subtitle{font-size:23px;margin:26px 0 15px}
+.scene-card{scroll-margin-top:20px}
+.scene-card:target,.scene-card.is-selected{border-color:#7beeff;box-shadow:0 0 0 2px #3ce8ff44}
+.add-scene{gap:16px}
+.add-scene h3{font-size:23px}
+.tour-pano-picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:10px;max-height:330px;overflow:auto;padding:4px}
+.tour-pano-option{display:grid;align-content:start;gap:8px;min-width:0;padding:7px;text-align:left;border:1px solid #2c5668;border-radius:10px;background:#0a1b25;color:#ddf7fb;font:12px system-ui;letter-spacing:0}
+.tour-pano-option:hover,.tour-pano-option.is-selected{border-color:#7ceeff;background:#134052}
+.tour-pano-option.is-selected{box-shadow:inset 0 0 0 1px #70eaff}
+.tour-pano-option[hidden]{display:none}
+.tour-pano-option img{width:100%;height:88px;object-fit:cover;border-radius:6px;background:#122b39}
+.tour-pano-option span{min-width:0;overflow-wrap:anywhere}
+.tour-pano-option small{display:block;margin-top:5px;font-size:10px}
+@media(max-width:760px){
+ .tour-storyboard{padding:14px}
+ .tour-storyboard-heading{display:grid}
+ .tour-storyboard-count{justify-self:start}
+ .tour-storyboard-item{display:grid;grid-template-columns:22px 28px 78px minmax(0,1fr);gap:9px;padding:10px}
+ .tour-storyboard-thumb{width:78px;height:56px}
+ .tour-storyboard-actions{grid-column:1/-1;justify-content:flex-end}
+ .tour-storyboard-handle{font-size:20px}
+ .tour-storyboard-description strong{font-size:13px}
+ .tour-pano-picker{grid-template-columns:repeat(2,minmax(0,1fr));max-height:300px}
+}
