@@ -15,3 +15,20 @@
  #controls button{flex:0 1 auto;min-width:0;padding:7px 5px;font-size:9px}
  #minivr-guided-points{bottom:58px!important}
 }
+
+/* Mobile viewer: avoid stacking persistent controls over the panorama. */
+@media(max-width:767px){
+ #top{top:calc(env(safe-area-inset-top,0px) + 8px);left:10px;right:10px;align-items:flex-start;gap:8px}
+ #top a{flex:none;font-size:11px;padding:7px 9px;border-radius:9px;background:#061b29a8}
+ #top b{display:none}
+ #controls{bottom:calc(env(safe-area-inset-bottom,0px) + 10px);left:50%;width:max-content;max-width:calc(100vw - 24px);gap:4px;padding:5px;border-radius:10px}
+ #controls button{flex:0 0 auto;padding:8px 7px;font-size:9px}
+ #minivr-parallax-quality{right:10px!important;bottom:calc(env(safe-area-inset-bottom,0px) + 62px)!important;max-width:118px!important;font-size:11px!important;padding:7px 5px!important;z-index:6!important;opacity:.83}
+ #minivr-install-button.minivr-viewer-install{left:10px!important;bottom:calc(env(safe-area-inset-bottom,0px) + 62px)!important;width:36px!important;height:34px!important;min-width:36px!important;max-width:36px!important;padding:0!important;border-radius:9px!important;font-size:17px!important;display:grid!important;place-items:center!important;z-index:6!important;opacity:.83}
+ #minivr-guided-points{bottom:calc(env(safe-area-inset-bottom,0px) + 112px)!important;max-width:calc(100vw - 24px)!important}
+ #viewer-help{top:20%;max-width:calc(100% - 30px)}
+}
+@media(max-width:380px){
+ #controls{max-width:calc(100vw - 12px)}
+ #controls button{font-size:8px;padding:7px 5px}
+}
