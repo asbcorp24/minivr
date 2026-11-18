@@ -17,8 +17,8 @@ async function activateMode(next){
   mode=next;pro?.dispose();pro=null;
   if(!overlay||!source)return;
   const previous=overlay.querySelector('canvas');const canvas=document.createElement('canvas');canvas.style.cssText=previous.style.cssText;previous.replaceWith(canvas);const hint=overlay.querySelector('[data-hint]');
-  overlay.querySelectorAll('[data-mode]').forEach(x=>x.style.background=x.dataset.mode===mode?'#137b92':'#123342');
-  const controls=overlay.querySelector('[data-pro-controls]');if(controls)controls.hidden=mode!=='pro';
+  
+  
   if(mode==='pro'){
     hint.textContent='Живое 3D Pro · глубина из SBS/TB, управление мышью · плавность 75%.';
     const token=++loadId;
@@ -51,14 +51,10 @@ window.openMiniVRStereoPhoto=(url,stereo,title,preparedDepthUrl=null)=>{
 if(!['sbs','tb'].includes(stereo))return;close();format=stereo;depthUrl=preparedDepthUrl;mode='pro';eye=0;last=0;
 overlay=document.createElement('div');overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','Стереофото: '+(title||''));overlay.style.cssText='position:fixed;inset:0;z-index:99999;background:#020b11f7;color:#e7fbff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px;box-sizing:border-box';
 const bar=document.createElement('div');bar.style.cssText='display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:9px';
-const name=document.createElement('strong');name.textContent=title||'Стереофото';bar.append(name);
-for(const [id,label] of [['pro','Живое 3D Pro'],['wiggle','Живое 3D (старое)'],['anaglyph','Анаглиф'],['pair','Два ракурса']]){const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.mode=id;b.onclick=()=>activateMode(id);b.style.cssText='padding:10px;border:1px solid #54d5e9;color:white;background:'+(id===mode?'#137b92':'#123342');bar.append(b)}
 const exit=document.createElement('button');exit.type='button';exit.textContent='✕ Закрыть';exit.style.cssText='padding:10px;background:#123342;color:white;border:1px solid #54d5e9';exit.onclick=close;bar.append(exit);
 const canvas=document.createElement('canvas');canvas.style.cssText='display:block;max-width:100%;max-height:calc(100vh - 160px);object-fit:contain;touch-action:none';
 const hint=document.createElement('small');hint.dataset.hint='';hint.style.cssText='color:#a6c8d2;text-align:center';hint.textContent='Восстановление глубины из стереопары…';
-const controls=document.createElement('label');controls.dataset.proControls='';controls.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center';controls.textContent='Сила 3D';
-const range=document.createElement('input');range.type='range';range.min='0';range.max='100';range.step='1';range.value=String(strength);range.style.width='min(45vw,300px)';const value=document.createElement('strong');value.textContent=strength+'%';range.addEventListener('input',()=>{strength=Number(range.value);value.textContent=strength+'%';pro?.setStrength(strength)});controls.append(range,value);
-overlay.append(bar,controls,canvas,hint);document.body.append(overlay);document.addEventListener('keydown',key);
+overlay.append(bar,canvas,hint);document.body.append(overlay);document.addEventListener('keydown',key);
 const img=new Image();img.onload=()=>{if(!overlay)return;source=img;activateMode('pro');run=true;frame=requestAnimationFrame(tick)};img.onerror=()=>{hint.textContent='Не удалось загрузить стереофото'};img.src=url;
 };
 })();
