@@ -5,3 +5,13 @@
 #hotspot-modal{position:fixed;z-index:12;left:50%;top:50%;transform:translate(-50%,-46%) scale(.96);width:min(620px,calc(100% - 32px));max-height:78vh;overflow:auto;padding:30px;background:#03131bed;border:1px solid #48dff1;box-shadow:0 25px 100px #000b;backdrop-filter:blur(18px);opacity:0;pointer-events:none;transition:.2s}#hotspot-modal.open{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}#hotspot-modal small{color:#55eaff;font:9px monospace;letter-spacing:.18em}#hotspot-modal h2{font-size:30px;margin:8px 35px 18px 0}#hotspot-modal-content{color:#9bb4be;line-height:1.7;white-space:pre-wrap}#hotspot-modal-content img{display:block;width:100%;max-height:55vh;object-fit:contain;background:#000}#hotspot-close{position:absolute;right:14px;top:14px;font-size:18px;padding:5px 10px}.cardboard #hotspot-modal{display:none}
 /* Phone Cardboard is a pure WebGL stereo surface. Browser UI must not leak into the headset view. */
 .cardboard #top,.cardboard #controls,.cardboard #viewer-help,.cardboard #hotspot-modal{display:none!important}.cardboard #viewer{position:fixed;inset:0;width:100vw;height:100dvh}.cardboard #reticle{display:none!important}.xr-presenting #reticle{display:none!important}
+
+/* Compact bottom controls for guided tour viewing. */
+#controls{bottom:10px;gap:5px;padding:5px;border-radius:9px}
+#controls button{padding:7px 9px;font-size:10px;border-radius:6px;white-space:nowrap}
+#minivr-guided-points button{min-height:30px}
+@media(max-width:600px){
+ #controls{bottom:6px;width:auto;max-width:calc(100% - 12px);gap:3px;padding:4px}
+ #controls button{flex:0 1 auto;min-width:0;padding:7px 5px;font-size:9px}
+ #minivr-guided-points{bottom:58px!important}
+}
