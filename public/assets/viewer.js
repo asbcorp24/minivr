@@ -853,7 +853,39 @@ addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboa
 
 
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}addEventListener('resize',resize);resize();
-document.querySelector('#gyro').onclick=async()=>{if(typeof DeviceOrientationEvent?.requestPermission==='function'&&(await DeviceOrientationEvent.requestPermission())!=='granted')return;orientation=!orientation;deviceOrientation.enabled=orientation};
+const gyroButton=document.querySelector('#gyro');
+let gyroPending=false;
+function setGyroActive(active){
+ orientation=active;
+ if(active)deviceOrientation.connect();
+ else deviceOrientation.disconnect();
+ gyroButton.setAttribute('aria-pressed',String(active));
+ gyroButton.textContent=active?'GYRO ✓':'GYRO';
+}
+gyroButton.setAttribute('aria-pressed','false');
+gyroButton.onclick=async()=>{
+ if(gyroPending)return;
+ if(orientation){setGyroActive(false);return;}
+ if(!window.isSecureContext||typeof window.DeviceOrientationEvent==='undefined'){
+  console.warn('GYRO requires a secure context and a device orientation sensor.');
+  gyroButton.title='Гироскоп недоступен на этом устройстве или без HTTPS';
+  return;
+ }
+ gyroPending=true;
+ try{
+  if(typeof DeviceOrientationEvent.requestPermission==='function'&&(await DeviceOrientationEvent.requestPermission())!=='granted')return;
+  const received=await new Promise(resolve=>{
+   let finished=false;
+   const done=valid=>{if(finished)return;finished=true;clearTimeout(timeout);window.removeEventListener('deviceorientation',onSample);resolve(valid)};
+   const onSample=e=>{if(Number.isFinite(e.alpha)&&Number.isFinite(e.beta)&&Number.isFinite(e.gamma))done(true)};
+   window.addEventListener('deviceorientation',onSample);
+   const timeout=setTimeout(()=>done(false),1200);
+  });
+  if(received)setGyroActive(true);
+  else{gyroButton.title='Данные гироскопа не поступают';console.warn('GYRO: no orientation samples received')}
+ }catch(error){console.warn('GYRO permission or sensor unavailable',error)}
+ finally{gyroPending=false}
+};
 document.querySelector('#full').onclick=()=>document.documentElement.requestFullscreen?.();
 const vrControl=document.querySelector('#vr');vrControl.textContent='ENTER VR';let xrSession=null;
 async function startImmersiveVR(){
@@ -1125,7 +1157,7 @@ renderer.setAnimationLoop((time)=>{
  if(mode===ViewerMode.CARDBOARD&&legacyCardboard){legacyVRControls.update();camera.updateMatrixWorld(true);hud.visible=false}
  syncHudPose();syncCardboardDebug();syncXRDebug();
  scene.traverse(o=>{if(o.userData?.animate)o.userData.animate(time,gazeTarget?.userData?.portal===o||hoveredPortal===o)});
- if(mode===ViewerMode.CARDBOARD&&orientation)deviceOrientation.update();
+ if(orientation&&(mode===ViewerMode.CARDBOARD||mode===ViewerMode.DESKTOP))deviceOrientation.update();
  // Update motion in view-relative coordinates: when the panorama rotates,
  // the apparent camera translation follows the viewing direction rather
  // than remaining pinned to the world X/Z axes.
