@@ -75,12 +75,12 @@ function guidedSetup(){
  guidedClearTimer();guidedStopAudio();guidedPanel?.remove();guidedPanel=null;guidedIndex=-1;guidedTarget=null;
  if(!guidedEnabled)return;
  guidedPanel=document.createElement('aside');guidedPanel.id='minivr-guided-points';
- guidedPanel.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);width:min(540px,90vw);z-index:850;color:white;background:rgba(12,29,42,.89);border:1px solid #6ca6b7;border-radius:14px;padding:16px;box-shadow:0 8px 28px #0008;backdrop-filter:blur(8px)';
- const heading=document.createElement('strong');heading.dataset.guidedHeading='';heading.style.display='block';
- const description=document.createElement('p');description.dataset.guidedText='';description.style.whiteSpace='pre-wrap';
- const controls=document.createElement('div');controls.style.cssText='display:flex;gap:8px;flex-wrap:wrap';
- const next=document.createElement('button');next.type='button';next.dataset.guidedNext='';next.onclick=()=>guidedShow(guidedIndex+1);
- const pause=document.createElement('button');pause.type='button';pause.textContent='⏯ Пауза / продолжить';pause.onclick=()=>{tourPaused=!tourPaused;guidedPauseResume();resetTourTimer()};
+ guidedPanel.style.cssText='position:fixed;bottom:64px;left:50%;transform:translateX(-50%);width:min(390px,calc(100vw - 24px));max-height:40vh;overflow:auto;z-index:850;color:white;background:rgba(12,29,42,.88);border:1px solid #477b8b;border-radius:10px;padding:10px 12px;box-shadow:0 5px 20px #0007;backdrop-filter:blur(8px)';
+ const heading=document.createElement('strong');heading.dataset.guidedHeading='';heading.style.cssText='display:block;font-size:12px;line-height:1.3';
+ const description=document.createElement('p');description.dataset.guidedText='';description.style.cssText='white-space:pre-wrap;font-size:12px;line-height:1.4;margin:6px 0;max-height:14vh;overflow:auto';
+ const controls=document.createElement('div');controls.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
+ const next=document.createElement('button');next.type='button';next.dataset.guidedNext='';next.onclick=()=>guidedShow(guidedIndex+1);next.style.cssText='padding:7px 9px;font-size:10px';
+ const pause=document.createElement('button');pause.type='button';pause.textContent='⏯ Пауза / продолжить';pause.onclick=()=>{tourPaused=!tourPaused;guidedPauseResume();resetTourTimer()};pause.style.cssText='padding:7px 9px;font-size:10px';
  const audio=document.createElement('button');audio.type='button';audio.dataset.guidedAudio='';audio.textContent='▶ Включить аудио';audio.hidden=true;
  controls.append(next,pause,audio);guidedPanel.append(heading,description,controls);document.body.append(guidedPanel);
  guidedShow(0);
