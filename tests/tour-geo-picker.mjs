@@ -3,6 +3,11 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 
 const source=readFileSync(new URL('../public/assets/tour-geo-picker.js',import.meta.url),'utf8');
+const tourAdmin=readFileSync(new URL('../public/admin/tours.php',import.meta.url),'utf8');
+const adminStyle=readFileSync(new URL('../public/assets/admin.css',import.meta.url),'utf8');
+assert.match(tourAdmin,/admin\.css\?v=<\?=filemtime\(/,'Tour admin must invalidate cached CSS after deploys');
+assert.match(adminStyle,/\.tour-geo-picker-overlay\{position:fixed/,'The map picker must be a fixed modal, not part of page layout');
+assert.match(adminStyle,/#tour-geo-picker-map\{[^}]*height:/,'The map container needs an explicit height for Leaflet');
 function element(initial={}){
  const listeners={};
  return {
