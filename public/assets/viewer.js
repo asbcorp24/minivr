@@ -4,6 +4,7 @@ import {createAtmosphere} from '/assets/panorama-atmosphere.js';
 import {createPanoramaEffects} from '/assets/panorama-effects.js';
 import {createTiledPanorama} from '/assets/tiled-panorama.js';
 import {createDesktop3DWindow} from '/assets/desktop-3d-window.js';
+import {createMobileMotionParallax} from '/assets/mobile-motion-parallax.js';
 import * as THREE from '/assets/vendor/three/three.module.js';
 import DeviceOrientationControls from '/assets/vendor/three/DeviceOrientationControls.js';
 import VREffect from '/assets/vendor/three/effects/VREffect.js';
@@ -193,6 +194,7 @@ async function loadParallaxDepth(){
   const canvas=document.createElement('canvas');canvas.width=256;canvas.height=128;
   const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,256,128);
   parallaxDepthPixels=ctx.getImageData(0,0,256,128).data;
+  requestAnimationFrame(syncMobileMotionButton);
  }catch(e){console.warn('MiniVR depth map unavailable',e);}
 }
 function sampleDepthBilinear(u,v){
@@ -854,13 +856,58 @@ addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboa
 
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}addEventListener('resize',resize);resize();
 const gyroButton=document.querySelector('#gyro');
+const mobileMotion=createMobileMotionParallax(window);
+const mobileMotionButton=document.createElement('button');
+mobileMotionButton.id='mobile-motion-parallax';
+mobileMotionButton.type='button';
+mobileMotionButton.hidden=true;
+mobileMotionButton.setAttribute('aria-pressed','false');
+mobileMotionButton.setAttribute('aria-label','Параллакс от наклона телефона');
+document.body.appendChild(mobileMotionButton);
+let mobileMotionPending=false;
+function mobileMotionEligible(){
+ return getViewerMode()===ViewerMode.DESKTOP&&!orientation&&projection==='360'&&stereoMode==='mono'
+  &&!!parallaxDepthPixels&&effectSettings.parallaxEnabled===true
+  &&window.matchMedia('(pointer: coarse)').matches&&window.isSecureContext
+  &&typeof window.DeviceOrientationEvent!=='undefined';
+}
+function syncMobileMotionButton(){
+ mobileMotionButton.hidden=!mobileMotionEligible();
+ mobileMotionButton.setAttribute('aria-pressed',String(mobileMotion.isActive()));
+ mobileMotionButton.textContent=mobileMotionPending?'3D…':mobileMotion.isActive()?'↔ 3D ✓':'↔ 3D';
+ mobileMotionButton.title=mobileMotion.isActive()?'Выключить параллакс от наклона телефона':'Включить параллакс от наклона телефона (требуется доступ к датчику)';
+}
+function stopMobileMotion(){
+ mobileMotion.stop();
+ depthPointer.set(0,0);
+ syncMobileMotionButton();
+}
+mobileMotionButton.onclick=async()=>{
+ if(mobileMotionPending)return;
+ if(mobileMotion.isActive()){stopMobileMotion();return;}
+ if(!mobileMotionEligible())return;
+ mobileMotionPending=true;mobileMotionButton.disabled=true;syncMobileMotionButton();
+ let started=false;
+ try{started=await mobileMotion.start();if(started&&!mobileMotionEligible()){stopMobileMotion();started=false;}}
+ catch(error){console.warn('MiniVR mobile motion unavailable',error)}
+ finally{
+  mobileMotionPending=false;mobileMotionButton.disabled=false;syncMobileMotionButton();
+  if(!started&&!mobileMotionButton.hidden){
+   mobileMotionButton.textContent='3D недоступен';
+   setTimeout(syncMobileMotionButton,2200);
+  }
+ }
+};
+syncMobileMotionButton();
 let gyroPending=false;
 function setGyroActive(active){
+ if(active&&mobileMotion.isActive())stopMobileMotion();
  orientation=active;
  if(active)deviceOrientation.connect();
  else deviceOrientation.disconnect();
  gyroButton.setAttribute('aria-pressed',String(active));
  gyroButton.textContent=active?'GYRO ✓':'GYRO';
+ syncMobileMotionButton();
 }
 gyroButton.setAttribute('aria-pressed','false');
 gyroButton.onclick=async()=>{
@@ -1133,6 +1180,7 @@ const depthDesiredOffset=new THREE.Vector3();
 let depthAutoPhase=0,depthAutoLastTime=0;
 let depthMotionActive=false;
 renderer.domElement.addEventListener('pointermove',event=>{
+ if(mobileMotion.isActive())return;
  const bounds=renderer.domElement.getBoundingClientRect();
  if(!bounds.width||!bounds.height)return;
  depthPointer.set(THREE.MathUtils.clamp((event.clientX-bounds.left)/bounds.width*2-1,-1,1),THREE.MathUtils.clamp(1-(event.clientY-bounds.top)/bounds.height*2,-1,1));
@@ -1151,6 +1199,7 @@ renderer.setAnimationLoop((time)=>{
  }
  lastEffectTime=time;
  const mode=getViewerMode();
+ if(mobileMotion.isActive()&&!mobileMotionEligible())stopMobileMotion();
  const stereoPictures=contentGroup.userData.stereoPictures;
  if(stereoPictures){const headset=mode!==ViewerMode.DESKTOP;stereoPictures.desktop.visible=!headset;stereoPictures.leftPic.visible=headset;stereoPictures.rightPic.visible=headset}
  if(mode===ViewerMode.CARDBOARD&&cardboard){const canvas=renderer.domElement;canvas.style.position='fixed';canvas.style.inset='0';canvas.style.width='100vw';canvas.style.height='100dvh';canvas.style.zIndex='1'}
@@ -1163,13 +1212,17 @@ renderer.setAnimationLoop((time)=>{
  // than remaining pinned to the world X/Z axes.
  const motionDt=depthAutoLastTime?Math.min(.05,Math.max(0,(time-depthAutoLastTime)/1000)):1/60;
  depthAutoLastTime=time;
+ const portraitPhone=window.matchMedia('(orientation: portrait) and (pointer: coarse) and (max-width: 600px)').matches;
  const desktopWindowEligible=mode===ViewerMode.DESKTOP&&!orientation&&projection==='360'&&stereoMode==='mono'&&!!parallaxDepthPixels&&effectSettings.parallaxEnabled===true;
+ if(desktopWindowEligible&&mobileMotion.isActive()){
+  const tilt=mobileMotion.update(motionDt);
+  depthPointer.set(tilt.x*(portraitPhone?.95:.65),tilt.y*(portraitPhone?.75:.5));
+ }
  const desktopWindowOffset=desktop3DWindow.update(motionDt,desktopWindowEligible,depthPointerSmooth);
  if(mode===ViewerMode.DESKTOP&&!orientation){
-  // Portrait phones need a stronger positional depth cue than desktop.
-  // Keep landscape, tablets, Cardboard and WebXR unchanged.
-  const portraitPhone=window.matchMedia('(orientation: portrait) and (pointer: coarse) and (max-width: 600px)').matches;
-  const portraitBoost=portraitPhone?1.35:1;
+  // Portrait phone displacement needs more visible screen-space motion.
+  // Desktop, landscape, tablets, Cardboard and WebXR remain unchanged.
+  const portraitBoost=portraitPhone?1.85:1;
   // Depth Window: optional stronger viewpoint translation, as if looking
   // through a nearby opening into the panorama. No synthetic camera motion in XR.
   const depthWindow=effectSettings.parallaxDepthWindow===true
@@ -1191,6 +1244,12 @@ renderer.setAnimationLoop((time)=>{
    depthPointerSmooth.y*amount*(desktopReliefEnabled()?.2:(.55+depthWindow*.15))+Math.sin(depthAutoPhase*.65+.4)*sway*.18+desktopWindowOffset.y,
    Math.cos(depthAutoPhase)*sway*.2+depthWindow*amount*.12
   );
+  if(portraitPhone&&amount>0){
+   // Bounded portrait gain: noticeable near-field motion without crossing
+   // the closest (~8-unit) depth shell or opening large disocclusion cracks.
+   depthLocalOffset.x=THREE.MathUtils.clamp(depthLocalOffset.x*1.9,-2.1,2.1);
+   depthLocalOffset.y=THREE.MathUtils.clamp(depthLocalOffset.y*1.7,-1.3,1.3);
+  }
   const yaw=THREE.MathUtils.degToRad(lon);
   const cos=Math.cos(yaw),sin=Math.sin(yaw);
   depthDesiredOffset.set(
@@ -1205,7 +1264,7 @@ renderer.setAnimationLoop((time)=>{
  }else if(depthMotionActive){
   // Never apply synthetic translation to tracked XR head poses or Cardboard.
   depthCameraOffset.set(0,0,0);depthPointerSmooth.set(0,0);
-  if(mode===ViewerMode.CARDBOARD&&!legacyCardboard)camera.position.set(0,0,0);
+  if((mode===ViewerMode.CARDBOARD&&!legacyCardboard)||(mode===ViewerMode.DESKTOP&&orientation))camera.position.set(0,0,0);
   depthMotionActive=false;
  }
  if(mode===ViewerMode.DESKTOP&&!orientation){const phi=THREE.MathUtils.degToRad(90-lat),theta=THREE.MathUtils.degToRad(lon);camera.lookAt(500*Math.sin(phi)*Math.cos(theta),500*Math.cos(phi),500*Math.sin(phi)*Math.sin(theta))}
