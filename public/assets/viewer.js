@@ -5,6 +5,7 @@ import {createPanoramaEffects} from '/assets/panorama-effects.js';
 import {createTiledPanorama} from '/assets/tiled-panorama.js';
 import {createDesktop3DWindow} from '/assets/desktop-3d-window.js';
 import {createMobileMotionParallax} from '/assets/mobile-motion-parallax.js';
+import {canTranslateDepthCamera,depthOffsetInWorld} from '/assets/depth-motion.js';
 import * as THREE from '/assets/vendor/three/three.module.js';
 import DeviceOrientationControls from '/assets/vendor/three/DeviceOrientationControls.js';
 import VREffect from '/assets/vendor/three/effects/VREffect.js';
@@ -866,7 +867,7 @@ mobileMotionButton.setAttribute('aria-label','Параллакс от накло
 document.body.appendChild(mobileMotionButton);
 let mobileMotionPending=false;
 function mobileMotionEligible(){
- return getViewerMode()===ViewerMode.DESKTOP&&!orientation&&projection==='360'&&stereoMode==='mono'
+ return getViewerMode()===ViewerMode.DESKTOP&&projection==='360'&&stereoMode==='mono'
   &&!!parallaxDepthPixels&&effectSettings.parallaxEnabled===true
   &&window.matchMedia('(pointer: coarse)').matches&&window.isSecureContext
   &&typeof window.DeviceOrientationEvent!=='undefined';
@@ -901,7 +902,6 @@ mobileMotionButton.onclick=async()=>{
 syncMobileMotionButton();
 let gyroPending=false;
 function setGyroActive(active){
- if(active&&mobileMotion.isActive())stopMobileMotion();
  orientation=active;
  if(active)deviceOrientation.connect();
  else deviceOrientation.disconnect();
@@ -1170,7 +1170,8 @@ function syncHudPose(){
  head.updateMatrixWorld(true);head.getWorldPosition(hud.position);head.getWorldQuaternion(hud.quaternion);hud.scale.setScalar(1);
 }
 // Visible day/night grading on the actual panorama canvas, including tiled panoramas.
-// Subtle desktop 2.5D movement; no positional offsets in device-orientation or VR modes.
+// Subtle desktop 2.5D movement; GYRO can opt in through phone 3D, but VR
+// modes continue using their own tracked head poses without synthetic offsets.
 const desktop3DWindow=createDesktop3DWindow(renderer.domElement);
 const depthPointer=new THREE.Vector2();
 const depthPointerSmooth=new THREE.Vector2();
@@ -1214,12 +1215,12 @@ renderer.setAnimationLoop((time)=>{
  depthAutoLastTime=time;
  const portraitPhone=window.matchMedia('(orientation: portrait) and (pointer: coarse) and (max-width: 600px)').matches;
  const desktopWindowEligible=mode===ViewerMode.DESKTOP&&!orientation&&projection==='360'&&stereoMode==='mono'&&!!parallaxDepthPixels&&effectSettings.parallaxEnabled===true;
- if(desktopWindowEligible&&mobileMotion.isActive()){
+ if(mobileMotionEligible()&&mobileMotion.isActive()){
   const tilt=mobileMotion.update(motionDt);
   depthPointer.set(tilt.x*(portraitPhone?.95:.65),tilt.y*(portraitPhone?.75:.5));
  }
  const desktopWindowOffset=desktop3DWindow.update(motionDt,desktopWindowEligible,depthPointerSmooth);
- if(mode===ViewerMode.DESKTOP&&!orientation){
+ if(canTranslateDepthCamera(mode,orientation,mobileMotion.isActive())){
   // Portrait phone displacement needs more visible screen-space motion.
   // Desktop, landscape, tablets, Cardboard and WebXR remain unchanged.
   const portraitBoost=portraitPhone?1.85:1;
@@ -1230,7 +1231,7 @@ renderer.setAnimationLoop((time)=>{
   const windowBoost=1+depthWindow*.8;
   const amount=parallaxDepthPixels&&effectSettings.parallaxEnabled
    ? THREE.MathUtils.clamp(Number(effectSettings.parallaxStrength)||0,0,100)/100*portraitBoost*windowBoost:0;
-  const autoEnabled=amount>0&&effectSettings.rotation&&effectSettings.parallaxAuto!==false;
+  const autoEnabled=!orientation&&amount>0&&effectSettings.rotation&&effectSettings.parallaxAuto!==false;
   const autoAmplitude=THREE.MathUtils.clamp(Number(effectSettings.parallaxAutoAmplitude??35),0,100)/100;
   const autoSpeed=THREE.MathUtils.clamp(Number(effectSettings.parallaxAutoSpeed??.6),.1,3);
   if(autoEnabled)depthAutoPhase=(depthAutoPhase+motionDt*autoSpeed*2*Math.PI/8)%(Math.PI*2);
@@ -1250,13 +1251,7 @@ renderer.setAnimationLoop((time)=>{
    depthLocalOffset.x=THREE.MathUtils.clamp(depthLocalOffset.x*1.9,-2.1,2.1);
    depthLocalOffset.y=THREE.MathUtils.clamp(depthLocalOffset.y*1.7,-1.3,1.3);
   }
-  const yaw=THREE.MathUtils.degToRad(lon);
-  const cos=Math.cos(yaw),sin=Math.sin(yaw);
-  depthDesiredOffset.set(
-   depthLocalOffset.x*cos-depthLocalOffset.z*sin,
-   depthLocalOffset.y,
-   depthLocalOffset.x*sin+depthLocalOffset.z*cos
-  );
+  depthOffsetInWorld(depthLocalOffset,orientation,camera.quaternion,THREE.MathUtils.degToRad(lon),depthDesiredOffset);
   const damping=1-Math.exp(-motionDt*8);
   depthCameraOffset.lerp(depthDesiredOffset,damping);
   camera.position.copy(depthCameraOffset);
