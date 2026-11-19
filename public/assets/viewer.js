@@ -1120,7 +1120,8 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  projection=nextProjection;stereoMode=nextStereo;effectSettings=nextSettings;
  parallaxDepthPixels=nextDepth;manualFoliageMaskImage=nextFoliage;manualWaterMaskImage=nextWater;
  effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();
- dayCycleStarted=null;dayGradeLast=-1;dayPhaseOverride=null;
+ // Each effect module owns its animation state; fresh instances start with
+ // the next panorama's settings. Legacy day-cycle globals no longer exist.
  effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);
  if(nextTiles){
   clearPanoramaMeshes();tiledPanorama=nextTiles;nextTiles.group.visible=true;
