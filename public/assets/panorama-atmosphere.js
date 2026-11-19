@@ -67,20 +67,23 @@ export function createAtmosphere(scene,settings={}){
   const beams=new THREE.Group();beams.layers.enableAll();scene.add(beams);
   const beamGeo=new THREE.PlaneGeometry(1,1,1,1);
   const mats=[];
+  const mobile=typeof matchMedia==='function'&&matchMedia('(max-width: 767px)').matches;
+  const shaftCount=mobile?5:9;
+  const viewDirection=new THREE.Vector3();
   // Multiple angled, overlapping translucent planes produce parallax
   // without destructive depth cutouts or screen-space bloom.
-  for(let i=0;i<9;i++){
+  for(let i=0;i<shaftCount;i++){
    const material=new THREE.ShaderMaterial({
-    uniforms:{uTime:{value:0},uStrength:{value:strength},uSeed:{value:i*2.39996}},
+    uniforms:{uTime:{value:0},uStrength:{value:strength},uVisibility:{value:1},uSeed:{value:i*2.39996}},
     vertexShader:`precision mediump float;varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-    fragmentShader:`precision mediump float;varying vec2 vUv;uniform float uTime;uniform float uStrength;uniform float uSeed;
+    fragmentShader:`precision mediump float;varying vec2 vUv;uniform float uTime;uniform float uStrength;uniform float uVisibility;uniform float uSeed;
      void main(){
       float x=abs(vUv.x-.5)*2.;
       float across=pow(max(0.,1.-x*x),3.);
       float along=smoothstep(0.,.18,vUv.y)*(1.-smoothstep(.7,1.,vUv.y));
       float drift=.84+.16*sin(uTime*.24+uSeed+vUv.y*5.);
       float streak=.78+.22*sin(vUv.x*18.+uSeed*3.+vUv.y*2.);
-      float alpha=uStrength*.038*across*along*drift*streak;
+      float alpha=uStrength*uVisibility*.038*across*along*drift*streak;
       gl_FragColor=vec4(1.,.88,.65,alpha);
      }`,
     transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,blending:THREE.AdditiveBlending
@@ -99,7 +102,12 @@ export function createAtmosphere(scene,settings={}){
   }
   updates.push((time,camera)=>{
    camera.getWorldPosition(beams.position);
-   for(const mat of mats)mat.uniforms.uTime.value=time*.001;
+   camera.getWorldDirection(viewDirection);
+   // Fade shafts when looking away from the sun, rather than showing
+   // bright streaks in unrelated parts of the panorama.
+   const alignment=THREE.MathUtils.clamp(viewDirection.dot(sunDir),-1,1);
+   const visibility=THREE.MathUtils.smoothstep(alignment,-.25,.55);
+   for(const mat of mats){mat.uniforms.uTime.value=time*.001;mat.uniforms.uVisibility.value=visibility;}
   });
   parts.push({object:beams,geo:beamGeo,mat:{dispose(){for(const mat of mats)mat.dispose()}}});
  }
