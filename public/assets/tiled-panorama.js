@@ -5,6 +5,7 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
  const manifest=await response.json();if(manifest.projection!=='360'||!Array.isArray(manifest.levels)||!manifest.levels.length)throw Error('Invalid tile manifest');
  const base=url.slice(0,url.lastIndexOf('/')+1),group=new THREE.Group();scene.add(group);
  const loader=new THREE.TextureLoader(),tiles=new Map(),pending=new Set(),maxConcurrent=8;
+ let disposed=false;
  const geometry=(level,x,y)=>{
   const cols=level.cols,rows=level.rows,sw=level.width,sh=level.height,ts=manifest.tileSize;
   const u0=x*ts/sw,u1=Math.min((x+1)*ts/sw,1),v0=y*ts/sh,v1=Math.min((y+1)*ts/sh,1);
@@ -19,10 +20,10 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
   g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));g.setIndex(indices);return g;
  };
  function load(level,x,y){
-  const key=level.level+':'+x+':'+y;if(tiles.has(key)||pending.has(key)||pending.size>=maxConcurrent)return;
+  const key=level.level+':'+x+':'+y;if(disposed||tiles.has(key)||pending.has(key)||pending.size>=maxConcurrent)return;
   pending.add(key);
   loader.load(base+level.level+'/'+x+'_'+y+'.jpg',texture=>{
-   pending.delete(key);texture.colorSpace=THREE.SRGBColorSpace;
+   pending.delete(key);if(disposed){texture.dispose();return;}texture.colorSpace=THREE.SRGBColorSpace;
    const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,depthWrite:false});
    const mesh=new THREE.Mesh(geometry(level,x,y),material);mesh.renderOrder=level.level;
    mesh.frustumCulled=false;group.add(mesh);tiles.set(key,{mesh,level:level.level,last:performance.now()});
@@ -32,6 +33,7 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
  const baseQueue=[];for(let y=0;y<low.rows;y++)for(let x=0;x<low.cols;x++)baseQueue.push([x,y]);
  let last=0;
  function update(){
+  if(disposed)return;
   if(performance.now()-last<160)return;last=performance.now();
   for(const [bx,by] of baseQueue)load(low,bx,by);
  const fov=camera.fov||75;
@@ -60,6 +62,6 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
    }else item.last=now;
   }
  }
- function dispose(){scene.remove(group);for(const item of tiles.values()){item.mesh.geometry.dispose();item.mesh.material.map.dispose();item.mesh.material.dispose()}tiles.clear();group.clear()}
- return {update,dispose,manifest};
+ function dispose(){disposed=true;scene.remove(group);for(const item of tiles.values()){item.mesh.geometry.dispose();item.mesh.material.map.dispose();item.mesh.material.dispose()}tiles.clear();pending.clear();group.clear()}
+ return {update,dispose,manifest,group};
 }
