@@ -78,6 +78,7 @@ $escape = static fn($value): string => htmlspecialchars((string)$value, ENT_QUOT
 </head><body>
 <aside><div class="logo">MINI<span>VR</span></div><a href="/admin/">◉ Панорамы</a><a href="/admin/tours.php">◇ Экскурсии</a><a class="active">⇧ Встраивание</a><a href="/">↗ Сайт</a></aside>
 <main class="embed-admin"><header><div><small>EMBED / SHARING</small><h1>Встраивание на другие сайты</h1></div></header>
+<p><a href="/admin/embed-test.php">▶ Открыть страницу проверки iframe</a></p>
 <p class="embed-intro">Создайте отдельный токен для панорамы или экскурсии. Вставьте полученный HTML-код на другой сайт — посетители увидят интерактивный MiniVR прямо внутри страницы.</p>
 <?php if ($error):?><p class="embed-alert" role="alert"><?=$escape($error)?></p><?php endif;?>
 <?php if (isset($_GET['revoked'])):?><p class="embed-success" role="status">Ссылка отозвана. Встраивания с этим токеном перестанут открываться.</p><?php endif;?>
