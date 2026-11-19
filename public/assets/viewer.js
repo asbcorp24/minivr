@@ -7,6 +7,7 @@ import {createDesktop3DWindow} from '/assets/desktop-3d-window.js';
 import {createMobileMotionParallax} from '/assets/mobile-motion-parallax.js';
 import {canTranslateDepthCamera,depthOffsetInWorld} from '/assets/depth-motion.js';
 import {shouldSwitchSceneInPlace} from '/assets/tour-navigation.js';
+import {tourScenePoint,tourMapEmbedUrl,tourMapExternalUrl} from '/assets/tour-geo-map.js';
 import * as THREE from '/assets/vendor/three/three.module.js';
 import DeviceOrientationControls from '/assets/vendor/three/DeviceOrientationControls.js';
 import VREffect from '/assets/vendor/three/effects/VREffect.js';
@@ -106,7 +107,8 @@ function resetTourTimer(){
  const next=tourData.current+1<tourData.scenes.length;
  tourButton.textContent=tourPaused?'▶ Продолжить экскурсию':'⏸ Авто: '+duration+' с';
  tourButton.title='Автоматический переход к следующей панораме';
- if(!tour||!next||!duration||tourPaused)return;
+ // Do not advance a scene while someone is reading its location on the map.
+ if(!tour||!next||!duration||tourPaused||document.getElementById('minivr-tour-geo-map')?.hidden===false)return;
  tourDeadline=Date.now()+duration*1000;
  tourTimer=setTimeout(()=>{tourTimer=null;if(!tourPaused&&document.visibilityState==='visible')goScene(tourData.current+1);else resetTourTimer()},duration*1000);
 }
@@ -119,16 +121,19 @@ tourRail.setAttribute('aria-label','Панорамы экскурсии');
 tourRail.style.cssText='position:fixed;right:clamp(12px,2vw,28px);top:50%;transform:translateY(-50%);z-index:800;display:flex;flex-direction:column;align-items:center;gap:11px;padding:15px 11px;border:1px solid rgba(255,255,255,.18);border-radius:28px;background:rgba(12,29,42,.52);backdrop-filter:blur(14px);box-shadow:0 8px 32px #0004;max-height:75vh;overflow-y:auto;scrollbar-width:thin';
 const railStyle=document.createElement('style');
 railStyle.textContent='#minivr-tour-rail button{appearance:none;position:relative;width:12px;height:12px;min-height:12px;border-radius:50%;border:2px solid rgba(230,246,255,.75);background:rgba(255,255,255,.28);cursor:pointer;transition:transform .2s,background .2s,box-shadow .2s;padding:0}#minivr-tour-rail button:hover,#minivr-tour-rail button:focus-visible{transform:scale(1.3);background:#8defff;outline:none;box-shadow:0 0 0 5px #78eaff35}#minivr-tour-rail button[aria-current="step"]{width:15px;height:15px;min-height:15px;background:#85efff;border-color:#fff;box-shadow:0 0 0 5px #67d9ff35,0 0 14px #67d9ff}#minivr-tour-rail button::before{content:attr(data-label);position:absolute;right:calc(100% + 20px);top:50%;transform:translateY(-50%) translateX(5px);opacity:0;pointer-events:none;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis;color:white;background:#112b3deF;border:1px solid #ffffff35;border-radius:9px;padding:8px 12px;font:13px system-ui;transition:opacity .15s,transform .15s}#minivr-tour-rail button:hover::before,#minivr-tour-rail button:focus-visible::before{opacity:1;transform:translateY(-50%) translateX(0)}@media(max-width:767px){#minivr-tour-rail{display:none!important}}';
+railStyle.textContent+='#minivr-tour-rail #minivr-tour-map-toggle{width:29px;height:29px;min-height:29px;display:grid;place-items:center;border-radius:10px;background:#174858;border-color:#61dbe9;font-size:18px;line-height:1}#minivr-tour-rail #minivr-tour-map-toggle:focus-visible{outline:2px solid #fff;outline-offset:3px}#minivr-tour-rail .minivr-tour-rail-count{font:600 10px system-ui;color:#c0f6ff;white-space:nowrap}';
 document.head.appendChild(railStyle);
 function syncTourRail(){
  const desktop=window.innerWidth>=768&&!cardboard&&!legacyCardboard&&!(typeof renderer!=='undefined'&&renderer.xr.isPresenting);
  tourRail.style.display=desktop?'flex':'none';
- for(const [i,button] of Array.from(tourRail.querySelectorAll('button')).entries()){
+ for(const [i,button] of Array.from(tourRail.querySelectorAll('[data-tour-scene]')).entries()){
   if(i===tourData.current){button.setAttribute('aria-current','step');button.setAttribute('aria-label','Текущая панорама: '+(tourData.scenes[i]?.title||'Панорама '+(i+1)))}else{button.removeAttribute('aria-current');button.setAttribute('aria-label','Перейти: '+(tourData.scenes[i]?.title||'Панорама '+(i+1)))}
  }
 }
-if(tour&&tourData.scenes.length>1){
- tourData.scenes.forEach((item,i)=>{const b=document.createElement('button');b.type='button';b.dataset.label=(i+1)+'. '+(item.title||'Панорама '+(i+1));b.title=b.dataset.label;b.addEventListener('click',()=>goScene(i));tourRail.appendChild(b)});
+const tourRailCount=document.createElement('span');tourRailCount.className='minivr-tour-rail-count';tourRailCount.setAttribute('role','progressbar');tourRailCount.setAttribute('aria-label','Прогресс экскурсии');tourRailCount.setAttribute('aria-valuemin','0');tourRailCount.setAttribute('aria-valuemax','100');
+if(tour&&tourData.scenes.length){
+ tourData.scenes.forEach((item,i)=>{const b=document.createElement('button');b.type='button';b.dataset.tourScene=String(i);b.dataset.label=(i+1)+'. '+(item.title||'Панорама '+(i+1));b.title=b.dataset.label;b.addEventListener('click',()=>goScene(i));tourRail.appendChild(b)});
+ tourRail.appendChild(tourRailCount);
  document.body.appendChild(tourRail);
  window.addEventListener('resize',syncTourRail);requestAnimationFrame(syncTourRail);
 }
@@ -139,10 +144,12 @@ mobileTourNav.setAttribute('aria-label','Переключение панорам
 const mobileTourPrev=document.createElement('button');mobileTourPrev.type='button';mobileTourPrev.textContent='‹';mobileTourPrev.setAttribute('aria-label','Предыдущая панорама');
 const mobileTourCount=document.createElement('span');mobileTourCount.setAttribute('aria-live','polite');
 const mobileTourNext=document.createElement('button');mobileTourNext.type='button';mobileTourNext.textContent='›';mobileTourNext.setAttribute('aria-label','Следующая панорама');
+const mobileTourMap=document.createElement('button');mobileTourMap.type='button';mobileTourMap.id='minivr-mobile-tour-map';mobileTourMap.textContent='⌖';mobileTourMap.setAttribute('aria-label','Открыть реальную карту экскурсии');mobileTourMap.title='Карта';
+mobileTourMap.setAttribute('aria-controls','minivr-tour-geo-map');mobileTourMap.setAttribute('aria-expanded','false');
 mobileTourPrev.addEventListener('click',()=>goScene(tourData.current-1));
 mobileTourNext.addEventListener('click',()=>goScene(tourData.current+1));
-mobileTourNav.append(mobileTourPrev,mobileTourCount,mobileTourNext);
-if(tour&&tourData.scenes.length>1){document.body.appendChild(mobileTourNav);syncMobileTourNav();}
+mobileTourNav.append(mobileTourPrev,mobileTourCount,mobileTourNext,mobileTourMap);
+if(tour&&tourData.scenes.length){document.body.appendChild(mobileTourNav);syncMobileTourNav();}
 function syncMobileTourNav(){
  const count=tourData.scenes.length,index=tourData.current;
  mobileTourCount.textContent=(index+1)+' / '+count;
@@ -150,54 +157,83 @@ function syncMobileTourNav(){
  mobileTourNav.setAttribute('aria-label','Панорама '+(index+1)+' из '+count+'. Переключение панорам экскурсии');
 }
 
-// Schematic tour route: scene order only. No geographic coordinates are inferred.
-const tourMap=document.createElement('aside');
-tourMap.id='minivr-tour-map';tourMap.hidden=true;
-tourMap.setAttribute('aria-label','Маршрут экскурсии');
-const tourMapToggle=document.createElement('button');
-tourMapToggle.type='button';tourMapToggle.id='minivr-tour-map-toggle';
-tourMapToggle.setAttribute('aria-controls','minivr-tour-map');
-tourMapToggle.setAttribute('aria-expanded','false');
-tourMapToggle.textContent='☷ Маршрут';
-const tourMapHeading=document.createElement('strong');tourMapHeading.textContent='Маршрут экскурсии';
-const tourMapClose=document.createElement('button');tourMapClose.type='button';tourMapClose.textContent='×';tourMapClose.setAttribute('aria-label','Закрыть маршрут');
-const tourMapHeader=document.createElement('div');tourMapHeader.className='minivr-tour-map-header';tourMapHeader.append(tourMapHeading,tourMapClose);
-const tourMapProgress=document.createElement('div');tourMapProgress.id='minivr-tour-progress';tourMapProgress.setAttribute('role','progressbar');tourMapProgress.setAttribute('aria-label','Прогресс экскурсии');tourMapProgress.setAttribute('aria-valuemin','0');tourMapProgress.setAttribute('aria-valuemax','100');
-const tourMapProgressFill=document.createElement('div');tourMapProgressFill.className='minivr-tour-progress-fill';tourMapProgress.append(tourMapProgressFill);
-const tourMapStatus=document.createElement('p');tourMapStatus.id='minivr-tour-map-status';tourMapStatus.setAttribute('aria-live','polite');
-const tourMapRoute=document.createElement('ol');tourMapRoute.id='minivr-tour-map-route';tourMapRoute.setAttribute('aria-label','Панорамы по порядку');
-tourMap.append(tourMapHeader,tourMapStatus,tourMapProgress,tourMapRoute);
+// Real geographical map opens on demand. The right-hand rail remains the tour
+// navigator; only stops with explicit GPS coordinates receive map markers.
+const tourMap=document.createElement('section');tourMap.id='minivr-tour-geo-map';tourMap.hidden=true;
+tourMap.setAttribute('role','dialog');tourMap.setAttribute('aria-modal','true');tourMap.setAttribute('aria-label','Географическая карта экскурсии');
+const tourMapPanel=document.createElement('div');tourMapPanel.className='minivr-tour-geo-panel';
+const tourMapHeader=document.createElement('header');tourMapHeader.className='minivr-tour-geo-header';
+const tourMapHeading=document.createElement('strong');tourMapHeading.textContent='Карта экскурсии';
+const tourMapClose=document.createElement('button');tourMapClose.type='button';tourMapClose.textContent='×';tourMapClose.setAttribute('aria-label','Закрыть карту');
+tourMapHeader.append(tourMapHeading,tourMapClose);
+const tourMapSelectLabel=document.createElement('label');tourMapSelectLabel.className='minivr-tour-geo-select';tourMapSelectLabel.textContent='Показать точку';
+const tourMapSelect=document.createElement('select');tourMapSelect.setAttribute('aria-label','Выберите панораму на карте');tourMapSelectLabel.append(tourMapSelect);
+const tourMapStatus=document.createElement('p');tourMapStatus.className='minivr-tour-geo-status';tourMapStatus.setAttribute('aria-live','polite');
+const tourMapFrame=document.createElement('iframe');tourMapFrame.className='minivr-tour-geo-frame';tourMapFrame.title='Интерактивная карта OpenStreetMap с точкой панорамы';tourMapFrame.loading='lazy';tourMapFrame.referrerPolicy='strict-origin-when-cross-origin';
+const tourMapActions=document.createElement('div');tourMapActions.className='minivr-tour-geo-actions';
+const tourMapVisit=document.createElement('button');tourMapVisit.type='button';tourMapVisit.textContent='▶ Открыть панораму';
+const tourMapExternal=document.createElement('a');tourMapExternal.target='_blank';tourMapExternal.rel='noopener noreferrer';tourMapExternal.textContent='Открыть в OpenStreetMap ↗';
+tourMapActions.append(tourMapVisit,tourMapExternal);
+const tourMapAttribution=document.createElement('small');tourMapAttribution.textContent='Подложка: © участники OpenStreetMap. Отмечаются только сцены с координатами.';
+tourMapPanel.append(tourMapHeader,tourMapSelectLabel,tourMapStatus,tourMapFrame,tourMapActions,tourMapAttribution);tourMap.append(tourMapPanel);
+const tourMapToggle=document.createElement('button');tourMapToggle.type='button';tourMapToggle.id='minivr-tour-map-toggle';tourMapToggle.textContent='⌖';tourMapToggle.title='Карта экскурсии';tourMapToggle.dataset.label='Открыть географическую карту';
+tourMapToggle.setAttribute('aria-label','Открыть географическую карту экскурсии');tourMapToggle.setAttribute('aria-controls','minivr-tour-geo-map');tourMapToggle.setAttribute('aria-expanded','false');
+let selectedTourMapScene=-1,tourMapReturnFocus=null;
+function showTourMapPoint(index){
+ const point=tourScenePoint(tourData.scenes[index]);
+ selectedTourMapScene=point?index:-1;
+ tourMapFrame.hidden=!point;tourMapActions.hidden=!point;
+ if(!point){tourMapFrame.removeAttribute('src');tourMapStatus.textContent='Для этой экскурсии пока не заданы координаты. Добавьте широту и долготу в админке → Экскурсии → Настроить сцену.';return}
+ tourMapSelect.value=String(index);
+ tourMapStatus.textContent=(tourData.scenes[index]?.title||'Панорама '+(index+1))+' · '+point.lat.toFixed(5)+', '+point.lng.toFixed(5);
+ const src=tourMapEmbedUrl(point);
+ if(tourMapFrame.getAttribute('src')!==src)tourMapFrame.src=src;
+ tourMapExternal.href=tourMapExternalUrl(point);
+ tourMapVisit.disabled=index===tourData.current;
+ tourMapVisit.textContent=index===tourData.current?'✓ Текущая панорама':'▶ Открыть панораму';
+}
 function setTourMapOpen(open){
- tourMap.hidden=!open;
+ if(open){
+  tourMapReturnFocus=document.activeElement;
+  tourMapSelect.replaceChildren();
+  const located=tourData.scenes.map((item,i)=>tourScenePoint(item)?i:-1).filter(i=>i>=0);
+  for(const i of located){const option=document.createElement('option');option.value=String(i);option.textContent=(i+1)+'. '+(tourData.scenes[i]?.title||'Панорама');tourMapSelect.appendChild(option)}
+  tourMapSelectLabel.hidden=!located.length;
+  tourMap.hidden=false;
+  if(tourTimer){clearTimeout(tourTimer);tourTimer=null}
+  showTourMapPoint(located.includes(tourData.current)?tourData.current:(located[0]??-1));
+  tourMapClose.focus();
+ }else{
+  tourMap.hidden=true;tourMapFrame.removeAttribute('src');
+  tourMapReturnFocus?.focus?.();tourMapReturnFocus=null;
+  resetTourTimer();
+ }
  tourMapToggle.setAttribute('aria-expanded',String(open));
+ mobileTourMap.setAttribute('aria-expanded',String(open));
 }
 tourMapToggle.addEventListener('click',()=>setTourMapOpen(tourMap.hidden));
+mobileTourMap.addEventListener('click',()=>setTourMapOpen(tourMap.hidden));
 tourMapClose.addEventListener('click',()=>setTourMapOpen(false));
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!tourMap.hidden)setTourMapOpen(false)});
+tourMap.addEventListener('click',event=>{if(event.target===tourMap)setTourMapOpen(false)});
+tourMapSelect.addEventListener('change',()=>showTourMapPoint(Number(tourMapSelect.value)));
+tourMapVisit.addEventListener('click',()=>{if(selectedTourMapScene>=0&&selectedTourMapScene!==tourData.current){const index=selectedTourMapScene;setTourMapOpen(false);goScene(index)}});
+document.addEventListener('keydown',event=>{if(tourMap.hidden)return;if(event.key==='Escape'){setTourMapOpen(false)}else if(event.key==='Tab'){
+ const focusables=Array.from(tourMapPanel.querySelectorAll('button:not(:disabled),select:not(:disabled),a[href]')).filter(el=>!el.closest('[hidden]'));
+ if(!focusables.length)return;
+ const first=focusables[0],last=focusables[focusables.length-1];
+ if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
+}});
 function syncTourMap(){
  const total=tourData.scenes.length,index=Math.max(0,Math.min(total-1,tourData.current));
  const percent=total>1?Math.round(index/(total-1)*100):100;
- tourMapStatus.textContent='Панорама '+(index+1)+' из '+total+' · '+percent+'% маршрута';
- tourMapProgress.setAttribute('aria-valuenow',String(percent));
- tourMapProgressFill.style.width=percent+'%';
- for(const [i,button] of Array.from(tourMapRoute.querySelectorAll('button')).entries()){
-  const active=i===index;
-  button.classList.toggle('is-current',active);
-  if(active)button.setAttribute('aria-current','step');else button.removeAttribute('aria-current');
-  const dot=button.querySelector('.minivr-route-dot');
-  if(dot)dot.textContent=i<index?'✓':String(i+1);
- }
+ tourRailCount.textContent=(index+1)+'/'+total;
+ tourRailCount.setAttribute('aria-valuenow',String(percent));
+ tourRailCount.setAttribute('aria-valuetext','Панорама '+(index+1)+' из '+total);
+ if(!tourMap.hidden&&tourScenePoint(tourData.scenes[tourData.current]))showTourMapPoint(tourData.current);
 }
-if(tour&&tourData.scenes.length>1){
- tourData.scenes.forEach((item,i)=>{
-  const li=document.createElement('li');const button=document.createElement('button');
-  button.type='button';button.setAttribute('aria-label','Перейти к панораме '+(i+1)+': '+(item.title||'Панорама'));
-  const dot=document.createElement('span');dot.className='minivr-route-dot';dot.textContent=String(i+1);
-  const label=document.createElement('span');label.className='minivr-route-label';label.textContent=item.title||'Панорама '+(i+1);
-  button.append(dot,label);button.addEventListener('click',()=>{if(i!==tourData.current)goScene(i);setTourMapOpen(false)});
-  li.append(button);tourMapRoute.append(li);
- });
- document.body.append(tourMapToggle,tourMap);syncTourMap();
+if(tour&&tourData.scenes.length){
+ tourRail.appendChild(tourMapToggle);
+ document.body.appendChild(tourMap);syncTourMap();
 }
 
 const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1100);

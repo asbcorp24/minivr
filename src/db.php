@@ -111,6 +111,13 @@ function db(): PDO
             $update->execute([json_encode($points,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),(int)$row['id']]);
         }
     }
+    // Positions belong to tour stops, so shared panorama assets stay reusable.
+    if (!in_array('geo_lat', $sceneColumns, true)) {
+        $db->exec('ALTER TABLE tour_scenes ADD COLUMN geo_lat REAL DEFAULT NULL');
+    }
+    if (!in_array('geo_lng', $sceneColumns, true)) {
+        $db->exec('ALTER TABLE tour_scenes ADD COLUMN geo_lng REAL DEFAULT NULL');
+    }
     $db->exec("UPDATE tour_scenes SET guided_points='[]' WHERE guided_points IS NULL");
     return $db;
 }
