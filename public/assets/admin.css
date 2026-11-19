@@ -86,12 +86,34 @@ body.hotspot-fullscreen-active{overflow:hidden!important}#hotspot-editor.hotspot
 .tour-pano-option span{min-width:0;overflow-wrap:anywhere}
 .tour-pano-option small{display:block;margin-top:5px;font-size:10px}
 .scene-location-details{margin:9px 0 12px;padding:9px 10px;border:1px solid #356478;border-radius:10px;background:#0a2230}
-.scene-location-details summary{cursor:pointer;color:#a9edf5;font:600 12px system-ui}
-.scene-location-details .scene-geo-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0 8px}
-.scene-location-details .scene-geo-fields label{min-width:0;font-size:12px}
-.scene-location-details .scene-geo-fields input{width:100%;min-width:0;margin-top:5px}
+.scene-location-details strong{display:block;font:600 12px system-ui;color:#a9edf5}
+.scene-geo-actions{display:flex;gap:7px;margin:10px 0 8px;flex-wrap:wrap}
+.scene-geo-actions button{padding:9px 12px;border:1px solid #3d9bb3;border-radius:9px;background:#124255;font:600 11px system-ui;letter-spacing:0}
+.scene-geo-actions [data-tour-geo-clear]{background:transparent;color:#add2dc;border-color:#345a69}
+.scene-geo-actions button:disabled{opacity:.4;cursor:default}
+.scene-location-details output{display:block;font:12px system-ui;color:#e0f8fc;overflow-wrap:anywhere}
 .scene-location-details small{display:block;margin:6px 0;color:#98b8c4;line-height:1.4}
 .scene-location-details a{display:inline-block;margin-top:6px;color:#80e3ef;font:12px system-ui}
+.scene-location-details a[hidden]{display:none!important}
+body.tour-geo-picker-open{overflow:hidden}
+.tour-geo-picker-overlay{position:fixed;inset:0;z-index:30000;display:grid;place-items:center;padding:12px;background:#000c;backdrop-filter:blur(5px)}
+.tour-geo-picker-overlay[hidden]{display:none!important}
+.tour-geo-picker-panel{width:min(800px,100%);max-height:calc(100dvh - 24px);overflow:auto;padding:18px;border:1px solid #6bddf4;border-radius:16px;background:#081d2b;box-shadow:0 20px 90px #000e}
+.tour-geo-picker-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px}
+.tour-geo-picker-heading h2{font-size:19px;margin:5px 0 0}
+.tour-geo-picker-heading small{font:10px monospace;letter-spacing:.15em}
+.tour-geo-picker-heading button{font-size:26px;line-height:1;padding:5px 12px;border-radius:9px}
+.tour-geo-picker-panel>p{margin:8px 0 12px;color:#b4d0d9;font-size:12px;line-height:1.5}
+#tour-geo-picker-map{position:relative;isolation:isolate;z-index:0;width:100%;height:min(49dvh,430px);min-height:240px;background:#d8e2e5;border:1px solid #537b88;border-radius:11px;overflow:hidden}
+.tour-geo-picker-location{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:9px;margin-top:12px}
+.tour-geo-picker-location output{font:600 12px system-ui;color:#c5faff}
+.tour-geo-picker-location>div{display:flex;flex-wrap:wrap;gap:6px}
+.tour-geo-picker-location button{padding:9px 11px;border-radius:8px;background:#164254;font:11px system-ui;letter-spacing:0}
+.tour-geo-picker-actions{display:flex;justify-content:flex-end;gap:9px;margin:14px 0 8px}
+.tour-geo-picker-actions button{padding:11px 17px;border-radius:9px;font:600 12px system-ui;letter-spacing:0}
+#tour-geo-picker-cancel{background:#172d38;border-color:#466978}
+#tour-geo-picker-apply:disabled{opacity:.45;cursor:default}
+.tour-geo-picker-panel>small{display:block;font:11px/1.5 system-ui;color:#92b1be}
 @media(max-width:760px){
  .tour-storyboard{padding:14px}
  .tour-storyboard-heading{display:grid}
@@ -102,5 +124,10 @@ body.hotspot-fullscreen-active{overflow:hidden!important}#hotspot-editor.hotspot
  .tour-storyboard-handle{font-size:20px}
  .tour-storyboard-description strong{font-size:13px}
  .tour-pano-picker{grid-template-columns:repeat(2,minmax(0,1fr));max-height:300px}
- .scene-location-details .scene-geo-fields{grid-template-columns:1fr}
+ .tour-geo-picker-panel{padding:12px}
+ .tour-geo-picker-heading h2{font-size:16px}
+ #tour-geo-picker-map{height:43dvh;min-height:200px}
+ .tour-geo-picker-location>div{width:100%}
+ .tour-geo-picker-location button{flex:1}
+ .tour-geo-picker-actions button{flex:1}
 }
