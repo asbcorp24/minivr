@@ -7,6 +7,7 @@ import {createDesktop3DWindow} from '/assets/desktop-3d-window.js';
 import {createMobileMotionParallax} from '/assets/mobile-motion-parallax.js';
 import {canTranslateDepthCamera,depthOffsetInWorld} from '/assets/depth-motion.js';
 import {shouldSwitchSceneInPlace} from '/assets/tour-navigation.js';
+import {viewerTargetWithEmbed} from '/assets/embed-navigation.js';
 import {tourScenePoint,tourMapEmbedUrl,tourMapExternalUrl} from '/assets/tour-geo-map.js';
 import * as THREE from '/assets/vendor/three/three.module.js';
 import DeviceOrientationControls from '/assets/vendor/three/DeviceOrientationControls.js';
@@ -42,7 +43,7 @@ if(new URLSearchParams(location.search).has('effects_debug')){
 }
 
 let projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'mono';
-const tour=Number(root.dataset.tour||0),backUrl=root.dataset.back||'/';let hotspotData=JSON.parse(document.querySelector('#hotspots-data')?.textContent||'[]');
+const tour=Number(root.dataset.tour||0),backUrl=root.dataset.back||'/',embedToken=root.dataset.embedToken||'';let hotspotData=JSON.parse(document.querySelector('#hotspots-data')?.textContent||'[]');
 const tourData=JSON.parse(document.querySelector('#tour-data')?.textContent||'{"scenes":[],"current":-1}');
 // Each panorama may contain its own ordered narrative stops.
 function sceneNarrationPoints(){
@@ -850,7 +851,7 @@ const panel=new THREE.Mesh(panelGeo,new THREE.MeshBasicMaterial({color:0x1a1a1a,
 const panelBorderGeo=new THREE.ShapeGeometry(roundedRectShape(panelW+.02,panelH+.02,.09));panelBorderGeo.translate(-(panelW+.02)/2,-(panelH+.02)/2,0);const panelBorder=new THREE.Mesh(panelBorderGeo,new THREE.MeshBasicMaterial({color:0xffffff,opacity:0,transparent:true,side:THREE.DoubleSide,depthTest:false}));panelBorder.position.z=-.001;panel.add(panelBorder);
 function hudButton(label,x,type,action,base=0x2a2a2a,hover=0x444444){const g=new THREE.Group(),m=new THREE.Mesh(new THREE.CircleGeometry(.08,32),new THREE.MeshBasicMaterial({color:base,opacity:.9,transparent:true,depthTest:false}));m.userData={interactive:true,type,action,baseColor:base,hoverColor:hover};g.add(m);const ring=new THREE.Mesh(new THREE.RingGeometry(.078,.082,32),new THREE.MeshBasicMaterial({color:0xffffff,opacity:.15,transparent:true,depthTest:false}));ring.position.z=.001;g.add(ring);const cv=document.createElement('canvas');cv.width=cv.height=64;const c=cv.getContext('2d');c.fillStyle='#fff';c.font='40px Arial';c.textAlign='center';c.textBaseline='middle';c.fillText(label,32,32);const lm=new THREE.Mesh(new THREE.PlaneGeometry(.1,.1),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));lm.position.z=.002;g.add(lm);g.position.set(x,0,.01);g.renderOrder=125;panel.add(g);interactive.push(m);return g}
 function goScene(i){const s=tourData.scenes[i];if(s)navigate('/viewer.php?id='+s.panorama_id+'&tour='+tour+'&scene='+s.id+(immersiveLaunch?'&immersive=1':''))}
-async function exitViewer(){if(renderer.xr.isPresenting){const session=renderer.xr.getSession();if(session)await session.end()}if(legacyCardboard&&legacyVRDisplay){try{await legacyVREffect.exitPresent()}catch{}}navigate(backUrl)}
+async function exitViewer(){if(renderer.xr.isPresenting){const session=renderer.xr.getSession();if(session)await session.end()}if(legacyCardboard&&legacyVRDisplay){try{await legacyVREffect.exitPresent()}catch{}}if(embedToken){location.href='/embed.php?token='+encodeURIComponent(embedToken);return}navigate(backUrl)}
 const menuGroup=new THREE.Group(),infoGroup=new THREE.Group(),contentGroup=new THREE.Group();hud.add(menuGroup,infoGroup,contentGroup);menuGroup.visible=infoGroup.visible=contentGroup.visible=false;
 function closePanels(except=null){if(except!==menuGroup)menuGroup.visible=false;if(except!==infoGroup)infoGroup.visible=false;if(except!==contentGroup){contentGroup.visible=false;clearGroup(contentGroup)}menuOpen=menuGroup.visible}
 let menuOpen=false,menuPage=Math.max(0,Math.floor(Math.max(0,tourData.current)/6));
@@ -1267,14 +1268,18 @@ function startSceneSwitch(url,pushHistory=true){
 }
 function navigate(url){
  if(document.body.classList.contains('scene-leaving'))return;
- const target=new URL(url,location.href);
+ const target=viewerTargetWithEmbed(new URL(url,location.href),location.origin,embedToken);
  if(target.href===location.href)return;
+ // Do not replace a partner site's iframe with the MiniVR homepage.
+ if(embedToken&&target.origin===location.origin&&target.pathname==='/'){
+  location.href='/embed.php?token='+encodeURIComponent(embedToken);return;
+ }
  if(shouldSwitchSceneInPlace(target,location.origin,tour,tourData.scenes,getViewerMode())){startSceneSwitch(target.pathname+target.search);return;}
  if(getViewerMode()===ViewerMode.CARDBOARD){
-  try{sessionStorage.setItem(cardboardRestoreKey,JSON.stringify({path:new URL(url,location.href).pathname,expires:Date.now()+30000}))}catch{}
+  try{sessionStorage.setItem(cardboardRestoreKey,JSON.stringify({path:target.pathname,expires:Date.now()+30000}))}catch{}
  }else{try{sessionStorage.removeItem(cardboardRestoreKey)}catch{}}
  document.body.classList.add('scene-leaving');
- setTimeout(()=>location.href=url,260)
+ setTimeout(()=>location.href=target.href,260)
 }
 window.addEventListener('popstate',()=>{
  if(!tour||location.pathname!=='/viewer.php')return;
