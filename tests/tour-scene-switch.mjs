@@ -37,7 +37,7 @@ const context={
  parallaxDepthPixels:null,manualFoliageMaskImage:null,manualWaterMaskImage:null,
  effectSystem:effect('effects'),atmosphereSystem:effect('atmosphere'),
  moonSystem:effect('moon'),environmentSystem:effect('environment'),
- scene:{},
+ scene:{},renderer:{},
  createPanoramaEffects:()=>effect('new effects'),
  createAtmosphere:()=>effect('new atmosphere'),
  createMoonlight:()=>effect('new moon'),
@@ -49,7 +49,7 @@ const context={
  hotspotData:[],hotspotSprite(){},closePanels(){},menuPage:0,buildMenu(){},
  root:{dataset:{}},document:{title:'',querySelector:()=>title,body:{classList:{remove(){}}}},
  history:{pushState(_state,_title,url){updated.push(url)}},
- syncTourRail(){},syncMobileMotionButton(){},cardboardMenuPlaced:true,
+ syncTourRail(){},syncMobileTourNav(){},syncTourMap(){},syncMobileMotionButton(){},cardboardMenuPlaced:true,
  ViewerMode:{DESKTOP:'desktop',CARDBOARD:'cardboard'},getViewerMode:()=> 'desktop',
  console
 };

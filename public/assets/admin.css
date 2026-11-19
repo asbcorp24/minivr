@@ -85,6 +85,13 @@ body.hotspot-fullscreen-active{overflow:hidden!important}#hotspot-editor.hotspot
 .tour-pano-option img{width:100%;height:88px;object-fit:cover;border-radius:6px;background:#122b39}
 .tour-pano-option span{min-width:0;overflow-wrap:anywhere}
 .tour-pano-option small{display:block;margin-top:5px;font-size:10px}
+.scene-location-details{margin:9px 0 12px;padding:9px 10px;border:1px solid #356478;border-radius:10px;background:#0a2230}
+.scene-location-details summary{cursor:pointer;color:#a9edf5;font:600 12px system-ui}
+.scene-location-details .scene-geo-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0 8px}
+.scene-location-details .scene-geo-fields label{min-width:0;font-size:12px}
+.scene-location-details .scene-geo-fields input{width:100%;min-width:0;margin-top:5px}
+.scene-location-details small{display:block;margin:6px 0;color:#98b8c4;line-height:1.4}
+.scene-location-details a{display:inline-block;margin-top:6px;color:#80e3ef;font:12px system-ui}
 @media(max-width:760px){
  .tour-storyboard{padding:14px}
  .tour-storyboard-heading{display:grid}
@@ -95,4 +102,5 @@ body.hotspot-fullscreen-active{overflow:hidden!important}#hotspot-editor.hotspot
  .tour-storyboard-handle{font-size:20px}
  .tour-storyboard-description strong{font-size:13px}
  .tour-pano-picker{grid-template-columns:repeat(2,minmax(0,1fr));max-height:300px}
+ .scene-location-details .scene-geo-fields{grid-template-columns:1fr}
 }
