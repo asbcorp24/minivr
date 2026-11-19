@@ -112,7 +112,7 @@ function resetTourTimer(){
 }
 if(tour&&tourData.scenes.length>1){document.querySelector('#controls')?.prepend(tourButton);resetTourTimer()}
 document.addEventListener('visibilitychange',()=>{if(tour&&document.visibilityState==='visible')resetTourTimer();else if(tourTimer){clearTimeout(tourTimer);tourTimer=null}});
-// Desktop-only tour scene rail: lightweight DOM, no additional WebGL resources.
+// Tour scene rail on desktop, compact previous/next controls on phones.
 const tourRail=document.createElement('nav');
 tourRail.id='minivr-tour-rail';
 tourRail.setAttribute('aria-label','Панорамы экскурсии');
@@ -131,6 +131,23 @@ if(tour&&tourData.scenes.length>1){
  tourData.scenes.forEach((item,i)=>{const b=document.createElement('button');b.type='button';b.dataset.label=(i+1)+'. '+(item.title||'Панорама '+(i+1));b.title=b.dataset.label;b.addEventListener('click',()=>goScene(i));tourRail.appendChild(b)});
  document.body.appendChild(tourRail);
  window.addEventListener('resize',syncTourRail);requestAnimationFrame(syncTourRail);
+}
+// Keep manual scene navigation visible on small screens without covering the view.
+const mobileTourNav=document.createElement('nav');
+mobileTourNav.id='minivr-mobile-tour-nav';
+mobileTourNav.setAttribute('aria-label','Переключение панорам экскурсии');
+const mobileTourPrev=document.createElement('button');mobileTourPrev.type='button';mobileTourPrev.textContent='‹';mobileTourPrev.setAttribute('aria-label','Предыдущая панорама');
+const mobileTourCount=document.createElement('span');mobileTourCount.setAttribute('aria-live','polite');
+const mobileTourNext=document.createElement('button');mobileTourNext.type='button';mobileTourNext.textContent='›';mobileTourNext.setAttribute('aria-label','Следующая панорама');
+mobileTourPrev.addEventListener('click',()=>goScene(tourData.current-1));
+mobileTourNext.addEventListener('click',()=>goScene(tourData.current+1));
+mobileTourNav.append(mobileTourPrev,mobileTourCount,mobileTourNext);
+if(tour&&tourData.scenes.length>1){document.body.appendChild(mobileTourNav);syncMobileTourNav();}
+function syncMobileTourNav(){
+ const count=tourData.scenes.length,index=tourData.current;
+ mobileTourCount.textContent=(index+1)+' / '+count;
+ mobileTourPrev.disabled=index<=0;mobileTourNext.disabled=index<0||index>=count-1;
+ mobileTourNav.setAttribute('aria-label','Панорама '+(index+1)+' из '+count+'. Переключение панорам экскурсии');
 }
 const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1100);
 effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);
@@ -1145,7 +1162,7 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  const topTitle=doc.querySelector('#top b'),currentTitle=document.querySelector('#top b');
  if(topTitle&&currentTitle)currentTitle.textContent=topTitle.textContent;
  if(pushHistory)history.pushState({miniVRScene:true},'',url);
- syncTourRail();syncMobileMotionButton();
+ syncTourRail();syncMobileTourNav();syncMobileMotionButton();
  cardboardMenuPlaced=false;
  if(getViewerMode()===ViewerMode.CARDBOARD)placeCardboardMenu();
 }
