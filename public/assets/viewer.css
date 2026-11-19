@@ -38,3 +38,13 @@
 #mobile-motion-parallax[aria-pressed="true"]{background:#146475;border-color:#8af3ff}
 #mobile-motion-parallax:disabled{opacity:.65}
 #mobile-motion-parallax[hidden],.cardboard #mobile-motion-parallax,.xr-presenting #mobile-motion-parallax{display:none!important}
+
+/* Compact touch-friendly tour navigation, below the panorama center and above controls. */
+#minivr-mobile-tour-nav{display:none}
+@media(max-width:767px){
+ #minivr-mobile-tour-nav{position:fixed;z-index:8;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 67px);display:flex;align-items:center;gap:4px;padding:4px;border:1px solid #6addec66;border-radius:12px;background:#071c2bdc;backdrop-filter:blur(12px);box-shadow:0 4px 16px #0006}
+ #minivr-mobile-tour-nav button{width:36px;height:36px;min-width:36px;padding:0;font:26px/1 system-ui;touch-action:manipulation}
+ #minivr-mobile-tour-nav span{min-width:40px;text-align:center;font:600 11px system-ui;color:#d9faff;white-space:nowrap}
+ #minivr-mobile-tour-nav button:disabled{opacity:.3}
+ .cardboard #minivr-mobile-tour-nav,.xr-presenting #minivr-mobile-tour-nav{display:none!important}
+}
