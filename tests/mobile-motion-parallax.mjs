@@ -47,6 +47,10 @@ parallax.recenter();
 phone.emit('deviceorientation',{beta:17,gamma:27});
 assert.deepEqual(parallax.update(.05),{x:0,y:0});
 
+phone.emit('deviceorientation',{beta:17,gamma:37});
+assert(parallax.update(.05).x>.15,'A 10° portrait tilt should be perceptible after smoothing');
+parallax.recenter();
+
 phone.screen.orientation.angle=90;
 phone.emit('deviceorientation',{beta:17,gamma:27});
 assert.deepEqual(parallax.update(.05),{x:0,y:0});

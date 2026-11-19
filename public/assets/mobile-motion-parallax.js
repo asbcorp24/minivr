@@ -18,9 +18,10 @@ export function createMobileMotionParallax(host=window){
   else if(rotation===180){sx=-gamma;sy=-beta;}
   else if(rotation===270){sx=beta;sy=-gamma;}
   if(!neutral)neutral={x:sx,y:sy};
-  // Small phone tilts feel like peering around a foreground object.
-  targetX=clamp(difference(sx,neutral.x)/22);
-  targetY=clamp(-difference(sy,neutral.y)/28);
+  // A 10-15° tilt should produce a noticeable cue even on narrow portrait screens.
+  // The viewer still caps camera translation to protect foreground silhouettes.
+  targetX=clamp(difference(sx,neutral.x)/14);
+  targetY=clamp(-difference(sy,neutral.y)/18);
   lastSample=Date.now();
   if(resolveFirst){resolveFirst(true);resolveFirst=null;}
  }

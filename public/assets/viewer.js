@@ -1212,17 +1212,17 @@ renderer.setAnimationLoop((time)=>{
  // than remaining pinned to the world X/Z axes.
  const motionDt=depthAutoLastTime?Math.min(.05,Math.max(0,(time-depthAutoLastTime)/1000)):1/60;
  depthAutoLastTime=time;
+ const portraitPhone=window.matchMedia('(orientation: portrait) and (pointer: coarse) and (max-width: 600px)').matches;
  const desktopWindowEligible=mode===ViewerMode.DESKTOP&&!orientation&&projection==='360'&&stereoMode==='mono'&&!!parallaxDepthPixels&&effectSettings.parallaxEnabled===true;
  if(desktopWindowEligible&&mobileMotion.isActive()){
   const tilt=mobileMotion.update(motionDt);
-  depthPointer.set(tilt.x*.55,tilt.y*.42);
+  depthPointer.set(tilt.x*(portraitPhone?.95:.65),tilt.y*(portraitPhone?.75:.5));
  }
  const desktopWindowOffset=desktop3DWindow.update(motionDt,desktopWindowEligible,depthPointerSmooth);
  if(mode===ViewerMode.DESKTOP&&!orientation){
-  // Portrait phones need a stronger positional depth cue than desktop.
-  // Keep landscape, tablets, Cardboard and WebXR unchanged.
-  const portraitPhone=window.matchMedia('(orientation: portrait) and (pointer: coarse) and (max-width: 600px)').matches;
-  const portraitBoost=portraitPhone?1.35:1;
+  // Portrait phone displacement needs more visible screen-space motion.
+  // Desktop, landscape, tablets, Cardboard and WebXR remain unchanged.
+  const portraitBoost=portraitPhone?1.85:1;
   // Depth Window: optional stronger viewpoint translation, as if looking
   // through a nearby opening into the panorama. No synthetic camera motion in XR.
   const depthWindow=effectSettings.parallaxDepthWindow===true
@@ -1244,6 +1244,12 @@ renderer.setAnimationLoop((time)=>{
    depthPointerSmooth.y*amount*(desktopReliefEnabled()?.2:(.55+depthWindow*.15))+Math.sin(depthAutoPhase*.65+.4)*sway*.18+desktopWindowOffset.y,
    Math.cos(depthAutoPhase)*sway*.2+depthWindow*amount*.12
   );
+  if(portraitPhone&&amount>0){
+   // Bounded portrait gain: noticeable near-field motion without crossing
+   // the closest (~8-unit) depth shell or opening large disocclusion cracks.
+   depthLocalOffset.x=THREE.MathUtils.clamp(depthLocalOffset.x*1.9,-2.1,2.1);
+   depthLocalOffset.y=THREE.MathUtils.clamp(depthLocalOffset.y*1.7,-1.3,1.3);
+  }
   const yaw=THREE.MathUtils.degToRad(lon);
   const cos=Math.cos(yaw),sin=Math.sin(yaw);
   depthDesiredOffset.set(
