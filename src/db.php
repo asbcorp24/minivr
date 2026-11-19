@@ -71,6 +71,19 @@ function db(): PDO
             content TEXT DEFAULT '',
             FOREIGN KEY(scene_id) REFERENCES tour_scenes(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS embed_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL CHECK(kind IN ('panorama', 'tour')),
+            target_id INTEGER NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            label TEXT NOT NULL DEFAULT '',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            revoked_at TEXT DEFAULT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_embed_links_target
+            ON embed_links(kind, target_id);
     ");
 
     $cols = $db->query("PRAGMA table_info(panoramas)")->fetchAll();
