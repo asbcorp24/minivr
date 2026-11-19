@@ -49,6 +49,30 @@ if('serviceWorker' in navigator&&location.protocol==='https:'){
    button.classList.add('minivr-viewer-install');
    button.textContent='↓';
    button.title='Установить приложение';
+   // Inline mobile geometry prevents stale viewer.css from leaving a large
+   // fixed install banner over the bottom viewer controls.
+   const positionInstall=()=>{
+    if(window.matchMedia('(max-width: 767px)').matches){
+     button.style.setProperty('left','10px','important');
+     button.style.setProperty('right','auto','important');
+     button.style.setProperty('top','calc(env(safe-area-inset-top, 0px) + 52px)','important');
+     button.style.setProperty('bottom','auto','important');
+     button.style.setProperty('width','32px','important');
+     button.style.setProperty('height','32px','important');
+     button.style.setProperty('min-width','32px','important');
+     button.style.setProperty('max-width','32px','important');
+     button.style.setProperty('padding','0','important');
+     button.style.setProperty('font-size','16px','important');
+     button.style.setProperty('border-radius','9px','important');
+     button.style.setProperty('display','grid','important');
+     button.style.setProperty('place-items','center','important');
+    }else{
+     for(const property of ['left','right','top','bottom','width','height','min-width','max-width','padding','font-size','border-radius','display','place-items'])button.style.removeProperty(property);
+     button.style.left='16px';button.style.bottom='16px';button.style.padding='12px 16px';button.style.maxWidth='calc(100vw - 32px)';
+    }
+   };
+   positionInstall();
+   window.addEventListener('resize',positionInstall);
   }
   button.addEventListener('click',installFromButton);
   document.body.appendChild(button);
