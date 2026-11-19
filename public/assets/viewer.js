@@ -1110,7 +1110,7 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  if(nextProjection==='360'&&nextStereo==='mono'&&next.dataset.tiles&&!nextDepth){
   try{
    nextTiles=await createTiledPanorama({url:next.dataset.tiles,scene,camera,renderer,mirror:!!nextSettings.mirrorHorizontal});
-   nextTiles.group.visible=false;
+   if(nextTiles.group)nextTiles.group.visible=false;
   }catch(error){console.warn('Tour scene tiles unavailable, using image',error)}
  }
  if(!nextTiles){if(!image)throw new Error('Scene image missing');texture=await new THREE.TextureLoader().loadAsync(image);}
@@ -1124,7 +1124,7 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  // the next panorama's settings. Legacy day-cycle globals no longer exist.
  effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);
  if(nextTiles){
-  clearPanoramaMeshes();tiledPanorama=nextTiles;nextTiles.group.visible=true;
+  clearPanoramaMeshes();tiledPanorama=nextTiles;if(nextTiles.group)nextTiles.group.visible=true;
   if(getViewerMode()===ViewerMode.DESKTOP)camera.layers.set(0);
   document.body.classList.remove('scene-loading');
  }else installPanorama(texture);

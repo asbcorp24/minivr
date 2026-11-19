@@ -63,3 +63,17 @@ assert.equal(context.root.dataset.scene,'42');
 assert.equal(title.textContent,'New panorama');
 
 console.log('In-place tour scene transition executes without undeclared state');
+
+// A tiled panorama implementation may not expose its group (e.g. an older
+// cached module). Navigation must still complete without losing viewing mode.
+nextDataset.tiles='/tiles/next/manifest.json';
+context.createTiledPanorama=async()=>({update(){},dispose(){}});
+context.clearPanoramaMeshes=()=>updated.push('panorama meshes cleared');
+context.camera={layers:{set(){}}};
+context.getViewerMode=()=> 'desktop';
+context.installPanorama=()=>{throw Error('Tile scene must not install image fallback')};
+await context.switchSceneInPlace('/viewer.php?id=3&tour=7&scene=43');
+assert.equal(context.root.dataset.scene,'42'); // The mocked DOM keeps scene 42.
+assert.equal(context.root.dataset.tiles,'/tiles/next/manifest.json');
+assert.ok(updated.includes('panorama meshes cleared'));
+console.log('Tiled tour scene switches even without a group visibility handle');
