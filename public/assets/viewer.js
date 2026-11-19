@@ -6,6 +6,7 @@ import {createTiledPanorama} from '/assets/tiled-panorama.js';
 import {createDesktop3DWindow} from '/assets/desktop-3d-window.js';
 import {createMobileMotionParallax} from '/assets/mobile-motion-parallax.js';
 import {canTranslateDepthCamera,depthOffsetInWorld} from '/assets/depth-motion.js';
+import {shouldSwitchSceneInPlace} from '/assets/tour-navigation.js';
 import * as THREE from '/assets/vendor/three/three.module.js';
 import DeviceOrientationControls from '/assets/vendor/three/DeviceOrientationControls.js';
 import VREffect from '/assets/vendor/three/effects/VREffect.js';
@@ -181,22 +182,24 @@ let parallaxDepthPixels=null;
 
 let manualFoliageMaskImage=null;
 let manualWaterMaskImage=null,waterMotionMask=null;
-async function loadManualWaterMask(){manualWaterMaskImage=null;if(!effectSettings.parallaxWaterMotion||!effectSettings.parallaxWaterMask)return;try{const img=new Image();img.src=effectSettings.parallaxWaterMask;await img.decode();manualWaterMaskImage=img;}catch(e){console.warn('MiniVR water mask unavailable',e);}}
-async function loadManualFoliageMask(){
- manualFoliageMaskImage=null;
- if(!effectSettings.parallaxFoliageMask)return;
- try{const img=new Image();img.src=effectSettings.parallaxFoliageMask;await img.decode();manualFoliageMaskImage=img;}
- catch(e){console.warn('MiniVR manual foliage mask unavailable',e);}
+async function fetchManualWaterMask(settings){
+ if(!settings.parallaxWaterMotion||!settings.parallaxWaterMask)return null;
+ try{const img=new Image();img.src=settings.parallaxWaterMask;await img.decode();return img;}
+ catch(e){console.warn('MiniVR water mask unavailable',e);return null;}
 }
-async function loadParallaxDepth(){
- if(projection!=='360'||stereoMode!=='mono'||!effectSettings.parallaxEnabled||!effectSettings.parallaxDepth)return;
+async function fetchManualFoliageMask(settings){
+ if(!settings.parallaxFoliageMask)return null;
+ try{const img=new Image();img.src=settings.parallaxFoliageMask;await img.decode();return img;}
+ catch(e){console.warn('MiniVR manual foliage mask unavailable',e);return null;}
+}
+async function fetchParallaxDepth(settings,projectionMode,stereo){
+ if(projectionMode!=='360'||stereo!=='mono'||!settings.parallaxEnabled||!settings.parallaxDepth)return null;
  try{
-  const img=new Image();img.crossOrigin='anonymous';img.src=effectSettings.parallaxDepth;await img.decode();
+  const img=new Image();img.crossOrigin='anonymous';img.src=settings.parallaxDepth;await img.decode();
   const canvas=document.createElement('canvas');canvas.width=256;canvas.height=128;
   const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,256,128);
-  parallaxDepthPixels=ctx.getImageData(0,0,256,128).data;
-  requestAnimationFrame(syncMobileMotionButton);
- }catch(e){console.warn('MiniVR depth map unavailable',e);}
+  return ctx.getImageData(0,0,256,128).data;
+ }catch(e){console.warn('MiniVR depth map unavailable',e);return null;}
 }
 function sampleDepthBilinear(u,v){
  // Longitude wraps at the seam; latitude clamps at the poles.
@@ -706,16 +709,31 @@ function installPanorama(source){
  if(getViewerMode()===ViewerMode.DESKTOP){if(stereoMode==='mono')camera.layers.set(0);else desktopEye()}
  requestAnimationFrame(()=>requestAnimationFrame(()=>document.body.classList.remove('scene-loading')));
 }
-let tiledPanorama=null;
+function clearPanoramaMeshes(){
+ clearHybridMeshes();
+ if(depthBackgroundMesh){scene.remove(depthBackgroundMesh);depthBackgroundMesh.geometry.dispose();depthBackgroundMesh.material.map?.dispose();depthBackgroundMesh.material.dispose();depthBackgroundMesh=null;}
+ for(const mesh of new Set([leftMesh,rightMesh].filter(Boolean))){scene.remove(mesh);mesh.geometry.dispose();mesh.material.map?.dispose();mesh.material.dispose();}
+ leftMesh=rightMesh=null;
+}
+let tiledPanorama=null,panoramaLoadEpoch=0;
 async function loadInitialPanorama(){
- await Promise.all([loadParallaxDepth(),loadManualFoliageMask(),loadManualWaterMask()]);
+ const epoch=panoramaLoadEpoch;
+ const [depthPixels,foliageMask,waterMask]=await Promise.all([
+  fetchParallaxDepth(effectSettings,projection,stereoMode),
+  fetchManualFoliageMask(effectSettings),fetchManualWaterMask(effectSettings)
+ ]);
+ if(epoch!==panoramaLoadEpoch)return;
+ parallaxDepthPixels=depthPixels;manualFoliageMaskImage=foliageMask;manualWaterMaskImage=waterMask;
+ requestAnimationFrame(syncMobileMotionButton);
  if(projection==='360'&&stereoMode==='mono'&&root.dataset.tiles&&!parallaxDepthPixels){
   try{
-   tiledPanorama=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer,mirror:!!effectSettings.mirrorHorizontal});
+   const tiles=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer,mirror:!!effectSettings.mirrorHorizontal});
+   if(epoch!==panoramaLoadEpoch){tiles.dispose();return;}
+   tiledPanorama=tiles;
    document.body.classList.remove('scene-loading');return;
   }catch(err){console.warn('Tile mode unavailable; falling back to original image',err)}
  }
- new THREE.TextureLoader().load(root.dataset.image,installPanorama,undefined,err=>{console.error('Scene texture load failed',err);document.querySelector('#loader span').textContent='SCENE LOAD ERROR';});
+ new THREE.TextureLoader().load(root.dataset.image,texture=>{if(epoch!==panoramaLoadEpoch){texture.dispose();return;}installPanorama(texture)},undefined,err=>{if(epoch!==panoramaLoadEpoch)return;console.error('Scene texture load failed',err);document.querySelector('#loader span').textContent='SCENE LOAD ERROR';});
 }
 loadInitialPanorama();
 
@@ -734,7 +752,19 @@ function closePanels(except=null){if(except!==menuGroup)menuGroup.visible=false;
 let menuOpen=false,menuPage=Math.max(0,Math.floor(Math.max(0,tourData.current)/6));
 hudButton('✕',-.72,'exit-vr',()=>exitViewer(),0x2a2a2a,0xff3366);hudButton('⊞',-.48,'gallery',()=>{const show=!menuGroup.visible;closePanels(show?menuGroup:null);menuGroup.visible=show;menuOpen=show;if(show)buildMenu()});hudButton('⏮',-.24,'previous',()=>goScene(tourData.current-1));hudButton('⏭',0,'next',()=>goScene(tourData.current+1));hudButton('⟲',.24,'reset-orientation',()=>{lon=0;lat=0});hudButton('i',.48,'info',()=>{const show=!infoGroup.visible;closePanels(show?infoGroup:null);infoGroup.visible=show});hudButton('⌂',.72,'home',()=>navigate('/'));
 {const cv=document.createElement('canvas');cv.width=900;cv.height=420;const c=cv.getContext('2d');c.fillStyle='#041923f2';c.fillRect(0,0,900,420);c.strokeStyle='#55e9f8';c.lineWidth=5;c.strokeRect(4,4,892,412);c.fillStyle='#70efff';c.font='bold 25px monospace';c.fillText('SCENE INFO',40,55);c.fillStyle='#fff';c.font='bold 42px sans-serif';c.fillText((tourData.title||'').slice(0,34),40,115);c.font='25px sans-serif';const words=(tourData.description||'Нет описания').split(' ');let line='',y=170;for(const w of words){const test=line+w+' ';if(c.measureText(test).width>800){c.fillText(line,40,y);line=w+' ';y+=38}else line=test;if(y>370)break}c.fillText(line,40,y);const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));sp.scale.set(4.2,1.96,1);sp.position.set(0,.25,-3);sp.renderOrder=120;infoGroup.add(sp)}
-function clearGroup(g){for(const o of [...g.children]){g.remove(o);const k=interactive.indexOf(o);if(k>=0)interactive.splice(k,1);o.material?.map?.dispose?.();o.material?.dispose?.()}}
+function clearGroup(g){
+ for(const object of [...g.children]){
+  g.remove(object);
+  object.traverse(node=>{
+   const k=interactive.indexOf(node);if(k>=0)interactive.splice(k,1);
+   node.geometry?.dispose?.();
+   if(node.material){for(const material of Array.isArray(node.material)?node.material:[node.material]){
+    material.map?.dispose?.();material.dispose();
+   }}
+  });
+ }
+ if(g===contentGroup)g.userData.stereoPictures=null;
+}
 let menuBuildId=0;
 function sceneCard(s,index,x,y,buildId){const cv=document.createElement('canvas');cv.width=640;cv.height=360;const c=cv.getContext('2d');c.fillStyle=index===tourData.current?'#0c5865':'#061923';c.fillRect(0,0,640,360);c.strokeStyle=index===tourData.current?'#91f8ff':'#2f8a99';c.lineWidth=index===tourData.current?8:4;c.strokeRect(4,4,632,352);c.fillStyle='#6cefff';c.font='bold 22px monospace';c.fillText('SCENE '+String(index+1).padStart(2,'0'),26,42);c.fillStyle='#efffff';c.font='bold 31px sans-serif';let title=(s.title||'Сцена');if(title.length>28)title=title.slice(0,27)+'…';c.fillText(title,26,295);c.fillStyle='#6e929d';c.font='20px monospace';c.fillText(index===tourData.current?'CURRENT':'OPEN →',26,330);const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));sp.scale.set(1.82,1.02,1);sp.position.set(x,y,-3.2);sp.userData.action=()=>goScene(index);sp.renderOrder=120;menuGroup.add(sp);interactive.push(sp);if(s.preview||s.image){new THREE.TextureLoader().load(s.preview||s.image,t=>{if(buildId!==menuBuildId){t.dispose();return}t.colorSpace=THREE.SRGBColorSpace;const pic=new THREE.Sprite(new THREE.SpriteMaterial({map:t,transparent:true,depthTest:false}));pic.scale.set(1.65,.62,1);pic.position.set(x,y+.13,-3.18);pic.renderOrder=121;pic.userData.action=()=>goScene(index);menuGroup.add(pic);interactive.push(pic)})}}
 function galleryButton(label,x,y,action,type='gallery-control'){const g=new THREE.Group(),m=new THREE.Mesh(new THREE.CircleGeometry(.12,32),new THREE.MeshBasicMaterial({color:0x2a2a2a,opacity:.92,transparent:true,depthTest:false}));m.userData={interactive:true,type,action,baseColor:0x2a2a2a,hoverColor:0x444444};g.add(m);const ring=new THREE.Mesh(new THREE.RingGeometry(.116,.123,32),new THREE.MeshBasicMaterial({color:0xffffff,opacity:.15,transparent:true,depthTest:false}));ring.position.z=.001;g.add(ring);const cv=document.createElement('canvas');cv.width=cv.height=64;const c=cv.getContext('2d');c.fillStyle='#fff';c.font='36px Arial';c.textAlign='center';c.textBaseline='middle';c.fillText(label,32,32);const lm=new THREE.Mesh(new THREE.PlaneGeometry(.14,.14),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));lm.position.z=.002;g.add(lm);g.position.set(x,y,-3.12);g.renderOrder=126;menuGroup.add(g);interactive.push(m);return g}
@@ -866,11 +896,14 @@ mobileMotionButton.setAttribute('aria-pressed','false');
 mobileMotionButton.setAttribute('aria-label','Параллакс от наклона телефона');
 document.body.appendChild(mobileMotionButton);
 let mobileMotionPending=false;
-function mobileMotionEligible(){
- return getViewerMode()===ViewerMode.DESKTOP&&projection==='360'&&stereoMode==='mono'
-  &&!!parallaxDepthPixels&&effectSettings.parallaxEnabled===true
+function mobileMotionSensorSupported(){
+ return getViewerMode()===ViewerMode.DESKTOP
   &&window.matchMedia('(pointer: coarse)').matches&&window.isSecureContext
   &&typeof window.DeviceOrientationEvent!=='undefined';
+}
+function mobileMotionEligible(){
+ return mobileMotionSensorSupported()&&projection==='360'&&stereoMode==='mono'
+  &&!!parallaxDepthPixels&&effectSettings.parallaxEnabled===true;
 }
 function syncMobileMotionButton(){
  mobileMotionButton.hidden=!mobileMotionEligible();
@@ -1055,55 +1088,95 @@ function clearSceneHotspots(){
 }
 let sceneSwitchInProgress=false;
 const cardboardRestoreKey='minivr:cardboard:restore';
-async function switchSceneInPlace(url){
+async function switchSceneInPlace(url,{pushHistory=true}={}){
  const response=await fetch(url,{credentials:'same-origin'});
  if(!response.ok)throw new Error('Scene HTTP '+response.status);
  const doc=new DOMParser().parseFromString(await response.text(),'text/html');
  const next=doc.querySelector('#viewer');
  if(!next)throw new Error('Scene data missing');
  const image=next.dataset.image;
- clearSceneHotspots();
- const texture=await new THREE.TextureLoader().loadAsync(image);
- projection=next.dataset.projection||'360';stereoMode=next.dataset.stereo||'mono';
- if(tiledPanorama){tiledPanorama.dispose();tiledPanorama=null;}
- installPanorama(texture);
- effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();dayCycleStarted=null;dayGradeLast=-1;dayPhaseOverride=null;try{effectSettings=JSON.parse(next.dataset.effects||'{}');effectSettings.timeOfDay=false;effectSettings.dayCycle=false}catch(e){effectSettings={}}effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);root.dataset.effects=next.dataset.effects||'{}';
+ const nextProjection=next.dataset.projection||'360',nextStereo=next.dataset.stereo||'mono';
+ let nextSettings={};try{nextSettings=JSON.parse(next.dataset.effects||'{}')}catch{}
+ nextSettings.timeOfDay=false;nextSettings.dayCycle=false;
  const nextTour=JSON.parse(doc.querySelector('#tour-data')?.textContent||'{}');
+ const nextHotspots=JSON.parse(doc.querySelector('#hotspots-data')?.textContent||'[]');
+ // Prepare the next scene before touching the one currently being viewed.
+ // Depth, masks and settings must belong to the same panorama as its texture.
+ const [nextDepth,nextFoliage,nextWater]=await Promise.all([
+  fetchParallaxDepth(nextSettings,nextProjection,nextStereo),
+  fetchManualFoliageMask(nextSettings),fetchManualWaterMask(nextSettings)
+ ]);
+ let nextTiles=null,texture=null;
+ if(nextProjection==='360'&&nextStereo==='mono'&&next.dataset.tiles&&!nextDepth){
+  try{
+   nextTiles=await createTiledPanorama({url:next.dataset.tiles,scene,camera,renderer,mirror:!!nextSettings.mirrorHorizontal});
+   nextTiles.group.visible=false;
+  }catch(error){console.warn('Tour scene tiles unavailable, using image',error)}
+ }
+ if(!nextTiles){if(!image)throw new Error('Scene image missing');texture=await new THREE.TextureLoader().loadAsync(image);}
+ ++panoramaLoadEpoch;
+ clearSceneHotspots();
+ if(tiledPanorama){tiledPanorama.dispose();tiledPanorama=null;}
+ projection=nextProjection;stereoMode=nextStereo;effectSettings=nextSettings;
+ parallaxDepthPixels=nextDepth;manualFoliageMaskImage=nextFoliage;manualWaterMaskImage=nextWater;
+ effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();
+ dayCycleStarted=null;dayGradeLast=-1;dayPhaseOverride=null;
+ effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);
+ if(nextTiles){
+  clearPanoramaMeshes();tiledPanorama=nextTiles;nextTiles.group.visible=true;
+  if(getViewerMode()===ViewerMode.DESKTOP)camera.layers.set(0);
+  document.body.classList.remove('scene-loading');
+ }else installPanorama(texture);
  tourData.current=nextTour.current??-1;
+ tourData.title=nextTour.title||'';tourData.description=nextTour.description||'';
  guidedPoints=sceneNarrationPoints();
  guidedEnabled=!!tour&&guidedPoints.length>0;
  guidedSetup();
  resetTourTimer();
  window.dispatchEvent(new CustomEvent('minivr:scene-music',{detail:{trackId:Number(next.dataset.musicTrack||0)}}));
- hotspotData=JSON.parse(doc.querySelector('#hotspots-data')?.textContent||'[]');
+ hotspotData=nextHotspots;
  hotspotData.forEach(hotspotSprite);
  closePanels();menuPage=Math.max(0,Math.floor(Math.max(0,tourData.current)/6));buildMenu();
- root.dataset.image=image;root.dataset.projection=projection;root.dataset.stereo=stereoMode;
- root.dataset.scene=next.dataset.scene;
+ root.dataset.image=image;root.dataset.tiles=next.dataset.tiles||'';root.dataset.effects=next.dataset.effects||'{}';
+ root.dataset.projection=projection;root.dataset.stereo=stereoMode;
+ root.dataset.scene=next.dataset.scene;root.dataset.musicTrack=next.dataset.musicTrack||'0';
  document.title=doc.title;
  const topTitle=doc.querySelector('#top b'),currentTitle=document.querySelector('#top b');
  if(topTitle&&currentTitle)currentTitle.textContent=topTitle.textContent;
- history.pushState({miniVRScene:true},'',url);
+ if(pushHistory)history.pushState({miniVRScene:true},'',url);
+ syncTourRail();syncMobileMotionButton();
  cardboardMenuPlaced=false;
  if(getViewerMode()===ViewerMode.CARDBOARD)placeCardboardMenu();
+}
+function reportSceneSwitchError(error){
+ console.error('Tour scene switch failed; keeping the current viewing mode',error);
+ const notice=document.createElement('div');notice.textContent='Не удалось загрузить панораму. Попробуйте ещё раз.';
+ notice.style.cssText='position:fixed;z-index:1000;left:50%;top:70px;transform:translateX(-50%);max-width:90vw;background:#251b1deF;color:white;padding:12px 16px;border:1px solid #fa7990;border-radius:9px;font:13px system-ui';
+ document.body.appendChild(notice);setTimeout(()=>notice.remove(),4500);
+}
+function startSceneSwitch(url,pushHistory=true){
+ if(sceneSwitchInProgress)return;
+ sceneSwitchInProgress=true;document.body.classList.add('scene-loading');
+ switchSceneInPlace(url,{pushHistory}).catch(reportSceneSwitchError)
+  .finally(()=>{sceneSwitchInProgress=false;document.body.classList.remove('scene-loading')});
 }
 function navigate(url){
  if(document.body.classList.contains('scene-leaving'))return;
  const target=new URL(url,location.href);
- if(getViewerMode()===ViewerMode.CARDBOARD&&target.origin===location.origin&&target.pathname==='/viewer.php'){
-  if(sceneSwitchInProgress)return;
-  sceneSwitchInProgress=true;
-  switchSceneInPlace(target.pathname+target.search)
-   .catch(err=>{console.error('In-place scene switch failed',err);location.href=target.href;})
-   .finally(()=>{sceneSwitchInProgress=false;});
-  return;
- }
+ if(target.href===location.href)return;
+ if(shouldSwitchSceneInPlace(target,location.origin,tour,tourData.scenes,getViewerMode())){startSceneSwitch(target.pathname+target.search);return;}
  if(getViewerMode()===ViewerMode.CARDBOARD){
   try{sessionStorage.setItem(cardboardRestoreKey,JSON.stringify({path:new URL(url,location.href).pathname,expires:Date.now()+30000}))}catch{}
  }else{try{sessionStorage.removeItem(cardboardRestoreKey)}catch{}}
  document.body.classList.add('scene-leaving');
  setTimeout(()=>location.href=url,260)
 }
+window.addEventListener('popstate',()=>{
+ if(!tour||location.pathname!=='/viewer.php')return;
+ if(Number(new URLSearchParams(location.search).get('tour'))!==tour)return;
+ if(Number(new URLSearchParams(location.search).get('scene'))===Number(root.dataset.scene))return;
+ startSceneSwitch(location.pathname+location.search,false);
+});
 async function restoreCardboardAfterNavigation(){
  let saved=null;
  try{saved=JSON.parse(sessionStorage.getItem(cardboardRestoreKey)||'null');sessionStorage.removeItem(cardboardRestoreKey)}catch{}
@@ -1200,7 +1273,9 @@ renderer.setAnimationLoop((time)=>{
  }
  lastEffectTime=time;
  const mode=getViewerMode();
- if(mobileMotion.isActive()&&!mobileMotionEligible())stopMobileMotion();
+ // A panorama without a depth map temporarily suspends the effect; keep the
+ // user's 3D choice for the next scene that has a depth map.
+ if(mobileMotion.isActive()&&!mobileMotionSensorSupported())stopMobileMotion();
  const stereoPictures=contentGroup.userData.stereoPictures;
  if(stereoPictures){const headset=mode!==ViewerMode.DESKTOP;stereoPictures.desktop.visible=!headset;stereoPictures.leftPic.visible=headset;stereoPictures.rightPic.visible=headset}
  if(mode===ViewerMode.CARDBOARD&&cardboard){const canvas=renderer.domElement;canvas.style.position='fixed';canvas.style.inset='0';canvas.style.width='100vw';canvas.style.height='100dvh';canvas.style.zIndex='1'}
@@ -1220,7 +1295,7 @@ renderer.setAnimationLoop((time)=>{
   depthPointer.set(tilt.x*(portraitPhone?.95:.65),tilt.y*(portraitPhone?.75:.5));
  }
  const desktopWindowOffset=desktop3DWindow.update(motionDt,desktopWindowEligible,depthPointerSmooth);
- if(canTranslateDepthCamera(mode,orientation,mobileMotion.isActive())){
+ if(canTranslateDepthCamera(mode,orientation,mobileMotion.isActive()&&mobileMotionEligible())){
   // Portrait phone displacement needs more visible screen-space motion.
   // Desktop, landscape, tablets, Cardboard and WebXR remain unchanged.
   const portraitBoost=portraitPhone?1.85:1;
