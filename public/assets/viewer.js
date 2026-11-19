@@ -149,6 +149,57 @@ function syncMobileTourNav(){
  mobileTourPrev.disabled=index<=0;mobileTourNext.disabled=index<0||index>=count-1;
  mobileTourNav.setAttribute('aria-label','Панорама '+(index+1)+' из '+count+'. Переключение панорам экскурсии');
 }
+
+// Schematic tour route: scene order only. No geographic coordinates are inferred.
+const tourMap=document.createElement('aside');
+tourMap.id='minivr-tour-map';tourMap.hidden=true;
+tourMap.setAttribute('aria-label','Маршрут экскурсии');
+const tourMapToggle=document.createElement('button');
+tourMapToggle.type='button';tourMapToggle.id='minivr-tour-map-toggle';
+tourMapToggle.setAttribute('aria-controls','minivr-tour-map');
+tourMapToggle.setAttribute('aria-expanded','false');
+tourMapToggle.textContent='☷ Маршрут';
+const tourMapHeading=document.createElement('strong');tourMapHeading.textContent='Маршрут экскурсии';
+const tourMapClose=document.createElement('button');tourMapClose.type='button';tourMapClose.textContent='×';tourMapClose.setAttribute('aria-label','Закрыть маршрут');
+const tourMapHeader=document.createElement('div');tourMapHeader.className='minivr-tour-map-header';tourMapHeader.append(tourMapHeading,tourMapClose);
+const tourMapProgress=document.createElement('div');tourMapProgress.id='minivr-tour-progress';tourMapProgress.setAttribute('role','progressbar');tourMapProgress.setAttribute('aria-label','Прогресс экскурсии');tourMapProgress.setAttribute('aria-valuemin','0');tourMapProgress.setAttribute('aria-valuemax','100');
+const tourMapProgressFill=document.createElement('div');tourMapProgressFill.className='minivr-tour-progress-fill';tourMapProgress.append(tourMapProgressFill);
+const tourMapStatus=document.createElement('p');tourMapStatus.id='minivr-tour-map-status';tourMapStatus.setAttribute('aria-live','polite');
+const tourMapRoute=document.createElement('ol');tourMapRoute.id='minivr-tour-map-route';tourMapRoute.setAttribute('aria-label','Панорамы по порядку');
+tourMap.append(tourMapHeader,tourMapStatus,tourMapProgress,tourMapRoute);
+function setTourMapOpen(open){
+ tourMap.hidden=!open;
+ tourMapToggle.setAttribute('aria-expanded',String(open));
+}
+tourMapToggle.addEventListener('click',()=>setTourMapOpen(tourMap.hidden));
+tourMapClose.addEventListener('click',()=>setTourMapOpen(false));
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!tourMap.hidden)setTourMapOpen(false)});
+function syncTourMap(){
+ const total=tourData.scenes.length,index=Math.max(0,Math.min(total-1,tourData.current));
+ const percent=total>1?Math.round(index/(total-1)*100):100;
+ tourMapStatus.textContent='Панорама '+(index+1)+' из '+total+' · '+percent+'% маршрута';
+ tourMapProgress.setAttribute('aria-valuenow',String(percent));
+ tourMapProgressFill.style.width=percent+'%';
+ for(const [i,button] of Array.from(tourMapRoute.querySelectorAll('button')).entries()){
+  const active=i===index;
+  button.classList.toggle('is-current',active);
+  if(active)button.setAttribute('aria-current','step');else button.removeAttribute('aria-current');
+  const dot=button.querySelector('.minivr-route-dot');
+  if(dot)dot.textContent=i<index?'✓':String(i+1);
+ }
+}
+if(tour&&tourData.scenes.length>1){
+ tourData.scenes.forEach((item,i)=>{
+  const li=document.createElement('li');const button=document.createElement('button');
+  button.type='button';button.setAttribute('aria-label','Перейти к панораме '+(i+1)+': '+(item.title||'Панорама'));
+  const dot=document.createElement('span');dot.className='minivr-route-dot';dot.textContent=String(i+1);
+  const label=document.createElement('span');label.className='minivr-route-label';label.textContent=item.title||'Панорама '+(i+1);
+  button.append(dot,label);button.addEventListener('click',()=>{if(i!==tourData.current)goScene(i);setTourMapOpen(false)});
+  li.append(button);tourMapRoute.append(li);
+ });
+ document.body.append(tourMapToggle,tourMap);syncTourMap();
+}
+
 const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1100);
 effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);
 let renderer;
@@ -1162,7 +1213,7 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  const topTitle=doc.querySelector('#top b'),currentTitle=document.querySelector('#top b');
  if(topTitle&&currentTitle)currentTitle.textContent=topTitle.textContent;
  if(pushHistory)history.pushState({miniVRScene:true},'',url);
- syncTourRail();syncMobileTourNav();syncMobileMotionButton();
+ syncTourRail();syncMobileTourNav();syncTourMap();syncMobileMotionButton();
  cardboardMenuPlaced=false;
  if(getViewerMode()===ViewerMode.CARDBOARD)placeCardboardMenu();
 }

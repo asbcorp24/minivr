@@ -48,3 +48,24 @@
  #minivr-mobile-tour-nav button:disabled{opacity:.3}
  .cardboard #minivr-mobile-tour-nav,.xr-presenting #minivr-mobile-tour-nav{display:none!important}
 }
+
+/* Schematic route and scene-based progress; no external map or location data. */
+#minivr-tour-map-toggle{position:fixed;z-index:9;left:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 65px);padding:9px 12px;background:#092634e8;border:1px solid #66dce1;border-radius:10px;font:600 11px system-ui}
+#minivr-tour-map{position:fixed;z-index:10;left:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 108px);width:min(340px,calc(100vw - 28px));max-height:min(65dvh,530px);overflow:auto;padding:13px;background:#071b2aef;border:1px solid #69c8da77;border-radius:14px;box-shadow:0 12px 36px #0008;backdrop-filter:blur(14px);font:12px system-ui}
+#minivr-tour-map[hidden]{display:none!important}
+.minivr-tour-map-header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.minivr-tour-map-header strong{font-size:14px}
+.minivr-tour-map-header button{font-size:20px;padding:2px 10px}
+#minivr-tour-map-status{margin:10px 0 7px;color:#b7dce6}
+#minivr-tour-progress{height:6px;overflow:hidden;background:#254454;border-radius:8px}
+.minivr-tour-progress-fill{height:100%;width:0;background:#6fe8f1;transition:width .25s}
+#minivr-tour-map-route{list-style:none;padding:0;margin:12px 0 0}
+#minivr-tour-map-route li{position:relative;padding:0 0 7px}
+#minivr-tour-map-route li:not(:last-child):before{content:'';position:absolute;left:15px;top:29px;bottom:-4px;width:2px;background:#47798a}
+#minivr-tour-map-route button{width:100%;display:flex;align-items:center;gap:10px;text-align:left;padding:5px;border:1px solid transparent;background:transparent;font:12px system-ui;white-space:normal}
+#minivr-tour-map-route button.is-current{background:#164858;border-color:#69ddea;border-radius:8px}
+.minivr-route-dot{flex:none;width:30px;height:30px;border:1px solid #72a8b7;border-radius:50%;display:grid;place-items:center;background:#143646;font-weight:700}
+.is-current .minivr-route-dot{background:#79e5ef;color:#06212b}
+.minivr-route-label{overflow-wrap:anywhere}
+.cardboard #minivr-tour-map,.cardboard #minivr-tour-map-toggle,.xr-presenting #minivr-tour-map,.xr-presenting #minivr-tour-map-toggle{display:none!important}
+@media(max-width:767px){#minivr-tour-map-toggle{left:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 67px);padding:9px 8px}#minivr-tour-map{left:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 112px)}}
