@@ -48,3 +48,19 @@ export function rawOutsideLayer(raw, band, count, nonlinear = false, nonlinearSt
   const closest = candidates.reduce((a, b) => Math.abs(a - current) <= Math.abs(b - current) ? a : b);
   return rawForRenderedDepth(closest, nonlinear, nonlinearStrength);
 }
+
+// A 360° panorama is 2:1. Fit it without distorting brush coordinates when
+// the editor viewport switches between embedded and fullscreen dimensions.
+export function fittedPanoramaSize(viewportWidth, viewportHeight) {
+  const width = Math.max(1, Math.min(viewportWidth, viewportHeight * 2));
+  return { width, height: width / 2 };
+}
+
+export function boundedPanOffsets(x, y, zoom, imageWidth, imageHeight, viewportWidth, viewportHeight) {
+  const maxX = Math.max(0, (imageWidth * zoom - viewportWidth) / 2);
+  const maxY = Math.max(0, (imageHeight * zoom - viewportHeight) / 2);
+  return {
+    x: maxX === 0 ? 0 : Math.max(-maxX, Math.min(maxX, x)),
+    y: maxY === 0 ? 0 : Math.max(-maxY, Math.min(maxY, y))
+  };
+}

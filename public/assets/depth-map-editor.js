@@ -1,6 +1,9 @@
 // Layer-based corrections of the panorama's saved grayscale depth map.
 // The photograph is the background; only the transparent mask is drawn here.
-import { depthGroupCount, layerCoverage, rawForLayer, rawOutsideLayer } from './depth-layer-logic.js';
+import {
+  depthGroupCount, layerCoverage, rawForLayer, rawOutsideLayer,
+  fittedPanoramaSize, boundedPanOffsets
+} from './depth-layer-logic.js';
 
 const panel = document.querySelector('[data-depth-panel]');
 if (panel) {
@@ -11,6 +14,11 @@ if (panel) {
   if (root && saved && form) {
     const canvas = root.querySelector('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const viewport = root.querySelector('.depth-editor-viewport');
+    const stage = root.querySelector('.depth-editor-photo');
+    const fullscreenButton = root.querySelector('[data-toggle-fullscreen]');
+    const zoomInput = root.querySelector('[data-zoom]');
+    const zoomOutput = root.querySelector('[data-zoom-output]');
     const W = 512, H = 256;
     canvas.width = W;
     canvas.height = H;
@@ -42,6 +50,80 @@ if (panel) {
       [245, 182, 56], [244, 96, 76]];
     let original = null, working = null, selected = 0, painting = false;
     let last = null, dirty = false, saving = false, pendingFrame = false;
+    let zoom = 1, panX = 0, panY = 0, panning = false, panStart = null, spaceDown = false;
+
+    const isFullscreen = () => document.fullscreenElement === root || root.classList.contains('depth-editor-expanded');
+    function positionStage() {
+      const bounds = boundedPanOffsets(panX, panY, zoom,
+        stage.offsetWidth, stage.offsetHeight, viewport.clientWidth, viewport.clientHeight);
+      panX = bounds.x; panY = bounds.y;
+      stage.style.transform = 'translate(calc(-50% + ' + panX + 'px), calc(-50% + ' + panY + 'px)) scale(' + zoom + ')';
+    }
+    function fitStage() {
+      if (isFullscreen()) {
+        const fitted = fittedPanoramaSize(viewport.clientWidth, viewport.clientHeight);
+        stage.style.width = fitted.width + 'px';
+        stage.style.height = fitted.height + 'px';
+      } else {
+        stage.style.width = '';
+        stage.style.height = '';
+      }
+      positionStage();
+    }
+    function updateFullscreenButton() {
+      const expanded = isFullscreen();
+      fullscreenButton.textContent = expanded ? '↙ Закрыть полный экран' : '⛶ На весь экран';
+      fullscreenButton.setAttribute('aria-pressed', String(expanded));
+      fullscreenButton.setAttribute('aria-label', expanded ? 'Закрыть полноэкранный редактор' : 'Открыть редактор на весь экран');
+      fitStage();
+    }
+    function exitFallbackFullscreen() {
+      root.classList.remove('depth-editor-expanded');
+      document.body.classList.remove('depth-editor-fullscreen-open');
+      updateFullscreenButton();
+    }
+    fullscreenButton.addEventListener('click', async () => {
+      if (document.fullscreenElement === root) {
+        try { await document.exitFullscreen(); } catch (e) { console.warn('Depth editor fullscreen exit failed', e); }
+      } else if (root.classList.contains('depth-editor-expanded')) {
+        exitFallbackFullscreen();
+      } else {
+        try {
+          if (!root.requestFullscreen) throw Error('Fullscreen API недоступен');
+          await root.requestFullscreen();
+        } catch (e) {
+          // Embedded admin pages and some mobile browsers deny native fullscreen.
+          // A fixed viewport fallback keeps the editor usable without navigation.
+          root.classList.add('depth-editor-expanded');
+          document.body.classList.add('depth-editor-fullscreen-open');
+          updateFullscreenButton();
+        }
+      }
+    });
+    document.addEventListener('fullscreenchange', updateFullscreenButton);
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && root.classList.contains('depth-editor-expanded')) exitFallbackFullscreen();
+      if (e.code === 'Space' && !e.repeat && !e.target?.closest?.('input,select,textarea,button')) {
+        spaceDown = true;
+        root.classList.add('depth-editor-panning');
+        e.preventDefault();
+      }
+    });
+    document.addEventListener('keyup', e => {
+      if (e.code === 'Space') {
+        spaceDown = false;
+        if (tool.value !== 'pan') root.classList.remove('depth-editor-panning');
+      }
+    });
+    window.addEventListener('blur', () => { spaceDown = false; if (tool.value !== 'pan') root.classList.remove('depth-editor-panning'); });
+    zoomInput.addEventListener('input', () => {
+      zoom = Math.max(1, Math.min(4, Number(zoomInput.value) / 100));
+      zoomOutput.textContent = Math.round(zoom * 100) + '%';
+      positionStage();
+    });
+    tool.addEventListener('change', () => root.classList.toggle('depth-editor-panning', tool.value === 'pan'));
+    window.addEventListener('resize', fitStage);
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { if (isFullscreen()) fitStage(); }).observe(viewport);
 
     const count = () => depthGroupCount(groupInput?.value);
     const nonlinear = () => !!nonlinearInput?.checked;
@@ -222,13 +304,27 @@ if (panel) {
       return { x: (e.clientX - rect.left) * W / rect.width, y: (e.clientY - rect.top) * H / rect.height };
     };
     canvas.addEventListener('pointerdown', e => {
-      if (!working || saving || e.button !== 0) return;
+      if (!working || saving || (e.button !== 0 && e.button !== 1)) return;
       e.preventDefault();
+      if (tool.value === 'pan' || spaceDown || e.button === 1) {
+        panning = true;
+        panStart = { x: e.clientX, y: e.clientY, panX, panY };
+        root.classList.add('depth-editor-dragging');
+        canvas.setPointerCapture(e.pointerId);
+        return;
+      }
       snapshot(); painting = true; last = position(e);
       canvas.setPointerCapture(e.pointerId);
       paint(last.x, last.y); scheduleDraw();
     });
     canvas.addEventListener('pointermove', e => {
+      if (panning && panStart) {
+        e.preventDefault();
+        panX = panStart.panX + e.clientX - panStart.x;
+        panY = panStart.panY + e.clientY - panStart.y;
+        positionStage();
+        return;
+      }
       if (!painting || !last) return;
       e.preventDefault();
       const p = position(e);
@@ -241,6 +337,11 @@ if (panel) {
     });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
       canvas.addEventListener(type, () => {
+        if (panning) {
+          panning = false; panStart = null;
+          root.classList.remove('depth-editor-dragging');
+          return;
+        }
         if (!painting) return;
         painting = false; last = null; updateLayerList(); scheduleDraw();
       });
