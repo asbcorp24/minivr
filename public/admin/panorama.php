@@ -94,7 +94,7 @@ $rawLamps=json_decode((string)($_POST['effectLamps']??'[]'),true);if(is_array($r
 <p>Выберите слой глубины и редактируйте его границы прямо поверх фотографии. Слой 1 — самый дальний, последний — ближний. Сохранение обновляет карту глубины для существующего параллакса.</p>
 <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px"><label>Слой <select data-layer aria-label="Редактируемый слой"></select></label><label><input type="checkbox" data-show-all> Показать все слои</label><label>Прозрачность слоя <input data-layer-opacity type="range" min="10" max="90" value="50"></label>
 <label>Инструмент <select data-mode><option value="paint">Кисть</option><option value="erase">Ластик</option><option value="smooth">Сглаживание</option></select></label>
-<label>Глубина, % <input data-value type="range" min="0" max="100" value="75"></label>
+
 <label>Размер кисти <input data-brush type="range" min="2" max="65" value="16"></label>
 <label>Сила кисти <input data-opacity type="range" min="5" max="100" value="65"></label>
 </div>
@@ -105,7 +105,7 @@ $rawLamps=json_decode((string)($_POST['effectLamps']??'[]'),true);if(is_array($r
 <button type="button" data-save disabled>Сохранить карту</button>
 <?php if(!empty($savedEffects['parallaxDepthOriginal'])):?><button type="button" data-restore>Вернуть автоматическую карту</button><?php else:?><button type="button" data-restore title="Доступно после первой ручной правки">Вернуть автоматическую карту</button><?php endif;?>
 </div>
-<small>Карта редактируется в разрешении 512×256. После сохранения откройте панораму в просмотрщике, чтобы увидеть обновлённый параллакс.</small>
+<small>Слои вычисляются из карты глубины по тем же диапазонам, что в гибридном просмотрщике. Правка слоя изменяет общую карту глубины (512×256), а не создаёт отдельную PNG-маску. После сохранения откройте панораму для просмотра результата.</small>
 </div>
 <?php endif;?>
 <img data-depth-preview hidden alt="Предпросмотр карты глубины" style="width:100%;max-width:640px;aspect-ratio:2/1;object-fit:contain">
