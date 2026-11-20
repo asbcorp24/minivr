@@ -9,19 +9,50 @@ if(panel){
   const canvas=root.querySelector('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
   const brush=root.querySelector('[data-brush]'),value=root.querySelector('[data-value]');
   const mode=root.querySelector('[data-mode]'),opacity=root.querySelector('[data-opacity]');
+  const layer=root.querySelector('[data-layer]'),showAll=root.querySelector('[data-show-all]'),layerOpacity=root.querySelector('[data-layer-opacity]');
+  root.querySelector('[data-layer-photo]').src=root.dataset.image;
+  const countInput=panel.closest('form').querySelector('[name="parallaxGroups"]');
+  const count=()=>Math.max(2,Math.min(10,Number(countInput?.value)||5));
+  function buildLayers(){
+   const current=Number(layer.value);
+   layer.replaceChildren();
+   for(let i=0;i<count();i++){const option=document.createElement('option');option.value=String(i);option.textContent='Слой '+(i+1)+' — '+(i===0?'дальний':i===count()-1?'ближний':'средний');layer.append(option);}
+   layer.value=String(Math.min(count()-1,Number.isFinite(current)?current:count()-1));
+   if(layer.selectedIndex<0)layer.selectedIndex=count()-1;
+   draw();
+  }
+  function selectedRange(){const n=count(),i=Number(layer.value);return [(i+.5)/n,1/n];}
+  function belongs(depth){const [center,halfWidth]=selectedRange();return Math.abs(depth/255-center)<halfWidth;}
+  layer.addEventListener('change',()=>draw());showAll.addEventListener('change',()=>draw());layerOpacity.addEventListener('input',()=>draw());
+  countInput?.addEventListener('change',buildLayers);
   const history=[],redo=[];let original=null,working=null,painting=false,last=null,dirty=false;
   const buttons={save:root.querySelector('[data-save]'),undo:root.querySelector('[data-undo]'),redo:root.querySelector('[data-redo]'),reset:root.querySelector('[data-reset]'),restore:root.querySelector('[data-restore]')};
   const W=512,H=256;canvas.width=W;canvas.height=H;
   function snapshot(){history.push(new Uint8ClampedArray(working.data));if(history.length>20)history.shift();redo.length=0;}
-  function draw(){ctx.putImageData(working,0,0);buttons.undo.disabled=!history.length;buttons.redo.disabled=!redo.length;buttons.save.disabled=!dirty;}
+  function renderOverlay(){
+   if(!working)return;
+   const frame=ctx.createImageData(W,H),d=frame.data;
+   const alpha=Math.round(Number(layerOpacity.value)/100*255);
+   for(let i=0;i<W*H;i++){
+    const v=working.data[i*4],active=belongs(v);
+    if(!showAll.checked&&!active)continue;
+    const j=i*4;
+    if(showAll.checked){
+     const shade=Math.round(v/255*210);
+     d[j]=shade;d[j+1]=Math.round(75+shade*.35);d[j+2]=255-shade;d[j+3]=Math.round(alpha*.65);
+    }else{d[j]=255;d[j+1]=95;d[j+2]=35;d[j+3]=alpha;}
+   }
+   ctx.putImageData(frame,0,0);
+  }
+  function draw(){renderOverlay();buttons.undo.disabled=!history.length;buttons.redo.disabled=!redo.length;buttons.save.disabled=!dirty;}
   function setPixels(pixels){working.data.set(pixels);dirty=true;draw();}
   async function load(){
    const img=new Image();img.src=saved.src;await img.decode();
    ctx.drawImage(img,0,0,W,H);original=ctx.getImageData(0,0,W,H);
-   working=ctx.createImageData(W,H);working.data.set(original.data);dirty=false;draw();
+   working=ctx.createImageData(W,H);working.data.set(original.data);dirty=false;buildLayers();draw();
   }
   function paint(x,y){
-   const r=Number(brush.value),v=Number(value.value)*255/100,a=Number(opacity.value)/100;
+   const r=Number(brush.value),[center]=selectedRange(),v=Math.round(center*255),a=Number(opacity.value)/100;
    const radius=Math.max(1,r),x0=Math.floor(x-radius),x1=Math.ceil(x+radius);
    for(let yy=Math.max(0,Math.floor(y-radius));yy<=Math.min(H-1,Math.ceil(y+radius));yy++){
     for(let xx=x0;xx<=x1;xx++){
@@ -60,7 +91,9 @@ if(panel){
   buttons.save.addEventListener('click',async()=>{
    if(!working)return;buttons.save.disabled=true;status.textContent='Сохраняю ручную карту глубины…';
    try{
-    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+    const exportCanvas=document.createElement('canvas');exportCanvas.width=W;exportCanvas.height=H;
+    exportCanvas.getContext('2d').putImageData(working,0,0);
+    const blob=await new Promise(resolve=>exportCanvas.toBlob(resolve,'image/png'));
     if(!blob)throw Error('Не удалось создать PNG');
     const form=new FormData();form.append('id',panel.dataset.id);form.append('strength',strength.value);form.append('manual','1');form.append('depth',blob,'manual-depth.png');
     const data=await send(form);saved.src=data.url+'?v='+Date.now();const download=panel.querySelector('[data-depth-download]');if(download)download.href=data.url;
