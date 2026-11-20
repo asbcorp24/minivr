@@ -1,7 +1,9 @@
 // The depth-window effect runs in the normal viewer. With GYRO enabled it is
 // opt-in: only an active phone 3D sensor may translate the camera.
-export function canTranslateDepthCamera(mode, gyroActive, phone3DActive){
- return mode==='desktop'&&(!gyroActive||phone3DActive);
+export function canTranslateDepthCamera(mode, gyroActive, phone3DActive, viewDragging=false){
+ // Rotating a 360° panorama must not translate the viewpoint at the same time.
+ // Keep normal pointer/phone 3D motion as soon as the rotation drag ends.
+ return mode==='desktop'&&!viewDragging&&(!gyroActive||phone3DActive);
 }
 
 // Preserve the original yaw-only desktop translation. GYRO supplies a full

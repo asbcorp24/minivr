@@ -13,6 +13,7 @@ export function createDesktop3DWindow(){
  return {
   isDragging:()=>false,
   isEnabled:()=>true,
+  reset(){x=0;y=0;vx=0;vy=0;},
   update(dt,active,pointer){
    const px=active&&pointer?Math.max(-1,Math.min(1,pointer.x)):0;
    const py=active&&pointer?Math.max(-1,Math.min(1,pointer.y)):0;

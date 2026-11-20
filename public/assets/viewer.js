@@ -987,7 +987,15 @@ const releaseTouch=e=>{activeTouches.delete(e.pointerId);if(activeTouches.size<2
 renderer.domElement.addEventListener('pointerup',releaseTouch);
 renderer.domElement.addEventListener('pointercancel',releaseTouch);
 let moved=false;renderer.domElement.addEventListener('pointerdown',e=>{down=true;moved=false;x0=e.clientX;y0=e.clientY;lon0=lon;lat0=lat});
-addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboard&&!renderer.xr.isPresenting){const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);activate(raycaster.intersectObjects(hotspotObjects,false)[0]?.object)}down=false});addEventListener('pointermove',e=>{if(down&&(Math.abs(e.clientX-x0)>5||Math.abs(e.clientY-y0)>5))moved=true;if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){lon=lon0+(x0-e.clientX)*.12;lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}});
+addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboard&&!renderer.xr.isPresenting){const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);activate(raycaster.intersectObjects(hotspotObjects,false)[0]?.object)}down=false});addEventListener('pointermove',e=>{
+ if(down&&!moved&&(Math.abs(e.clientX-x0)>5||Math.abs(e.clientY-y0)>5)){
+  moved=true;
+  if(getViewerMode()===ViewerMode.DESKTOP&&!orientation&&projection==='360'&&stereoMode==='mono'&&parallaxDepthPixels&&effectSettings.parallaxEnabled)stopDepthTranslationForRotation();
+ }
+ if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){lon=lon0+(x0-e.clientX)*.12;lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}
+});
+addEventListener('pointercancel',()=>{down=false});
+addEventListener('blur',()=>{down=false});
 
 
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}addEventListener('resize',resize);resize();
@@ -1363,8 +1371,17 @@ const depthLocalOffset=new THREE.Vector3();
 const depthDesiredOffset=new THREE.Vector3();
 let depthAutoPhase=0,depthAutoLastTime=0;
 let depthMotionActive=false;
+// A drag rotates the panorama; do not add synthetic camera translation to it.
+// Reset spring inertia once when a real drag begins (not for hotspot clicks).
+function stopDepthTranslationForRotation(){
+ depthPointer.set(0,0);depthPointerSmooth.set(0,0);
+ depthCameraOffset.set(0,0,0);depthLocalOffset.set(0,0,0);depthDesiredOffset.set(0,0,0);
+ desktop3DWindow.reset();
+ camera.position.set(0,0,0);
+ depthMotionActive=false;
+}
 renderer.domElement.addEventListener('pointermove',event=>{
- if(mobileMotion.isActive())return;
+ if(mobileMotion.isActive()||(down&&moved))return;
  const bounds=renderer.domElement.getBoundingClientRect();
  if(!bounds.width||!bounds.height)return;
  depthPointer.set(THREE.MathUtils.clamp((event.clientX-bounds.left)/bounds.width*2-1,-1,1),THREE.MathUtils.clamp(1-(event.clientY-bounds.top)/bounds.height*2,-1,1));
@@ -1399,13 +1416,14 @@ renderer.setAnimationLoop((time)=>{
  const motionDt=depthAutoLastTime?Math.min(.05,Math.max(0,(time-depthAutoLastTime)/1000)):1/60;
  depthAutoLastTime=time;
  const portraitPhone=window.matchMedia('(orientation: portrait) and (pointer: coarse) and (max-width: 600px)').matches;
- const desktopWindowEligible=mode===ViewerMode.DESKTOP&&!orientation&&projection==='360'&&stereoMode==='mono'&&!!parallaxDepthPixels&&effectSettings.parallaxEnabled===true;
+ const rotatingView=down&&moved;
+ const desktopWindowEligible=mode===ViewerMode.DESKTOP&&!orientation&&!rotatingView&&projection==='360'&&stereoMode==='mono'&&!!parallaxDepthPixels&&effectSettings.parallaxEnabled===true;
  if(mobileMotionEligible()&&mobileMotion.isActive()){
   const tilt=mobileMotion.update(motionDt);
   depthPointer.set(tilt.x*(portraitPhone?.95:.65),tilt.y*(portraitPhone?.75:.5));
  }
  const desktopWindowOffset=desktop3DWindow.update(motionDt,desktopWindowEligible,depthPointerSmooth);
- if(canTranslateDepthCamera(mode,orientation,mobileMotion.isActive()&&mobileMotionEligible())){
+ if(canTranslateDepthCamera(mode,orientation,mobileMotion.isActive()&&mobileMotionEligible(),rotatingView)){
   // Portrait phone displacement needs more visible screen-space motion.
   // Desktop, landscape, tablets, Cardboard and WebXR remain unchanged.
   const portraitBoost=portraitPhone?1.85:1;
