@@ -8,6 +8,19 @@ try{
  $id=(int)($_POST['id']??0);
  $q=db()->prepare('SELECT id,image,projection,stereo,effects FROM panoramas WHERE id=?');$q->execute([$id]);$p=$q->fetch();
  if(!$p||$p['projection']!=='360'||$p['stereo']!=='mono')throw new RuntimeException('Требуется сохранённая моно-панорама 360°');
+ $effects=json_decode($p['effects']??'{}',true)?:[];
+ $isManual=($_POST['manual']??'')==='1';
+ $action=(string)($_POST['action']??'');
+ $ownedPath=static fn($path): bool => is_string($path)&&preg_match('~^/uploads/depth/p'.$id.'-[a-f0-9]{16}\\.png$~D',$path)===1;
+ if($action==='restore'){
+  $original=$effects['parallaxDepthOriginal']??null;
+  if(!$ownedPath($original)||!is_file(__DIR__.'/..'.$original))throw new RuntimeException('Исходная карта глубины не найдена');
+  $current=$effects['parallaxDepth']??null;
+  $effects['parallaxDepth']=$original;unset($effects['parallaxDepthOriginal']);
+  $q=db()->prepare('UPDATE panoramas SET effects=? WHERE id=?');$q->execute([json_encode($effects,JSON_UNESCAPED_UNICODE),$id]);
+  if($ownedPath($current)&&$current!==$original)@unlink(__DIR__.'/..'.$current);
+  echo json_encode(['ok'=>true,'url'=>$original]);exit;
+ }
  if(!isset($_FILES['depth'])||$_FILES['depth']['error']!==UPLOAD_ERR_OK)throw new RuntimeException('Карта глубины не загружена');
  $f=$_FILES['depth'];
  if($f['size']>4*1024*1024)throw new RuntimeException('Карта глубины превышает 4 МБ');
@@ -16,12 +29,18 @@ try{
  $dir=__DIR__.'/../uploads/depth';if(!is_dir($dir)&&!mkdir($dir,0755,true))throw new RuntimeException('Невозможно создать каталог');
  $name='p'.$id.'-'.bin2hex(random_bytes(8)).'.png';
  if(!move_uploaded_file($f['tmp_name'],$dir.'/'.$name))throw new RuntimeException('Ошибка сохранения');
- $effects=json_decode($p['effects']??'{}',true)?:[];
  $old=$effects['parallaxDepth']??null;
+ $original=$effects['parallaxDepthOriginal']??null;
+ if($isManual){
+  if(!$ownedPath($original)&&$ownedPath($old))$effects['parallaxDepthOriginal']=$old;
+ }else{
+  unset($effects['parallaxDepthOriginal']);
+ }
  $effects['parallaxDepth']='/uploads/depth/'.$name;
  $effects['parallaxEnabled']=true;
  $effects['parallaxStrength']=max(0,min(100,(int)($_POST['strength']??25)));
  $q=db()->prepare('UPDATE panoramas SET effects=? WHERE id=?');$q->execute([json_encode($effects,JSON_UNESCAPED_UNICODE),$id]);
- if(is_string($old)&&preg_match('~^/uploads/depth/p'. $id .'-[a-f0-9]{16}\\.png$~',$old))@unlink(__DIR__.'/..'.$old);
+ if($ownedPath($old)&&$old!==($effects['parallaxDepthOriginal']??null))@unlink(__DIR__.'/..'.$old);
+ if(!$isManual&&$ownedPath($original)&&$original!==$old)@unlink(__DIR__.'/..'.$original);
  echo json_encode(['ok'=>true,'url'=>$effects['parallaxDepth']]);
 }catch(Throwable $e){http_response_code(400);echo json_encode(['error'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);}
