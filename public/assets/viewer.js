@@ -1422,7 +1422,9 @@ renderer.setAnimationLoop((time)=>{
   const tilt=mobileMotion.update(motionDt);
   depthPointer.set(tilt.x*(portraitPhone?.95:.65),tilt.y*(portraitPhone?.75:.5));
  }
- const desktopWindowOffset=desktop3DWindow.update(motionDt,desktopWindowEligible,depthPointerSmooth);
+ // Mouse dragging rotates the view without simultaneously translating the camera.
+ const rotatingPanorama=mode===ViewerMode.DESKTOP&&down&&!orientation;
+ const desktopWindowOffset=desktop3DWindow.update(motionDt,desktopWindowEligible&&!rotatingPanorama,depthPointerSmooth);
  if(canTranslateDepthCamera(mode,orientation,mobileMotion.isActive()&&mobileMotionEligible(),rotatingView)){
   // Portrait phone displacement needs more visible screen-space motion.
   // Desktop, landscape, tablets, Cardboard and WebXR remain unchanged.
@@ -1434,12 +1436,12 @@ renderer.setAnimationLoop((time)=>{
   const windowBoost=1+depthWindow*.8;
   const amount=parallaxDepthPixels&&effectSettings.parallaxEnabled
    ? THREE.MathUtils.clamp(Number(effectSettings.parallaxStrength)||0,0,100)/100*portraitBoost*windowBoost:0;
-  const autoEnabled=!orientation&&amount>0&&effectSettings.rotation&&effectSettings.parallaxAuto!==false;
+  const autoEnabled=!rotatingPanorama&&!orientation&&amount>0&&effectSettings.rotation&&effectSettings.parallaxAuto!==false;
   const autoAmplitude=THREE.MathUtils.clamp(Number(effectSettings.parallaxAutoAmplitude??35),0,100)/100;
   const autoSpeed=THREE.MathUtils.clamp(Number(effectSettings.parallaxAutoSpeed??.6),.1,3);
   if(autoEnabled)depthAutoPhase=(depthAutoPhase+motionDt*autoSpeed*2*Math.PI/8)%(Math.PI*2);
   const pointerDamping=1-Math.exp(-motionDt*7);
-  depthPointerSmooth.lerp(depthPointer,pointerDamping);
+  depthPointerSmooth.lerp(rotatingPanorama?new THREE.Vector2(0,0):depthPointer,pointerDamping);
   // Soft, elliptical translation with small vertical and forward components.
   // Avoid large head bobbing; foreground objects should move more than far ones.
   const sway=autoEnabled?amount*autoAmplitude:0;
@@ -1454,8 +1456,9 @@ renderer.setAnimationLoop((time)=>{
    depthLocalOffset.x=THREE.MathUtils.clamp(depthLocalOffset.x*1.9,-2.1,2.1);
    depthLocalOffset.y=THREE.MathUtils.clamp(depthLocalOffset.y*1.7,-1.3,1.3);
   }
+  if(rotatingPanorama)depthLocalOffset.set(0,0,0);
   depthOffsetInWorld(depthLocalOffset,orientation,camera.quaternion,THREE.MathUtils.degToRad(lon),depthDesiredOffset);
-  const damping=1-Math.exp(-motionDt*8);
+  const damping=rotatingPanorama?1:1-Math.exp(-motionDt*8);
   depthCameraOffset.lerp(depthDesiredOffset,damping);
   camera.position.copy(depthCameraOffset);
   depthMotionActive=true;
