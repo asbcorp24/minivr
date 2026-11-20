@@ -1,0 +1,105 @@
+[data-depth-editor] .depth-editor-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  align-items: center;
+  margin: 0 0 12px;
+}
+[data-depth-editor] .depth-editor-controls label {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+}
+[data-depth-editor] .depth-editor-controls input[type="range"] { width: 110px; }
+[data-depth-editor] .depth-editor-workspace {
+  display: grid;
+  grid-template-columns: minmax(155px, 215px) minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  max-width: 1240px;
+}
+[data-depth-editor] .depth-editor-layers {
+  border: 1px solid #28516a;
+  border-radius: 10px;
+  padding: 10px;
+  min-width: 0;
+}
+[data-depth-editor] .depth-editor-layers > strong { display: block; margin: 0 0 8px; }
+[data-depth-editor] [data-layer-list] {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 425px;
+  overflow-y: auto;
+}
+[data-depth-editor] [data-layer-list] button {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  gap: 9px;
+  padding: 8px 10px;
+  min-height: 40px;
+  width: 100%;
+  border: 1px solid #27526b;
+  border-radius: 8px;
+  background: #0b2432;
+  color: #d7edf6;
+  cursor: pointer;
+}
+[data-depth-editor] [data-layer-list] button:hover { background: #123b52; }
+[data-depth-editor] [data-layer-list] button.active {
+  border-color: #36cce4;
+  background: #10526a;
+  box-shadow: inset 3px 0 0 #35d8e9;
+}
+[data-depth-editor] [data-layer-list] .depth-layer-swatch {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  flex: 0 0 15px;
+}
+[data-depth-editor] [data-layer-list] .depth-layer-name { font-size: 12px; line-height: 1.35; }
+[data-depth-editor] .depth-editor-layers small { display: block; margin-top: 9px; }
+[data-depth-editor] .depth-editor-photo {
+  position: relative;
+  aspect-ratio: 2 / 1;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #467a91;
+  border-radius: 9px;
+  overflow: hidden;
+  background: #17222c;
+}
+[data-depth-editor] .depth-editor-photo img,
+[data-depth-editor] .depth-editor-photo canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+[data-depth-editor] .depth-editor-photo img { object-fit: fill; }
+[data-depth-editor] .depth-editor-photo canvas {
+  touch-action: none;
+  cursor: crosshair;
+}
+[data-depth-editor] [data-layer-hint] { display: block; margin-top: 9px; }
+@media (max-width: 800px) {
+  [data-depth-editor] .depth-editor-workspace { grid-template-columns: minmax(0, 1fr); }
+  [data-depth-editor] [data-layer-list] {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-height: none;
+    padding-bottom: 3px;
+  }
+  [data-depth-editor] [data-layer-list] button {
+    flex: 0 0 135px;
+    width: 135px;
+    padding: 8px;
+  }
+  [data-depth-editor] .depth-editor-layers small { display: none; }
+  [data-depth-editor] .depth-editor-select { display: none !important; }
+}

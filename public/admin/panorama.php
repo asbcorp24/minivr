@@ -86,26 +86,27 @@ $rawLamps=json_decode((string)($_POST['effectLamps']??'[]'),true);if(is_array($r
 <p data-depth-status>Первый запуск загружает модель ИИ на устройство. Для генерации нужен интернет и современный браузер.</p>
 <?php if(!empty($savedEffects['parallaxDepth'])):?>
 <p><strong>Карта глубины уже сохранена и привязана к этой панораме.</strong> <a data-depth-download href="<?=htmlspecialchars($savedEffects['parallaxDepth'],ENT_QUOTES)?>" target="_blank" rel="noopener" download>Скачать PNG</a></p>
-<img data-depth-saved src="<?=htmlspecialchars($savedEffects['parallaxDepth'],ENT_QUOTES)?>" alt="Сохранённая карта глубины" style="width:100%;max-width:640px;aspect-ratio:2/1;object-fit:contain;border-radius:8px">
+<details><summary>Показать исходную чёрно-белую карту глубины</summary><img data-depth-saved src="<?=htmlspecialchars($savedEffects['parallaxDepth'],ENT_QUOTES)?>" alt="Сохранённая карта глубины" style="width:100%;max-width:640px;aspect-ratio:2/1;object-fit:contain;border-radius:8px"></details>
 <?php endif;?>
 <?php if(!empty($savedEffects['parallaxDepth'])):?>
-<div data-depth-editor style="margin:16px 0;padding:14px;border:1px solid #36738d;border-radius:12px">
+<link rel="stylesheet" href="/assets/depth-map-editor.css?v=<?=filemtime(__DIR__.'/../assets/depth-map-editor.css')?>">
+<div data-depth-editor data-image="<?=htmlspecialchars($existing['image'],ENT_QUOTES)?>" style="margin:16px 0;padding:14px;border:1px solid #36738d;border-radius:12px">
 <h3>Ручная коррекция карты глубины</h3>
-<p>Светлое — ближе, тёмное — дальше. Кистью исправьте края объектов; ластик возвращает значения исходной карты, сглаживание смягчает переходы. Изменения сохраняются только по кнопке.</p>
-<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px">
-<label>Инструмент <select data-mode><option value="paint">Кисть</option><option value="erase">Ластик</option><option value="smooth">Сглаживание</option></select></label>
-<label>Глубина, % <input data-value type="range" min="0" max="100" value="75"></label>
+<p>Выберите слой слева и рисуйте его маску прямо на фотографии. Синие слои — дальние, красные — ближние. Изменения попадут в панораму только после сохранения.</p>
+<div class="depth-editor-controls"><label class="depth-editor-select">Слой <select data-layer aria-label="Редактируемый слой"></select></label><label><input type="checkbox" data-show-all> Все слои</label><label>Прозрачность маски <input data-layer-opacity type="range" min="10" max="90" value="50"></label>
+<label>Инструмент <select data-mode><option value="paint">Добавить к слою</option><option value="remove">Убрать из слоя</option><option value="erase">Ластик: как сохранено</option><option value="smooth">Сгладить края</option></select></label>
+
 <label>Размер кисти <input data-brush type="range" min="2" max="65" value="16"></label>
 <label>Сила кисти <input data-opacity type="range" min="5" max="100" value="65"></label>
 </div>
-<canvas width="512" height="256" aria-label="Редактор карты глубины" style="width:100%;max-width:1024px;aspect-ratio:2/1;display:block;touch-action:none;cursor:crosshair;border:1px solid #467a91;border-radius:8px"></canvas>
+<div class="depth-editor-workspace"><div class="depth-editor-layers"><strong>Слои параллакса</strong><div data-layer-list role="group" aria-label="Выберите редактируемый слой"></div><small>Нажмите на слой, чтобы редактировать только его область.</small></div><div class="depth-editor-photo"><img data-layer-photo alt="Панорама под редактируемыми слоями"><canvas width="512" height="256" aria-label="Редактор маски выбранного слоя поверх панорамы"></canvas></div></div><small data-layer-hint aria-live="polite"></small>
 <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
 <button type="button" data-undo disabled>↶ Отменить</button><button type="button" data-redo disabled>↷ Повторить</button>
 <button type="button" data-reset>Сбросить локальные правки</button>
 <button type="button" data-save disabled>Сохранить карту</button>
 <?php if(!empty($savedEffects['parallaxDepthOriginal'])):?><button type="button" data-restore>Вернуть автоматическую карту</button><?php else:?><button type="button" data-restore title="Доступно после первой ручной правки">Вернуть автоматическую карту</button><?php endif;?>
 </div>
-<small>Карта редактируется в разрешении 512×256. После сохранения откройте панораму в просмотрщике, чтобы увидеть обновлённый параллакс.</small>
+<small>Гибридный просмотрщик строит слои по карте глубины. Редактор показывает их границы с учётом нелинейной глубины. «Убрать из слоя» переносит область в соседний диапазон; сохраняется единая карта глубины PNG (512×256), совместимая с существующими режимами. При ограничении качества просмотра число видимых групп может уменьшиться.</small>
 </div>
 <?php endif;?>
 <img data-depth-preview hidden alt="Предпросмотр карты глубины" style="width:100%;max-width:640px;aspect-ratio:2/1;object-fit:contain">

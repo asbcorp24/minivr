@@ -33,6 +33,11 @@ try{
  $original=$effects['parallaxDepthOriginal']??null;
  if($isManual){
   if(!$ownedPath($original)&&$ownedPath($old))$effects['parallaxDepthOriginal']=$old;
+  // The editor's masks are based on these settings. Persist them together
+  // with the corrected PNG so the next panorama view uses the same layers.
+  if(isset($_POST['groups']))$effects['parallaxGroups']=max(2,min(10,(int)$_POST['groups']));
+  if(isset($_POST['nonlinear']))$effects['parallaxNonlinear']=$_POST['nonlinear']==='1';
+  if(isset($_POST['nonlinearStrength']))$effects['parallaxNonlinearStrength']=max(0,min(100,(int)$_POST['nonlinearStrength']));
  }else{
   unset($effects['parallaxDepthOriginal']);
  }

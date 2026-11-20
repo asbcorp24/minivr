@@ -1,79 +1,335 @@
-// Manual corrections to the saved panorama depth map; no model download required.
-const panel=document.querySelector('[data-depth-panel]');
-if(panel){
- const root=panel.querySelector('[data-depth-editor]');
- const saved=panel.querySelector('[data-depth-saved]');
- const status=panel.querySelector('[data-depth-status]');
- const strength=panel.closest('form').querySelector('[name="parallaxStrength"]');
- if(root&&saved){
-  const canvas=root.querySelector('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
-  const brush=root.querySelector('[data-brush]'),value=root.querySelector('[data-value]');
-  const mode=root.querySelector('[data-mode]'),opacity=root.querySelector('[data-opacity]');
-  const history=[],redo=[];let original=null,working=null,painting=false,last=null,dirty=false;
-  const buttons={save:root.querySelector('[data-save]'),undo:root.querySelector('[data-undo]'),redo:root.querySelector('[data-redo]'),reset:root.querySelector('[data-reset]'),restore:root.querySelector('[data-restore]')};
-  const W=512,H=256;canvas.width=W;canvas.height=H;
-  function snapshot(){history.push(new Uint8ClampedArray(working.data));if(history.length>20)history.shift();redo.length=0;}
-  function draw(){ctx.putImageData(working,0,0);buttons.undo.disabled=!history.length;buttons.redo.disabled=!redo.length;buttons.save.disabled=!dirty;}
-  function setPixels(pixels){working.data.set(pixels);dirty=true;draw();}
-  async function load(){
-   const img=new Image();img.src=saved.src;await img.decode();
-   ctx.drawImage(img,0,0,W,H);original=ctx.getImageData(0,0,W,H);
-   working=ctx.createImageData(W,H);working.data.set(original.data);dirty=false;draw();
-  }
-  function paint(x,y){
-   const r=Number(brush.value),v=Number(value.value)*255/100,a=Number(opacity.value)/100;
-   const radius=Math.max(1,r),x0=Math.floor(x-radius),x1=Math.ceil(x+radius);
-   for(let yy=Math.max(0,Math.floor(y-radius));yy<=Math.min(H-1,Math.ceil(y+radius));yy++){
-    for(let xx=x0;xx<=x1;xx++){
-     const dx=xx-x,dy=yy-y,d=Math.hypot(dx,dy);if(d>radius)continue;
-     const px=((xx%W)+W)%W,idx=(yy*W+px)*4;
-     const weight=a*Math.min(1,(radius-d)/Math.max(1,radius*.25));
-     const old=working.data[idx];
-     let target=v;
-     if(mode.value==='erase')target=original.data[idx];
-     if(mode.value==='smooth'){
-      let sum=0,n=0;
-      for(let sy=-2;sy<=2;sy++)for(let sx=-2;sx<=2;sx++){
-       const py=Math.max(0,Math.min(H-1,yy+sy)),qx=(px+sx+W)%W;
-       sum+=working.data[(py*W+qx)*4];n++;
-      }target=sum/n;
-     }
-     const next=Math.round(old+(target-old)*weight);
-     working.data[idx]=working.data[idx+1]=working.data[idx+2]=next;
-     working.data[idx+3]=255;
+// Layer-based corrections of the panorama's saved grayscale depth map.
+// The photograph is the background; only the transparent mask is drawn here.
+import { depthGroupCount, layerCoverage, rawForLayer, rawOutsideLayer } from './depth-layer-logic.js';
+
+const panel = document.querySelector('[data-depth-panel]');
+if (panel) {
+  const root = panel.querySelector('[data-depth-editor]');
+  const saved = panel.querySelector('[data-depth-saved]');
+  const status = panel.querySelector('[data-depth-status]');
+  const form = panel.closest('form');
+  if (root && saved && form) {
+    const canvas = root.querySelector('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const W = 512, H = 256;
+    canvas.width = W;
+    canvas.height = H;
+
+    const photo = root.querySelector('[data-layer-photo]');
+    photo.src = root.dataset.image;
+    const groupInput = form.querySelector('[name="parallaxGroups"]');
+    const nonlinearInput = form.querySelector('[name="parallaxNonlinear"]');
+    const nonlinearStrengthInput = form.querySelector('[name="parallaxNonlinearStrength"]');
+    const strengthInput = form.querySelector('[name="parallaxStrength"]');
+    const brush = root.querySelector('[data-brush]');
+    const opacity = root.querySelector('[data-opacity]');
+    const tool = root.querySelector('[data-mode]');
+    const layer = root.querySelector('[data-layer]');
+    const list = root.querySelector('[data-layer-list]');
+    const showAll = root.querySelector('[data-show-all]');
+    const overlayOpacity = root.querySelector('[data-layer-opacity]');
+    const hint = root.querySelector('[data-layer-hint]');
+    const buttons = {
+      save: root.querySelector('[data-save]'),
+      undo: root.querySelector('[data-undo]'),
+      redo: root.querySelector('[data-redo]'),
+      reset: root.querySelector('[data-reset]'),
+      restore: root.querySelector('[data-restore]')
+    };
+    const history = [], redo = [];
+    const frame = ctx.createImageData(W, H);
+    const palette = [[33, 122, 233], [31, 186, 185], [91, 187, 113],
+      [245, 182, 56], [244, 96, 76]];
+    let original = null, working = null, selected = 0, painting = false;
+    let last = null, dirty = false, saving = false, pendingFrame = false;
+
+    const count = () => depthGroupCount(groupInput?.value);
+    const nonlinear = () => !!nonlinearInput?.checked;
+    const nonlinearStrength = () => Number(nonlinearStrengthInput?.value || 50);
+    const colorFor = (i, n) => {
+      const scaled = i / Math.max(1, n - 1) * (palette.length - 1);
+      const lo = Math.floor(scaled), hi = Math.min(palette.length - 1, lo + 1), t = scaled - lo;
+      return palette[lo].map((v, channel) => Math.round(v * (1 - t) + palette[hi][channel] * t));
+    };
+    const labelFor = (i, n) => i === 0 ? 'дальний' : i === n - 1 ? 'ближний' : 'промежуточный';
+    const layerPercentages = n => {
+      if (!working) return Array(n).fill('');
+      const histogram = new Uint32Array(256);
+      for (let j = 0; j < W * H; j++) histogram[working.data[j * 4]]++;
+      const curved = nonlinear(), curve = nonlinearStrength();
+      return Array.from({ length: n }, (_, i) => {
+        let pixels = 0;
+        for (let v = 0; v < 256; v++) {
+          if (layerCoverage(v / 255, i, n, curved, curve) >= .5) pixels += histogram[v];
+        }
+        return ' · ' + Math.round(pixels / (W * H) * 100) + '%';
+      });
+    };
+    function updateLayerList(recalculate = false) {
+      const n = count();
+      const percentages = layerPercentages(n);
+      if (recalculate || list.children.length !== n) {
+        list.replaceChildren();
+        layer.replaceChildren();
+        for (let i = 0; i < n; i++) {
+          const option = document.createElement('option');
+          option.value = String(i);
+          option.textContent = 'Слой ' + (i + 1) + ' — ' + labelFor(i, n);
+          layer.append(option);
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.dataset.layerIndex = String(i);
+          const swatch = document.createElement('span');
+          swatch.className = 'depth-layer-swatch';
+          swatch.style.backgroundColor = 'rgb(' + colorFor(i, n).join(',') + ')';
+          const text = document.createElement('span');
+          text.className = 'depth-layer-name';
+          text.textContent = option.textContent + percentages[i];
+          button.append(swatch, text);
+          button.addEventListener('click', () => selectLayer(i));
+          list.append(button);
+        }
+      } else {
+        for (const [i, button] of [...list.children].entries()) {
+          button.querySelector('.depth-layer-name').textContent =
+            'Слой ' + (i + 1) + ' — ' + labelFor(i, n) + percentages[i];
+        }
+      }
+      selected = Math.max(0, Math.min(n - 1, selected));
+      layer.value = String(selected);
+      [...list.children].forEach((button, i) => {
+        button.classList.toggle('active', i === selected);
+        button.setAttribute('aria-pressed', i === selected ? 'true' : 'false');
+      });
+      hint.textContent = 'Редактируется слой ' + (selected + 1) + ' (' + labelFor(selected, n) + '). ' +
+        'Добавить — назначить область этому слою; Убрать — перенести за его границу; ' +
+        'Ластик — вернуть глубину последнего сохранения.';
     }
-   }
-   dirty=true;
+    function selectLayer(i) {
+      selected = i;
+      updateLayerList();
+      scheduleDraw();
+    }
+    // Most users start correcting near-field object silhouettes first.
+    selected = count() - 1;
+    function renderOverlay() {
+      pendingFrame = false;
+      if (!working) return;
+      const n = count(), all = showAll.checked, colors = Array.from({ length: n }, (_, i) => colorFor(i, n));
+      const alpha = Number(overlayOpacity.value) / 100;
+      // Only 256 possible grayscale values: calculate each group's contribution
+      // once per value, then use a fast lookup while rendering 131k pixels.
+      const lut = new Uint8ClampedArray(256 * 4);
+      for (let v = 0; v < 256; v++) {
+        const j = v * 4, raw = v / 255;
+        if (!all) {
+          const coverage = layerCoverage(raw, selected, n, nonlinear(), nonlinearStrength());
+          const rgb = colors[selected];
+          lut[j] = rgb[0]; lut[j + 1] = rgb[1]; lut[j + 2] = rgb[2];
+          lut[j + 3] = Math.round(255 * coverage * alpha);
+        } else {
+          let total = 0, visibility = 0, r = 0, g = 0, b = 0;
+          for (let i = 0; i < n; i++) {
+            const coverage = layerCoverage(raw, i, n, nonlinear(), nonlinearStrength());
+            const weight = coverage * (i === selected ? 2.2 : .65);
+            total += weight; visibility = Math.max(visibility, coverage);
+            r += colors[i][0] * weight; g += colors[i][1] * weight; b += colors[i][2] * weight;
+          }
+          if (total > 0) {
+            lut[j] = Math.round(r / total);
+            lut[j + 1] = Math.round(g / total);
+            lut[j + 2] = Math.round(b / total);
+            lut[j + 3] = Math.round(255 * visibility * alpha * .75);
+          }
+        }
+      }
+      const data = frame.data, values = working.data;
+      for (let j = 0; j < data.length; j += 4) {
+        const k = values[j] * 4;
+        data[j] = lut[k]; data[j + 1] = lut[k + 1];
+        data[j + 2] = lut[k + 2]; data[j + 3] = lut[k + 3];
+      }
+      ctx.putImageData(frame, 0, 0);
+      buttons.undo.disabled = saving || history.length === 0;
+      buttons.redo.disabled = saving || redo.length === 0;
+      buttons.save.disabled = saving || !dirty;
+    }
+    function scheduleDraw() {
+      if (!pendingFrame) {
+        pendingFrame = true;
+        requestAnimationFrame(renderOverlay);
+      }
+    }
+    function snapshot() {
+      history.push(new Uint8ClampedArray(working.data));
+      if (history.length > 20) history.shift();
+      redo.length = 0;
+    }
+    function setPixels(pixels) {
+      working.data.set(pixels);
+      dirty = true;
+      updateLayerList();
+      scheduleDraw();
+    }
+    async function load() {
+      const img = new Image();
+      img.src = saved.src;
+      await img.decode();
+      ctx.clearRect(0, 0, W, H);
+      ctx.drawImage(img, 0, 0, W, H);
+      original = ctx.getImageData(0, 0, W, H);
+      working = ctx.createImageData(W, H);
+      working.data.set(original.data);
+      dirty = false;
+      updateLayerList(true);
+      scheduleDraw();
+    }
+    function paint(x, y) {
+      const radius = Math.max(1, Number(brush.value));
+      const pressure = Number(opacity.value) / 100;
+      const n = count(), isNonlinear = nonlinear(), curve = nonlinearStrength();
+      const target = rawForLayer(selected, n, isNonlinear, curve) * 255;
+      const pixels = working.data, baseline = original.data;
+      const smoothSource = tool.value === 'smooth' && history.length ? history[history.length - 1] : pixels;
+      for (let yy = Math.max(0, Math.floor(y - radius)); yy <= Math.min(H - 1, Math.ceil(y + radius)); yy++) {
+        for (let xx = Math.floor(x - radius); xx <= Math.ceil(x + radius); xx++) {
+          const dx = xx - x, dy = yy - y, distance = Math.hypot(dx, dy);
+          if (distance > radius) continue;
+          const px = ((xx % W) + W) % W, idx = (yy * W + px) * 4;
+          const weight = pressure * Math.min(1, (radius - distance) / Math.max(1, radius * .25));
+          if (weight <= 0) continue;
+          const old = pixels[idx];
+          let nextTarget = target;
+          if (tool.value === 'erase') nextTarget = baseline[idx];
+          if (tool.value === 'remove') nextTarget = rawOutsideLayer(old / 255, selected, n, isNonlinear, curve) * 255;
+          if (tool.value === 'smooth') {
+            let sum = 0;
+            for (let sy = -2; sy <= 2; sy++) for (let sx = -2; sx <= 2; sx++) {
+              const py = Math.max(0, Math.min(H - 1, yy + sy)), qx = (px + sx + W) % W;
+              sum += smoothSource[(py * W + qx) * 4];
+            }
+            nextTarget = sum / 25;
+          }
+          const next = Math.round(old + (nextTarget - old) * weight);
+          pixels[idx] = pixels[idx + 1] = pixels[idx + 2] = next;
+          pixels[idx + 3] = 255;
+        }
+      }
+      dirty = true;
+    }
+    const position = e => {
+      const rect = canvas.getBoundingClientRect();
+      return { x: (e.clientX - rect.left) * W / rect.width, y: (e.clientY - rect.top) * H / rect.height };
+    };
+    canvas.addEventListener('pointerdown', e => {
+      if (!working || saving || e.button !== 0) return;
+      e.preventDefault();
+      snapshot(); painting = true; last = position(e);
+      canvas.setPointerCapture(e.pointerId);
+      paint(last.x, last.y); scheduleDraw();
+    });
+    canvas.addEventListener('pointermove', e => {
+      if (!painting || !last) return;
+      e.preventDefault();
+      const p = position(e);
+      const steps = Math.max(1, Math.ceil(Math.hypot(p.x - last.x, p.y - last.y) / Math.max(1, Number(brush.value) / 3)));
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        paint(last.x + (p.x - last.x) * t, last.y + (p.y - last.y) * t);
+      }
+      last = p; scheduleDraw();
+    });
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      canvas.addEventListener(type, () => {
+        if (!painting) return;
+        painting = false; last = null; updateLayerList(); scheduleDraw();
+      });
+    }
+    layer.addEventListener('change', () => selectLayer(Number(layer.value)));
+    groupInput?.addEventListener('input', () => { updateLayerList(true); scheduleDraw(); });
+    nonlinearInput?.addEventListener('change', () => { updateLayerList(); scheduleDraw(); });
+    nonlinearStrengthInput?.addEventListener('input', () => { updateLayerList(); scheduleDraw(); });
+    showAll.addEventListener('change', scheduleDraw);
+    overlayOpacity.addEventListener('input', scheduleDraw);
+    buttons.undo.addEventListener('click', () => {
+      if (!history.length || saving) return;
+      redo.push(new Uint8ClampedArray(working.data)); setPixels(history.pop());
+    });
+    buttons.redo.addEventListener('click', () => {
+      if (!redo.length || saving) return;
+      history.push(new Uint8ClampedArray(working.data)); setPixels(redo.pop());
+    });
+    buttons.reset.addEventListener('click', () => {
+      if (!original || saving || !confirm('Отменить все локальные правки карты?')) return;
+      snapshot(); setPixels(original.data);
+    });
+    async function send(uploadForm) {
+      const response = await fetch('/admin/depth-upload.php', {
+        method: 'POST', body: uploadForm, credentials: 'same-origin'
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw Error(data.error || 'Ошибка сохранения');
+      return data;
+    }
+    buttons.save.addEventListener('click', async () => {
+      if (!working || !dirty || saving) return;
+      saving = true; scheduleDraw(); status.textContent = 'Сохраняю карту глубины по слоям…';
+      try {
+        const exportCanvas = document.createElement('canvas');
+        exportCanvas.width = W; exportCanvas.height = H;
+        exportCanvas.getContext('2d').putImageData(working, 0, 0);
+        const blob = await new Promise(resolve => exportCanvas.toBlob(resolve, 'image/png'));
+        if (!blob) throw Error('Не удалось создать PNG');
+        const uploadForm = new FormData();
+        uploadForm.append('id', panel.dataset.id);
+        uploadForm.append('strength', strengthInput.value);
+        uploadForm.append('manual', '1');
+        // Save settings that determine the edited layer boundaries together
+        // with the depth PNG, or the viewer could display different groups.
+        uploadForm.append('groups', String(count()));
+        uploadForm.append('nonlinear', nonlinear() ? '1' : '0');
+        uploadForm.append('nonlinearStrength', String(nonlinearStrength()));
+        uploadForm.append('depth', blob, 'manual-depth.png');
+        const data = await send(uploadForm);
+        saved.src = data.url + '?v=' + Date.now();
+        const download = panel.querySelector('[data-depth-download]');
+        if (download) download.href = data.url;
+        original = ctx.createImageData(W, H);
+        original.data.set(working.data);
+        dirty = false; history.length = 0; redo.length = 0;
+        status.textContent = 'Карта сохранена. Изменения слоёв появятся в просмотрщике при следующем открытии панорамы.';
+      } catch (e) {
+        status.textContent = 'Ошибка: ' + e.message;
+      } finally {
+        saving = false; updateLayerList(); scheduleDraw();
+      }
+    });
+    buttons.restore.addEventListener('click', async () => {
+      if (saving || !confirm('Вернуть исходную автоматически созданную карту глубины?')) return;
+      saving = true; scheduleDraw();
+      const uploadForm = new FormData();
+      uploadForm.append('id', panel.dataset.id); uploadForm.append('action', 'restore');
+      try {
+        const data = await send(uploadForm);
+        saved.src = data.url + '?v=' + Date.now();
+        const download = panel.querySelector('[data-depth-download]');
+        if (download) download.href = data.url;
+        await load(); history.length = 0; redo.length = 0; dirty = false;
+        status.textContent = 'Автоматическая карта восстановлена.';
+      } catch (e) {
+        status.textContent = 'Ошибка: ' + e.message;
+      } finally {
+        saving = false; scheduleDraw();
+      }
+    });
+    window.addEventListener('beforeunload', e => {
+      if (!dirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
+    load().catch(e => {
+      status.textContent = 'Не удалось открыть карту глубины: ' + e.message;
+      root.hidden = true;
+    });
   }
-  function position(e){const rect=canvas.getBoundingClientRect();return {x:(e.clientX-rect.left)*W/rect.width,y:(e.clientY-rect.top)*H/rect.height};}
-  canvas.addEventListener('pointerdown',e=>{if(!working)return;e.preventDefault();snapshot();painting=true;last=position(e);canvas.setPointerCapture(e.pointerId);paint(last.x,last.y);draw();});
-  canvas.addEventListener('pointermove',e=>{if(!painting)return;e.preventDefault();const p=position(e),steps=Math.max(1,Math.ceil(Math.hypot(p.x-last.x,p.y-last.y)/Math.max(1,Number(brush.value)/3)));for(let i=1;i<=steps;i++){const t=i/steps;paint(last.x+(p.x-last.x)*t,last.y+(p.y-last.y)*t);}last=p;draw();});
-  for(const type of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(type,()=>{painting=false;last=null;});
-  buttons.undo.addEventListener('click',()=>{if(!history.length)return;redo.push(new Uint8ClampedArray(working.data));setPixels(history.pop());});
-  buttons.redo.addEventListener('click',()=>{if(!redo.length)return;history.push(new Uint8ClampedArray(working.data));setPixels(redo.pop());});
-  buttons.reset.addEventListener('click',()=>{if(!original||!confirm('Отменить все локальные правки карты?'))return;snapshot();setPixels(original.data);});
-  async function send(form){
-   const response=await fetch('/admin/depth-upload.php',{method:'POST',body:form,credentials:'same-origin'});
-   const data=await response.json();if(!response.ok||!data.ok)throw Error(data.error||'Ошибка сохранения');
-   return data;
-  }
-  buttons.save.addEventListener('click',async()=>{
-   if(!working)return;buttons.save.disabled=true;status.textContent='Сохраняю ручную карту глубины…';
-   try{
-    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
-    if(!blob)throw Error('Не удалось создать PNG');
-    const form=new FormData();form.append('id',panel.dataset.id);form.append('strength',strength.value);form.append('manual','1');form.append('depth',blob,'manual-depth.png');
-    const data=await send(form);saved.src=data.url+'?v='+Date.now();const download=panel.querySelector('[data-depth-download]');if(download)download.href=data.url;
-    original=ctx.createImageData(W,H);original.data.set(working.data);dirty=false;history.length=0;redo.length=0;draw();
-    status.textContent='Исправленная карта сохранена. Откройте панораму для просмотра результата.';
-   }catch(e){status.textContent='Ошибка: '+e.message;buttons.save.disabled=false;}
-  });
-  buttons.restore.addEventListener('click',async()=>{
-   if(!confirm('Вернуть исходную автоматически созданную карту глубины?'))return;
-   const form=new FormData();form.append('id',panel.dataset.id);form.append('action','restore');
-   try{const data=await send(form);saved.src=data.url+'?v='+Date.now();const download=panel.querySelector('[data-depth-download]');if(download)download.href=data.url;await load();history.length=0;redo.length=0;dirty=false;draw();status.textContent='Исходная карта восстановлена.';}
-   catch(e){status.textContent='Ошибка: '+e.message;}
-  });
-  load().catch(e=>{status.textContent='Не удалось открыть карту глубины: '+e.message;root.hidden=true;});
- }
 }
