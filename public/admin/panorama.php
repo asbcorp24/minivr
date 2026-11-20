@@ -89,16 +89,16 @@ $rawLamps=json_decode((string)($_POST['effectLamps']??'[]'),true);if(is_array($r
 <img data-depth-saved src="<?=htmlspecialchars($savedEffects['parallaxDepth'],ENT_QUOTES)?>" alt="Сохранённая карта глубины" style="width:100%;max-width:640px;aspect-ratio:2/1;object-fit:contain;border-radius:8px">
 <?php endif;?>
 <?php if(!empty($savedEffects['parallaxDepth'])):?>
-<div data-depth-editor style="margin:16px 0;padding:14px;border:1px solid #36738d;border-radius:12px">
+<div data-depth-editor data-image="<?=htmlspecialchars($existing['image'],ENT_QUOTES)?>" style="margin:16px 0;padding:14px;border:1px solid #36738d;border-radius:12px">
 <h3>Ручная коррекция карты глубины</h3>
-<p>Светлое — ближе, тёмное — дальше. Кистью исправьте края объектов; ластик возвращает значения исходной карты, сглаживание смягчает переходы. Изменения сохраняются только по кнопке.</p>
-<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px">
+<p>Выберите слой глубины и редактируйте его границы прямо поверх фотографии. Слой 1 — самый дальний, последний — ближний. Сохранение обновляет карту глубины для существующего параллакса.</p>
+<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px"><label>Слой <select data-layer aria-label="Редактируемый слой"></select></label><label><input type="checkbox" data-show-all> Показать все слои</label><label>Прозрачность слоя <input data-layer-opacity type="range" min="10" max="90" value="50"></label>
 <label>Инструмент <select data-mode><option value="paint">Кисть</option><option value="erase">Ластик</option><option value="smooth">Сглаживание</option></select></label>
 <label>Глубина, % <input data-value type="range" min="0" max="100" value="75"></label>
 <label>Размер кисти <input data-brush type="range" min="2" max="65" value="16"></label>
 <label>Сила кисти <input data-opacity type="range" min="5" max="100" value="65"></label>
 </div>
-<canvas width="512" height="256" aria-label="Редактор карты глубины" style="width:100%;max-width:1024px;aspect-ratio:2/1;display:block;touch-action:none;cursor:crosshair;border:1px solid #467a91;border-radius:8px"></canvas>
+<div style="position:relative;width:100%;max-width:1024px;aspect-ratio:2/1;overflow:hidden;border:1px solid #467a91;border-radius:8px;background:#222"><img data-layer-photo alt="Панорама под редактируемыми слоями" style="position:absolute;inset:0;width:100%;height:100%;object-fit:fill"><canvas width="512" height="256" aria-label="Редактор слоёв поверх панорамы" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas></div><small data-layer-hint>Цветная область показывает выбранный слой. Кисть добавляет пиксели к этому слою; ластик возвращает исходную глубину.</small>
 <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
 <button type="button" data-undo disabled>↶ Отменить</button><button type="button" data-redo disabled>↷ Повторить</button>
 <button type="button" data-reset>Сбросить локальные правки</button>
