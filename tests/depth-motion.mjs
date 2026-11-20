@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import * as THREE from '../public/assets/vendor/three/three.module.js';
 import {canTranslateDepthCamera,depthOffsetInWorld} from '../public/assets/depth-motion.js';
+import {createDesktop3DWindow} from '../public/assets/desktop-3d-window.js';
 
 // Desktop pointer parallax remains on even without phone motion.
 assert.equal(canTranslateDepthCamera('desktop',false,false),true);
@@ -9,6 +10,20 @@ assert.equal(canTranslateDepthCamera('desktop',false,true),true);
 // GYRO alone rotates the camera. Explicitly enabled 3D adds translation.
 assert.equal(canTranslateDepthCamera('desktop',true,false),false);
 assert.equal(canTranslateDepthCamera('desktop',true,true),true);
+
+// A rotation drag must be a pure viewpoint rotation, including phone GYRO 3D.
+assert.equal(canTranslateDepthCamera('desktop',false,false,true),false);
+assert.equal(canTranslateDepthCamera('desktop',true,true,true),false);
+assert.equal(canTranslateDepthCamera('desktop',false,false,false),true,
+ 'Pointer parallax must still work outside a rotation drag');
+
+// Release all spring inertia when the user starts rotating the panorama;
+// an old pointer offset must not return as soon as the drag is released.
+const desktopWindow=createDesktop3DWindow();
+for(let i=0;i<20;i++)desktopWindow.update(1/60,true,{x:1,y:.5});
+assert.ok(Math.abs(desktopWindow.update(0,true,{x:1,y:.5}).x)>.01);
+desktopWindow.reset();
+assert.deepEqual(desktopWindow.update(0,true,{x:0,y:0}),{x:0,y:0});
 
 // Cardboard and WebXR must not inherit synthetic camera position.
 for(const mode of ['cardboard','webxr']){
