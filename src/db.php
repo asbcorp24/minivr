@@ -124,6 +124,10 @@ function db(): PDO
             $update->execute([json_encode($points,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),(int)$row['id']]);
         }
     }
+    // A scene-level voice-over is independent from both music and guided stops.
+    if (!in_array('scene_audio', $sceneColumns, true)) {
+        $db->exec("ALTER TABLE tour_scenes ADD COLUMN scene_audio TEXT NOT NULL DEFAULT ''");
+    }
     // Positions belong to tour stops, so shared panorama assets stay reusable.
     if (!in_array('geo_lat', $sceneColumns, true)) {
         $db->exec('ALTER TABLE tour_scenes ADD COLUMN geo_lat REAL DEFAULT NULL');

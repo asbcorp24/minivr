@@ -4,6 +4,11 @@ if(!audio||!root||!data)return;
 let tracks=[];try{tracks=JSON.parse(data.textContent)}catch(e){console.warn('Music playlist invalid',e)}
 if(!tracks.length)return;
 const KEY='minivr:music:v2',title=root.querySelector('.music-title'),artist=root.querySelector('.music-artist'),toggle=root.querySelector('.music-toggle');
+// Voice-over belongs to a tour scene. Keep music playing, just duck its level.
+const normalVolume=audio.volume;
+function applyNarrationDucking(active){audio.volume=active?normalVolume*.18:normalVolume}
+applyNarrationDucking(!!window.__minivrVoiceActive);
+window.addEventListener('minivr:narration-active',event=>applyNarrationDucking(!!event.detail?.active));
 let index=0,wantsPlay=false,restoring=false;
 let state={};try{state=JSON.parse(sessionStorage.getItem(KEY)||'{}')}catch(e){}
 index=Math.max(0,tracks.findIndex(t=>t.file_path===state.file_path));if(index<0)index=0;

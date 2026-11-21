@@ -131,3 +131,14 @@ body.tour-geo-picker-open{overflow:hidden}
  .tour-geo-picker-location button{flex:1}
  .tour-geo-picker-actions button{flex:1}
 }
+
+/* Tour-scene voice-over is separate from point narration and background music. */
+.scene-audio-guide{display:grid;gap:10px;min-width:0;padding:14px;border:1px solid #347484;border-radius:10px;background:#0b2935}
+.scene-audio-guide>strong{color:#8bf1fc;font-size:15px}
+.scene-audio-guide>small{color:#a3c6d1;line-height:1.5}
+.scene-audio-guide-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;min-width:0}
+.scene-audio-guide-controls input{flex:1;min-width:180px;max-width:100%;box-sizing:border-box}
+.scene-audio-guide-controls button{flex:none}
+.scene-audio-guide audio{width:100%;max-width:520px}
+.scene-audio-guide audio[hidden]{display:none}
+@media(max-width:650px){.scene-audio-guide{padding:10px}.scene-audio-guide-controls{align-items:stretch;flex-direction:column}.scene-audio-guide-controls input,.scene-audio-guide-controls button{width:100%;min-width:0}}
