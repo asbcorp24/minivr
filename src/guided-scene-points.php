@@ -1,5 +1,10 @@
 <?php
 /** Validate the ordered narrative stops owned by one tour scene. */
+function parseTourSceneAudio(string $audio): string {
+ $audio=trim($audio);
+ if($audio!==''&&!preg_match('~^/uploads/guided-audio/[a-f0-9]{32}\.(?:mp3|ogg|wav)$~iD',$audio))throw new RuntimeException('Аудиогид сцены должен быть загруженным MP3, OGG или WAV');
+ return $audio;
+}
 function parseGuidedScenePoints(string $raw): array {
  if(strlen($raw)>100000)throw new RuntimeException('Слишком много данных экскурсии');
  $items=json_decode($raw,true);

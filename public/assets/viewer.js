@@ -9,6 +9,7 @@ import {canTranslateDepthCamera,depthOffsetInWorld} from '/assets/depth-motion.j
 import {shouldSwitchSceneInPlace} from '/assets/tour-navigation.js';
 import {viewerTargetWithEmbed} from '/assets/embed-navigation.js';
 import {tourScenePoint,tourMapEmbedUrl,tourMapExternalUrl} from '/assets/tour-geo-map.js';
+import {createTourAudioGuide,isTourAudioUrl} from '/assets/tour-audio-guide.js';
 import * as THREE from '/assets/vendor/three/three.module.js';
 import DeviceOrientationControls from '/assets/vendor/three/DeviceOrientationControls.js';
 import VREffect from '/assets/vendor/three/effects/VREffect.js';
@@ -52,12 +53,34 @@ function sceneNarrationPoints(){
  return Array.isArray(points)?points.filter(p=>Number.isFinite(Number(p.yaw))&&Number.isFinite(Number(p.pitch))&&Number(p.duration)>0).slice(0,50):[];
 }
 let guidedPoints=sceneNarrationPoints();
-let guidedIndex=-1,guidedTimer=null,guidedTarget=null,guidedPanel=null,guidedAudio=null;
+let guidedIndex=-1,guidedTimer=null,guidedTarget=null,guidedPanel=null;
+let guidedDurationPassed=false,guidedAudioFinished=true,sceneAudioButton=null;
 let guidedEnabled=!!tour&&guidedPoints.length>0;
+function syncSceneAudioButton(){
+ if(!sceneAudioButton)return;
+ sceneAudioButton.disabled=tourPaused||narration.pointActive()||narration.sceneFinished();
+ sceneAudioButton.textContent=narration.pointActive()?'🎙 Комментарий точки':narration.sceneFinished()?'✓ Рассказ завершён':narration.scenePlaying()?'⏸ Аудиогид':'▶ Аудиогид';
+}
+const narration=createTourAudioGuide({
+ onVoiceChange(active){
+  window.__minivrVoiceActive=active;
+  window.dispatchEvent(new CustomEvent('minivr:narration-active',{detail:{active}}));
+  syncSceneAudioButton();
+ },
+ onSceneEnded(){syncSceneAudioButton();resetTourTimer();},
+ onAutoplayBlocked(role){
+  if(role==='point'&&guidedPanel){
+   const hint=guidedPanel.querySelector('[data-guided-audio]');
+   hint.hidden=false;
+   hint.onclick=()=>narration.retryCurrent();
+  }
+  syncSceneAudioButton();
+ }
+});
 function guidedClearTimer(){if(guidedTimer){clearTimeout(guidedTimer);guidedTimer=null}}
-function guidedStopAudio(){if(guidedAudio){guidedAudio.pause();guidedAudio.removeAttribute('src');guidedAudio.load();guidedAudio=null}}
+function guidedTryAdvance(){if(guidedDurationPassed&&guidedAudioFinished&&!tourPaused)guidedShow(guidedIndex+1)}
 function guidedShow(index){
- guidedClearTimer();guidedStopAudio();
+ guidedClearTimer();narration.finishPoint();guidedDurationPassed=false;guidedAudioFinished=true;
  if(index>=guidedPoints.length){guidedIndex=guidedPoints.length;guidedTarget=null;if(guidedPanel)guidedPanel.hidden=true;resetTourTimer();return}
  guidedIndex=index;const p=guidedPoints[index];
  guidedTarget={yaw:Number(p.yaw),pitch:Number(p.pitch)};
@@ -65,20 +88,37 @@ function guidedShow(index){
   guidedPanel.hidden=false;guidedPanel.querySelector('[data-guided-heading]').textContent=(index+1)+' / '+guidedPoints.length+' · '+(p.title||'Точка экскурсии');
   guidedPanel.querySelector('[data-guided-text]').textContent=p.text||'';
   guidedPanel.querySelector('[data-guided-next]').textContent=index===guidedPoints.length-1?'Завершить рассказ →':'Следующая точка →';
+  const hint=guidedPanel.querySelector('[data-guided-audio]');hint.hidden=true;hint.onclick=null;
  }
- if(p.audio&&/^\/uploads\/[a-zA-Z0-9_./-]+\.(mp3|ogg|wav)$/i.test(p.audio)){
-  guidedAudio=new Audio(p.audio);guidedAudio.preload='auto';guidedAudio.play().catch(()=>{if(guidedPanel){const hint=guidedPanel.querySelector('[data-guided-audio]');hint.hidden=false;hint.onclick=()=>guidedAudio?.play().catch(()=>{})}});
+ if(isTourAudioUrl(p.audio)){
+  guidedAudioFinished=false;
+  narration.playPoint(p.audio,()=>{guidedAudioFinished=true;guidedTryAdvance();syncSceneAudioButton()});
  }
- if(!tourPaused)guidedTimer=setTimeout(()=>guidedShow(index+1),Math.max(1,Math.min(600,Number(p.duration)))*1000);
+ syncSceneAudioButton();
+ if(!tourPaused)guidedTimer=setTimeout(()=>{guidedDurationPassed=true;guidedTryAdvance()},Math.max(1,Math.min(600,Number(p.duration)))*1000);
 }
 function guidedPauseResume(){
- guidedClearTimer();
- if(guidedAudio){if(tourPaused)guidedAudio.pause();else guidedAudio.play().catch(()=>{})}
- if(!tourPaused&&guidedIndex>=0&&guidedIndex<guidedPoints.length)guidedTimer=setTimeout(()=>guidedShow(guidedIndex+1),Math.max(1,Math.min(600,Number(guidedPoints[guidedIndex].duration)))*1000);
+ guidedClearTimer();narration.setPaused(tourPaused);
+ if(!tourPaused&&guidedIndex>=0&&guidedIndex<guidedPoints.length){
+  if(guidedDurationPassed)guidedTryAdvance();
+  else guidedTimer=setTimeout(()=>{guidedDurationPassed=true;guidedTryAdvance()},Math.max(1,Math.min(600,Number(guidedPoints[guidedIndex].duration)))*1000);
+ }
+ syncSceneAudioButton();
 }
 function guidedSetup(){
- guidedClearTimer();guidedStopAudio();guidedPanel?.remove();guidedPanel=null;guidedIndex=-1;guidedTarget=null;
- if(!guidedEnabled)return;
+ guidedClearTimer();narration.stop();guidedPanel?.remove();guidedPanel=null;sceneAudioButton?.remove();sceneAudioButton=null;guidedIndex=-1;guidedTarget=null;
+ if(tour){
+  narration.setPaused(tourPaused);
+  if(narration.setScene(tourData.scenes[tourData.current]?.scene_audio)){
+   sceneAudioButton=document.createElement('button');sceneAudioButton.type='button';sceneAudioButton.id='minivr-scene-audio-toggle';
+   sceneAudioButton.style.cssText='position:fixed;top:92px;left:12px;z-index:830;border:1px solid #58c3d2;border-radius:10px;padding:9px 12px;background:#092734ed;color:#e0fbff;font:600 12px system-ui;max-width:200px;cursor:pointer';
+   sceneAudioButton.setAttribute('aria-label','Воспроизвести или приостановить аудиогид сцены');
+   sceneAudioButton.onclick=()=>{narration.toggleScene();syncSceneAudioButton()};
+   document.body.append(sceneAudioButton);
+   syncSceneAudioButton();
+  }
+ }
+ if(!guidedEnabled){resetTourTimer();return;}
  guidedPanel=document.createElement('aside');guidedPanel.id='minivr-guided-points';
  guidedPanel.style.cssText='position:fixed;bottom:64px;left:50%;transform:translateX(-50%);width:min(390px,calc(100vw - 24px));max-height:40vh;overflow:auto;z-index:850;color:white;background:rgba(12,29,42,.88);border:1px solid #477b8b;border-radius:10px;padding:10px 12px;box-shadow:0 5px 20px #0007;backdrop-filter:blur(8px)';
  const heading=document.createElement('strong');heading.dataset.guidedHeading='';heading.style.cssText='display:block;font-size:12px;line-height:1.3';
@@ -89,6 +129,7 @@ function guidedSetup(){
  const audio=document.createElement('button');audio.type='button';audio.dataset.guidedAudio='';audio.textContent='▶ Включить аудио';audio.hidden=true;
  controls.append(next,pause,audio);guidedPanel.append(heading,description,controls);document.body.append(guidedPanel);
  guidedShow(0);
+ resetTourTimer();
 }
 // Guided tour: each scene has its own duration; 0 disables automatic advance.
 let tourTimer=null,tourDeadline=0,tourPaused=false;
@@ -100,12 +141,20 @@ function currentTourDuration(){
 }
 const tourButton=document.createElement('button');
 tourButton.type='button';tourButton.id='tour-autoplay';tourButton.style.cssText='background:#153849;color:white;border:1px solid #43849d;border-radius:8px;padding:7px 10px;cursor:pointer';
-tourButton.addEventListener('click',()=>{tourPaused=!tourPaused;if(guidedEnabled&&guidedIndex<guidedPoints.length)guidedPauseResume();resetTourTimer()});
+tourButton.addEventListener('click',()=>{tourPaused=!tourPaused;guidedPauseResume();resetTourTimer()});
 function resetTourTimer(){
  if(tourTimer){clearTimeout(tourTimer);tourTimer=null}
  if(guidedEnabled&&guidedIndex<guidedPoints.length)return;
  const duration=currentTourDuration();
  const next=tourData.current+1<tourData.scenes.length;
+ if(narration.hasScene()){
+  tourButton.textContent=tourPaused?'▶ Продолжить экскурсию':narration.sceneFinished()?'✓ Рассказ завершён':'🎧 Идёт аудиогид';
+  // The recording sets the scene's duration; do not cut it at the old timer.
+  if(tour&&next&&narration.sceneFinished()&&!tourPaused&&document.getElementById('minivr-tour-geo-map')?.hidden!==false){
+   tourTimer=setTimeout(()=>{tourTimer=null;if(document.visibilityState==='visible'&&!tourPaused)goScene(tourData.current+1)},750);
+  }
+  return;
+ }
  tourButton.textContent=tourPaused?'▶ Продолжить экскурсию':'⏸ Авто: '+duration+' с';
  tourButton.title='Автоматический переход к следующей панораме';
  // Do not advance a scene while someone is reading its location on the map.
