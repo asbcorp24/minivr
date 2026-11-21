@@ -18,4 +18,30 @@ function panoramaAdminImageInfo(string $url): string {
     return $label;
 }
 ?>
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/assets/admin.css"><title>MiniVR Control</title></head><body><aside><div class="logo">MINI<span>VR</span></div><a class="active">◉ Панорамы</a><a href="/admin/tours.php">◇ Экскурсии</a><a href="/admin/embeds.php">⇧ Встраивание</a><a href="/admin/music.php">♫ Музыка</a><a href="/admin/cleanup.php">♻ Очистка файлов</a><a href="/">↗ Открыть сайт</a><a href="?logout=1">⏻ Выход</a></aside><main><header><div><small>CONTENT SYSTEM</small><h1>Панорамы</h1></div><a class="btn" href="/admin/panorama.php">＋ ЗАГРУЗИТЬ</a></header><div class="stats"><div><b><?=count($panos)?></b><span>ПАНОРАМ</span></div><div><b><?=count(array_filter($panos,fn($p)=>$p['published']))?></b><span>ОПУБЛИКОВАНО</span></div></div><div class="table"><?php foreach($panos as $p): ?><div class="row"><a class="mini" href="/admin/download-panorama.php?id=<?=(int)$p['id']?>" download title="Скачать оригинальное изображение панорамы" aria-label="Скачать панораму: <?=htmlspecialchars($p['title'],ENT_QUOTES)?>" style="display:block;background-image:url('<?=htmlspecialchars(panoramaThumbnailUrl($p['image'],'thumb'),ENT_QUOTES)?>')"></a><div class="grow"><b><?=htmlspecialchars($p['title'])?></b><small>/<?=htmlspecialchars($p['slug'])?></small><small title="Разрешение и размер оригинальной фотографии" style="display:block;margin-top:5px;color:#9fc2ce"><?=htmlspecialchars(panoramaAdminImageInfo((string)$p['image']))?></small></div><span class="status"><?=$p['published']?'ONLINE':'СКРЫТА'?></span><form method="post" style="display:inline"><input type="hidden" name="csrf" value="<?=htmlspecialchars($_SESSION['publish_csrf'],ENT_QUOTES)?>"><button type="submit" name="toggle_publish" value="<?=(int)$p['id']?>" onclick="return confirm('<?=$p['published']?'Убрать панораму из каталога? Существующие iframe останутся доступны.':'Вернуть панораму в каталог?'?>')"><?=$p['published']?'УБРАТЬ С ПУБЛИКАЦИИ':'ОПУБЛИКОВАТЬ'?></button></form><a href="/admin/download-panorama.php?id=<?=(int)$p['id']?>" download title="Скачать исходный файл панорамы">↓ СКАЧАТЬ</a><a href="/admin/panorama.php?id=<?=$p['id']?>">НАСТРОИТЬ</a><a href="/viewer.php?id=<?=$p['id']?>" target="_blank">VIEW</a><a class="danger" href="?delete=<?=$p['id']?>" onclick="return confirm('Удалить?')">×</a></div><?php endforeach;?></div></main></body></html>
+<!doctype html>
+<html lang="ru"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<link rel="stylesheet" href="/assets/admin.css">
+<link rel="stylesheet" href="/assets/panorama-upload.css?v=<?=filemtime(__DIR__.'/../assets/panorama-upload.css')?>">
+<title>MiniVR Control</title>
+</head><body>
+<aside><div class="logo">MINI<span>VR</span></div>
+<a class="active">◉ Панорамы</a><a href="/admin/tours.php">◇ Экскурсии</a>
+<a href="/admin/embeds.php">⇧ Встраивание</a><a href="/admin/music.php">♫ Музыка</a>
+<a href="/admin/cleanup.php">♻ Очистка файлов</a><a href="/">↗ Открыть сайт</a><a href="?logout=1">⏻ Выход</a>
+</aside><main>
+<header><div><small>CONTENT SYSTEM</small><h1>Панорамы</h1></div><a class="btn" href="/admin/panorama.php">＋ ЗАГРУЗИТЬ</a></header>
+<div class="stats"><div><b><?=count($panos)?></b><span>ПАНОРАМ</span></div><div><b><?=count(array_filter($panos,fn($p)=>$p['published']))?></b><span>ОПУБЛИКОВАНО</span></div></div>
+<?php require __DIR__.'/../../src/admin-panorama-bulk-panel.php'; ?>
+<div class="table"><?php foreach($panos as $p): ?>
+ <div class="row">
+  <a class="mini" href="/admin/download-panorama.php?id=<?=(int)$p['id']?>" download title="Скачать оригинальное изображение панорамы" aria-label="Скачать панораму: <?=htmlspecialchars($p['title'],ENT_QUOTES)?>" style="display:block;background-image:url('<?=htmlspecialchars(panoramaThumbnailUrl($p['image'],'thumb'),ENT_QUOTES)?>')"></a>
+  <div class="grow"><b><?=htmlspecialchars($p['title'])?></b><small>/<?=htmlspecialchars($p['slug'])?></small><small title="Разрешение и размер оригинальной фотографии" style="display:block;margin-top:5px;color:#9fc2ce"><?=htmlspecialchars(panoramaAdminImageInfo((string)$p['image']))?></small></div>
+  <span class="status"><?=$p['published']?'ONLINE':'СКРЫТА'?></span>
+  <form method="post" style="display:inline"><input type="hidden" name="csrf" value="<?=htmlspecialchars($_SESSION['publish_csrf'],ENT_QUOTES)?>"><button type="submit" name="toggle_publish" value="<?=(int)$p['id']?>" onclick="return confirm('<?=$p['published']?'Убрать панораму из каталога? Существующие iframe останутся доступны.':'Вернуть панораму в каталог?'?>')"><?=$p['published']?'УБРАТЬ С ПУБЛИКАЦИИ':'ОПУБЛИКОВАТЬ'?></button></form>
+  <a href="/admin/download-panorama.php?id=<?=(int)$p['id']?>" download title="Скачать исходный файл панорамы">↓ СКАЧАТЬ</a><a href="/admin/panorama.php?id=<?=$p['id']?>">НАСТРОИТЬ</a><a href="/viewer.php?id=<?=$p['id']?>" target="_blank">VIEW</a><a class="danger" href="?delete=<?=$p['id']?>" onclick="return confirm('Удалить?')">×</a>
+ </div>
+<?php endforeach;?></div>
+</main>
+<script src="/assets/panorama-upload.js?v=<?=filemtime(__DIR__.'/../assets/panorama-upload.js')?>" defer></script>
+</body></html>
