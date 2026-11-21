@@ -65,8 +65,8 @@ if (is_array($new) && isset($new['token'], $new['title'])) {
     $code = embedIframeCode($embedUrl, $new['title'].' — MiniVR');
 }
 
-$panoramas = $db->query('SELECT id,title FROM panoramas WHERE published=1 ORDER BY title,id')->fetchAll();
-$tours = $db->query('SELECT t.id,t.title FROM tours t WHERE t.published=1 AND EXISTS(SELECT 1 FROM tour_scenes s JOIN panoramas p ON p.id=s.panorama_id AND p.published=1 WHERE s.tour_id=t.id) ORDER BY t.title,t.id')->fetchAll();
+$panoramas = $db->query('SELECT id,title FROM panoramas ORDER BY title,id')->fetchAll();
+$tours = $db->query('SELECT t.id,t.title FROM tours t WHERE EXISTS(SELECT 1 FROM tour_scenes s JOIN panoramas p ON p.id=s.panorama_id WHERE s.tour_id=t.id) ORDER BY t.title,t.id')->fetchAll();
 $links = $db->query("SELECT e.id,e.kind,e.target_id,e.label,e.created_at,e.revoked_at,CASE WHEN e.kind='panorama' THEN (SELECT p.title FROM panoramas p WHERE p.id=e.target_id) ELSE (SELECT t.title FROM tours t WHERE t.id=e.target_id) END target_title FROM embed_links e ORDER BY e.id DESC LIMIT 150")->fetchAll();
 $escape = static fn($value): string => htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 ?>
