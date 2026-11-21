@@ -8,9 +8,9 @@ function embedTargetExists(PDO $db, string $kind, int $targetId): bool
         return false;
     }
     if ($kind === 'panorama') {
-        $q = $db->prepare('SELECT 1 FROM panoramas WHERE id=? AND published=1');
+        $q = $db->prepare('SELECT 1 FROM panoramas WHERE id=?');
     } else {
-        $q = $db->prepare('SELECT 1 FROM tours t WHERE t.id=? AND t.published=1 AND EXISTS (SELECT 1 FROM tour_scenes s JOIN panoramas p ON p.id=s.panorama_id AND p.published=1 WHERE s.tour_id=t.id)');
+        $q = $db->prepare('SELECT 1 FROM tours t WHERE t.id=? AND EXISTS (SELECT 1 FROM tour_scenes s JOIN panoramas p ON p.id=s.panorama_id WHERE s.tour_id=t.id)');
     }
     $q->execute([$targetId]);
     return (bool) $q->fetchColumn();
@@ -20,7 +20,7 @@ function embedTargetExists(PDO $db, string $kind, int $targetId): bool
 function issueEmbedToken(PDO $db, string $kind, int $targetId, string $label = ''): string
 {
     if (!embedTargetExists($db, $kind, $targetId)) {
-        throw new RuntimeException('Выберите опубликованную панораму или экскурсию.');
+        throw new RuntimeException('Выберите существующую панораму или экскурсию.');
     }
     $label = trim($label);
     if (strlen($label) > 160) {
@@ -53,10 +53,10 @@ function embedStartingScene(PDO $db, array $link): ?array
     if ($link['kind'] === 'panorama') {
         return ['panorama_id'=>(int)$link['target_id'],'scene_id'=>0,'tour_id'=>0];
     }
-    $q = $db->prepare('SELECT start_scene_id FROM tours WHERE id=? AND published=1');
+    $q = $db->prepare('SELECT start_scene_id FROM tours WHERE id=?');
     $q->execute([(int)$link['target_id']]);
     $startSceneId = (int)($q->fetchColumn() ?: 0);
-    $q = $db->prepare('SELECT s.id,s.panorama_id FROM tour_scenes s JOIN panoramas p ON p.id=s.panorama_id AND p.published=1 WHERE s.tour_id=? ORDER BY s.sort_order,s.id');
+    $q = $db->prepare('SELECT s.id,s.panorama_id FROM tour_scenes s JOIN panoramas p ON p.id=s.panorama_id WHERE s.tour_id=? ORDER BY s.sort_order,s.id');
     $q->execute([(int)$link['target_id']]);
     $scenes = $q->fetchAll(PDO::FETCH_ASSOC);
     if (!$scenes) {
@@ -80,7 +80,7 @@ function embedAllowsScene(PDO $db, array $link, int $panoramaId, int $tourId, in
     if ($tourId !== (int)$link['target_id'] || $sceneId < 1 || $panoramaId < 1) {
         return false;
     }
-    $q = $db->prepare('SELECT 1 FROM tour_scenes s JOIN panoramas p ON p.id=s.panorama_id AND p.published=1 WHERE s.id=? AND s.tour_id=? AND s.panorama_id=?');
+    $q = $db->prepare('SELECT 1 FROM tour_scenes s JOIN panoramas p ON p.id=s.panorama_id WHERE s.id=? AND s.tour_id=? AND s.panorama_id=?');
     $q->execute([$sceneId, $tourId, $panoramaId]);
     return (bool) $q->fetchColumn();
 }
