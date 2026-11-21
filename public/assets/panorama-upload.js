@@ -116,9 +116,9 @@
     });
   }
 
-  function panoramaTitle(filename, prefix) {
-    const basename = filename.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
-    return `${prefix}${basename || 'Панорама'}`.trim().slice(0, 120);
+  function panoramaTitle(filename) {
+    // Preserve the file name exactly, removing only its final extension.
+    return filename.replace(/\.[^.]+$/, '');
   }
 
   function initBulk() {
@@ -145,7 +145,6 @@
       const files = Array.from(input.files || []);
       if (!files.length) return;
       const settings = new FormData(form);
-      const prefix = (settings.get('title_prefix') || '').toString();
       const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
       const progressTotal = totalBytes || files.length;
       let completedBytes = 0;
@@ -186,7 +185,7 @@
         const data = new FormData();
         data.append('csrf_token', settings.get('csrf_token'));
         data.append('image', file, file.name);
-        data.append('title', panoramaTitle(file.name, prefix));
+        data.append('title', panoramaTitle(file.name));
         for (const key of ['projection', 'stereo', 'description']) data.append(key, settings.get(key) || '');
         if (settings.has('published')) data.append('published', '1');
 

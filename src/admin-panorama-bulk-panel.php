@@ -10,7 +10,7 @@ if (!isset($_SESSION['bulk_panorama_csrf'])) {
   <div><small>МАТЕРИАЛЫ / ПАКЕТНАЯ ЗАГРУЗКА</small><h2 id="bulk-upload-title">Массовая загрузка панорам</h2></div>
   <span>JPG · PNG · WEBP</span>
  </div>
- <p>Выберите сразу несколько изображений. Для каждого будет создана отдельная панорама с настройками ниже, название берётся из имени файла. Можно добавить общий префикс.</p>
+ <p>Выберите сразу несколько изображений. Для каждого будет создана отдельная панорама с настройками ниже. Название будет таким же, как имя файла, но без расширения.</p>
  <form id="panorama-bulk-form" method="post" enctype="multipart/form-data" action="/admin/panorama-bulk-upload.php">
   <input type="hidden" name="csrf_token" value="<?=htmlspecialchars($_SESSION['bulk_panorama_csrf'], ENT_QUOTES, 'UTF-8')?>">
   <div class="bulk-upload-fields">
@@ -23,9 +23,6 @@ if (!isset($_SESSION['bulk_panorama_csrf'])) {
    </label>
    <label>Стерео по умолчанию
     <select name="stereo"><option value="mono">Mono</option><option value="sbs">Stereo SBS</option><option value="tb">Stereo Top / Bottom</option></select>
-   </label>
-   <label>Префикс названия (необязательно)
-    <input name="title_prefix" maxlength="80" placeholder="Например: Первый этаж — ">
    </label>
    <label class="bulk-upload-files">Общее описание (необязательно)
     <textarea name="description" rows="2" maxlength="4000" placeholder="Применится ко всем выбранным панорамам"></textarea>

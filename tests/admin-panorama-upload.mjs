@@ -50,7 +50,7 @@ function harness(mode, responses) {
   form.action = 'https://minivr.test/admin/panorama-bulk-upload.php';
   form.values = [
     ['csrf_token', 'token'], ['projection', '360'], ['stereo', 'mono'],
-    ['title_prefix', 'Музей — '], ['description', 'Первый этаж'], ['published', '1']
+    ['description', 'Первый этаж'], ['published', '1']
   ];
   const file = new Element();
   const label = new Element();
@@ -94,22 +94,22 @@ function harness(mode, responses) {
 // Bulk queue continues after a per-file server error; defaults persist.
 {
   const h = harness('bulk', [
-    { status: 201, body: { ok: true, id: 11, title: 'Музей — Зал 1' } },
+    { status: 201, body: { ok: true, id: 11, title: 'Зал_1' } },
     { status: 422, body: { ok: false, error: 'Некорректное изображение' } }
   ]);
   h.file.files = [
     { name: 'Зал_1.jpg', size: 100 },
-    { name: 'broken.png', size: 100 }
+    { name: 'Небо.закат.webp', size: 100 }
   ];
   await h.file.trigger('change');
   assert.match(h.label.textContent, /2 файлов/);
   await h.form.trigger('submit');
   assert.equal(h.requests.length, 2);
-  assert.equal(h.requests[0].data.get('title'), 'Музей — Зал 1');
+  assert.equal(h.requests[0].data.get('title'), 'Зал_1');
   assert.equal(h.requests[0].data.get('projection'), '360');
   assert.equal(h.requests[0].data.get('description'), 'Первый этаж');
   assert.equal(h.requests[0].data.get('published'), '1');
-  assert.equal(h.requests[1].data.get('title'), 'Музей — broken');
+  assert.equal(h.requests[1].data.get('title'), 'Небо.закат');
   assert.equal(h.parts['file-list'].children.length, 2);
   assert.equal(h.parts['overall-progress'].value, 100);
   assert.match(h.parts.finish.textContent, /Готово: 1 · Ошибок: 1/);
