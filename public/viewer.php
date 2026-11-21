@@ -26,7 +26,7 @@ if($tour&&$sceneId){
     $q=db()->prepare("SELECT h.*,ts.panorama_id target_panorama_id FROM hotspots h LEFT JOIN tour_scenes ts ON ts.id=h.target_scene_id WHERE h.scene_id=?");
     $q->execute([$sceneId]);$hotspots=$q->fetchAll();
     $sql="SELECT ts.id,ts.panorama_id,COALESCE(ts.title,p.title) title,p.image,p.preview,p.description,p.effects,ts.duration_seconds,ts.guided_points,ts.geo_lat,ts.geo_lng FROM tour_scenes ts JOIN panoramas p ON p.id=ts.panorama_id WHERE ts.tour_id=?";
-    if($embedded)$sql.=' AND p.published=1';
+    // A valid embed token grants access to unpublished tour scenes as well.
     $q=db()->prepare($sql.' ORDER BY ts.sort_order,ts.id');
     $q->execute([$tour]);$tourScenes=$q->fetchAll();
     foreach($tourScenes as $i=>$ts)if((int)$ts['id']===$sceneId)$currentIndex=$i;
