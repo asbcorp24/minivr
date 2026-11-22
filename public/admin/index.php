@@ -27,6 +27,7 @@ function panoramaAdminImageInfo(string $url): string {
 </head><body>
 <aside><div class="logo">MINI<span>VR</span></div>
 <a class="active">◉ Панорамы</a><a href="/admin/tours.php">◇ Экскурсии</a>
+<a href="/admin/hotspot-import.php">⌖ Привязка точек JSON</a>
 <a href="/admin/embeds.php">⇧ Встраивание</a><a href="/admin/music.php">♫ Музыка</a>
 <a href="/admin/cleanup.php">♻ Очистка файлов</a><a href="/">↗ Открыть сайт</a><a href="?logout=1">⏻ Выход</a>
 </aside><main>
