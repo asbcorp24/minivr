@@ -58,7 +58,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var tileStreamer: NativeTileStreamer? = null
     private var gyro = false
     private var gyroSensor: Sensor? = null
-    private var baseline: Pair<Float, Float>? = null
+    private var baseline: NativeViewOrientation.GyroAngles? = null
     private var baselineView = Pair(0f, 0f)
     private var lastTouchX = 0f
     private var lastTouchY = 0f
@@ -103,10 +103,13 @@ class MainActivity : Activity(), SensorEventListener {
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> { lastTouchX = event.x; lastTouchY = event.y }
                     MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1 && !gyro && !scale.isInProgress) {
-                        renderer.yaw -= (event.x - lastTouchX) * .18f
-                        renderer.pitch = (renderer.pitch + (lastTouchY - event.y) * .18f).coerceIn(-89f, 89f)
-                        renderer.motionX = (renderer.motionX + (event.x - lastTouchX) * .004f).coerceIn(-.8f, .8f)
-                        renderer.motionY = (renderer.motionY + (lastTouchY - event.y) * .004f).coerceIn(-.8f, .8f)
+                        val dx = event.x - lastTouchX
+                        val dy = event.y - lastTouchY
+                        renderer.yaw -= dx * .18f
+                        // Match MiniVR web dragging: the panorama follows the finger.
+                        renderer.pitch = (renderer.pitch + NativeViewOrientation.dragPitchDelta(dy)).coerceIn(-89f, 89f)
+                        renderer.motionX = (renderer.motionX + dx * .004f).coerceIn(-.8f, .8f)
+                        renderer.motionY = (renderer.motionY + dy * .004f).coerceIn(-.8f, .8f)
                     }
                 }
                 lastTouchX = event.x; lastTouchY = event.y
@@ -496,24 +499,25 @@ class MainActivity : Activity(), SensorEventListener {
         gyroButton.text = if (gyro) "◉ GYRO" else "GYRO"
     }
 
-    private fun wrap(angle: Float): Float = ((angle + 540f) % 360f) - 180f
     override fun onSensorChanged(event: SensorEvent) {
         if (!gyro || event.sensor.type != Sensor.TYPE_GAME_ROTATION_VECTOR) return
         val rotation = FloatArray(9)
-        val orientation = FloatArray(3)
         SensorManager.getRotationMatrixFromVector(rotation, event.values)
-        SensorManager.getOrientation(rotation, orientation)
-        val yaw = Math.toDegrees(orientation[0].toDouble()).toFloat()
-        val pitch = Math.toDegrees(orientation[1].toDouble()).toFloat()
+        // Use the world-space direction of the device's rear camera, not Android's
+        // Euler pitch: the latter flips near an upright phone and depends on the
+        // device's natural screen axes (portrait/landscape). Rear-facing -Z is
+        // unaffected by rotating the screen around its normal.
+        val direction = NativeViewOrientation.fromRotationMatrix(rotation) ?: return
         val first = baseline
         if (first == null) {
-            baseline = Pair(yaw, pitch)
+            baseline = direction
             baselineView = Pair(renderer.yaw, renderer.pitch)
         } else {
-            renderer.yaw = baselineView.first - wrap(yaw - first.first)
-            renderer.pitch = (baselineView.second + pitch - first.second).coerceIn(-89f, 89f)
-            renderer.motionX = (wrap(yaw - first.first) / 45f).coerceIn(-.7f, .7f)
-            renderer.motionY = ((pitch - first.second) / 45f).coerceIn(-.7f, .7f)
+            val delta = NativeViewOrientation.relativeView(first, direction)
+            renderer.yaw = baselineView.first + delta.yaw
+            renderer.pitch = (baselineView.second + delta.pitch).coerceIn(-89f, 89f)
+            renderer.motionX = (-delta.yaw / 45f).coerceIn(-.7f, .7f)
+            renderer.motionY = (delta.pitch / 45f).coerceIn(-.7f, .7f)
         }
     }
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
