@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Dialog
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.graphics.Typeface
 import android.opengl.GLSurfaceView
 import android.view.Gravity
 import android.view.MotionEvent
@@ -18,6 +19,7 @@ import kotlin.concurrent.thread
 /** Fullscreen native GPU viewer of a stereo photo in a tour hotspot. */
 class NativeStereoPhotoDialog(private val activity: Activity, private val api: MiniVrApi) {
     fun show(path: String, stereo: String, label: String) {
+        fun dp(n: Int) = MiniVrStyle.dp(activity, n)
         val previousOrientation = activity.requestedOrientation
         val renderer = PanoramaRenderer()
         val dialog = Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
@@ -54,26 +56,40 @@ class NativeStereoPhotoDialog(private val activity: Activity, private val api: M
         fun control(text: String, onClick: () -> Unit) = Button(activity).apply {
             this.text = text
             isAllCaps = false
-            setTextColor(Color.WHITE)
-            setBackgroundColor(0xCC123A4E.toInt())
+            textSize = 12f
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            setTextColor(MiniVrStyle.text)
+            background = MiniVrStyle.touchBackground(activity)
+            setPadding(dp(6), 0, dp(6), 0)
             setOnClickListener { onClick() }
         }
         val toolbar = LinearLayout(activity).apply {
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(0xAA03121A.toInt())
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+            background = MiniVrStyle.border(activity, MiniVrStyle.glass, MiniVrStyle.cyan, 12)
         }
-        val vrToggle = control("VR SBS") {}
+        val vrToggle = control("VR / SBS") {}
         vrToggle.setOnClickListener {
             renderer.cardboard = !renderer.cardboard
             activity.requestedOrientation = if (renderer.cardboard) ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                 else previousOrientation
-            vrToggle.text = if (renderer.cardboard) "Выключить VR" else "VR SBS"
+            vrToggle.text = if (renderer.cardboard) "ВЫЙТИ VR" else "VR / SBS"
         }
-        toolbar.addView(control("Закрыть") { dialog.dismiss() })
-        toolbar.addView(vrToggle)
-        toolbar.addView(control("−") { renderer.fieldOfView = (renderer.fieldOfView + 8).coerceAtMost(100f) })
-        toolbar.addView(control("+") { renderer.fieldOfView = (renderer.fieldOfView - 8).coerceAtLeast(30f) })
-        root.addView(toolbar, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        fun add(button: Button, weight: Float) {
+            toolbar.addView(button, LinearLayout.LayoutParams(0, dp(53), weight).apply {
+                leftMargin = dp(3)
+                rightMargin = dp(3)
+            })
+        }
+        add(control("✕ ЗАКРЫТЬ") { dialog.dismiss() }, 1.5f)
+        add(vrToggle, 1.4f)
+        add(control("−") { renderer.fieldOfView = (renderer.fieldOfView + 8).coerceAtMost(100f) }, .7f)
+        add(control("+") { renderer.fieldOfView = (renderer.fieldOfView - 8).coerceAtLeast(30f) }, .7f)
+        root.addView(toolbar, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
+            leftMargin = dp(10)
+            rightMargin = dp(10)
+            bottomMargin = dp(10)
+        })
         dialog.setContentView(root)
         dialog.setOnShowListener { gl.onResume() }
         dialog.setOnDismissListener {

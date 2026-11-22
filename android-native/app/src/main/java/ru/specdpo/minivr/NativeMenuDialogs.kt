@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Dialog
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
@@ -14,19 +15,22 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
 /** Large high-contrast, keyboard-accessible native selectors. No WebView. */
-class NativeMenuDialogs(private val activity: Activity) {
+class NativeMenuDialogs(private val activity: Activity, private val thumbnails: NativeThumbnailLoader) {
     data class Item(
         val id: Int,
         val title: String,
         val caption: String,
         val icon: String,
         val group: String = "",
-        val selected: Boolean = false
+        val selected: Boolean = false,
+        val thumbnail: String? = null
     )
     data class Control(
         val title: String,
@@ -36,40 +40,32 @@ class NativeMenuDialogs(private val activity: Activity) {
         val enabled: () -> Boolean = { true },
         val active: () -> Boolean = { false },
         val closeAfterTap: Boolean = false,
-        val tap: () -> Unit
+        val tap: () -> Unit,
+        val toggle: Boolean = false
     )
 
-    private val bg = 0xFF071722.toInt()
-    private val card = 0xFF123041.toInt()
-    private val selectedCard = 0xFF165067.toInt()
-    private val cyan = 0xFF65ECFF.toInt()
-    private val muted = 0xFFB4CDD6.toInt()
+    private val bg = MiniVrStyle.background
+    private val card = MiniVrStyle.panel
+    private val selectedCard = MiniVrStyle.active
+    private val cyan = MiniVrStyle.cyan
+    private val muted = MiniVrStyle.muted
     private fun dp(n: Int) = (n * activity.resources.displayMetrics.density).toInt()
 
     private fun shape(fill: Int, stroke: Int, strokeDp: Int = 1): GradientDrawable =
-        GradientDrawable().apply {
-            setColor(fill)
-            cornerRadius = dp(14).toFloat()
-            setStroke(dp(strokeDp), stroke)
-        }
+        MiniVrStyle.border(activity, fill, stroke, 9, strokeDp)
 
     private fun label(text: String, size: Float, color: Int = Color.WHITE, bold: Boolean = false) =
-        TextView(activity).apply {
-            this.text = text
-            textSize = size
-            setTextColor(color)
-            if (bold) setTypeface(null, Typeface.BOLD)
-            gravity = Gravity.CENTER_VERTICAL
-        }
+        MiniVrStyle.text(activity, text, size, color, bold)
 
     private fun action(text: String, click: () -> Unit) = Button(activity).apply {
         this.text = text
         isAllCaps = false
-        textSize = 15f
-        setTextColor(Color.WHITE)
-        background = shape(card, 0xFF3B7284.toInt())
+        textSize = 13f
+        typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        setTextColor(MiniVrStyle.text)
+        background = MiniVrStyle.touchBackground(activity)
         minHeight = dp(52)
-        setPadding(dp(12), 0, dp(12), 0)
+        setPadding(dp(9), 0, dp(9), 0)
         setOnClickListener { click() }
     }
 
@@ -86,34 +82,45 @@ class NativeMenuDialogs(private val activity: Activity) {
         val dialog = Dialog(activity, android.R.style.Theme_Material_NoActionBar_Fullscreen)
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(14))
-            setBackgroundColor(bg)
+            setPadding(dp(16), dp(10), dp(16), dp(14))
+            background = MiniVrStyle.pageBackground()
             isFocusableInTouchMode = true
         }
         val header = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        header.addView(label(title, 23f, Color.WHITE, true).apply {
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-        },
-            LinearLayout.LayoutParams(0, dp(56), 1f))
-        header.addView(action("✕") { dialog.dismiss() },
-            LinearLayout.LayoutParams(dp(52), dp(52)))
+        header.addView(MiniVrStyle.brand(activity), LinearLayout.LayoutParams(0, dp(58), 1f))
+        header.addView(MiniVrStyle.eyebrow(activity, "ANDROID / NATIVE").apply {
+            background = shape(0xFF06151E.toInt(), 0xFF285464.toInt())
+            setPadding(dp(8), 0, dp(8), 0)
+            gravity = Gravity.CENTER
+            textSize = 9f
+        }, LinearLayout.LayoutParams(-2, dp(31)).apply { rightMargin = dp(10) })
+        header.addView(action("✕") { dialog.dismiss() }, LinearLayout.LayoutParams(dp(46), dp(46)))
         root.addView(header)
-        val caption = label(description, 14f, muted)
-        caption.setPadding(0, dp(2), 0, dp(12))
+        val heading = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        heading.addView(MiniVrStyle.eyebrow(activity, "IMMERSIVE DIGITAL SPACE / MINIVR"),
+            LinearLayout.LayoutParams(-1, dp(28)))
+        heading.addView(label(title, 27f, MiniVrStyle.text, true).apply {
+            maxLines = 2
+            setPadding(0, dp(2), 0, dp(2))
+        })
+        root.addView(heading, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(10)
+        })
+        val caption = label(description, 13f, muted)
+        caption.setPadding(0, dp(6), 0, dp(16))
         root.addView(caption)
 
         if (searchable) {
             val search = EditText(activity).apply {
-                hint = "Поиск по названию…"
-                setHintTextColor(0xFF8FAEBA.toInt())
-                setTextColor(Color.WHITE)
-                textSize = 17f
+                hint = "⌕  Поиск по названию…"
+                setHintTextColor(0xFF7895A4.toInt())
+                setTextColor(MiniVrStyle.text)
+                textSize = 16f
                 setSingleLine(true)
-                background = shape(0xFF163241.toInt(), 0xFF3E7285.toInt())
+                background = shape(0xFF071A25.toInt(), 0xFF285464.toInt())
                 setPadding(dp(16), 0, dp(16), 0)
                 inputType = android.text.InputType.TYPE_CLASS_TEXT
                 contentDescription = "Поиск по списку"
@@ -168,39 +175,78 @@ class NativeMenuDialogs(private val activity: Activity) {
             val row = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-                minimumHeight = dp(86)
+                setPadding(dp(9), dp(10), dp(10), dp(10))
+                minimumHeight = dp(105)
                 isClickable = true
                 isFocusable = true
                 isSelected = entry.selected
                 contentDescription = "${entry.title}. ${entry.caption}" +
                     if (entry.selected) ". Сейчас выбрано" else ""
                 background = shape(if (entry.selected) selectedCard else card,
-                    if (entry.selected) cyan else 0xFF2B5364.toInt(), if (entry.selected) 2 else 1)
+                    if (entry.selected) cyan else MiniVrStyle.line, if (entry.selected) 2 else 1)
             }
-            val symbol = label(entry.icon, 25f, cyan, true).apply {
+            val thumbnail = FrameLayout(activity).apply {
+                background = shape(0xFF091521.toInt(), 0xFF285464.toInt())
+                clipToOutline = true
+            }
+            thumbnail.addView(label(when (entry.group) {
+                "tour" -> "VR"
+                "point" -> "♫"
+                "scene" -> "◉"
+                else -> "360°"
+            }, 19f, cyan, true).apply {
                 gravity = Gravity.CENTER
+            }, FrameLayout.LayoutParams(-1, -1))
+            if (!entry.thumbnail.isNullOrBlank()) {
+                val cover = ImageView(activity).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    contentDescription = "Обложка: ${entry.title}"
+                }
+                thumbnail.addView(cover, FrameLayout.LayoutParams(-1, -1))
+                thumbnails.load(entry.thumbnail, cover)
             }
-            row.addView(symbol, LinearLayout.LayoutParams(dp(46), dp(52)))
-            val textBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-            val name = label(entry.title, 18f, Color.WHITE, true).apply { maxLines = 3 }
+            thumbnail.addView(MiniVrStyle.eyebrow(activity, entry.icon).apply {
+                textSize = 9f
+                gravity = Gravity.CENTER
+                background = shape(0xE6031019.toInt(), 0xFF26566A.toInt())
+                setPadding(dp(5), 0, dp(5), 0)
+            }, FrameLayout.LayoutParams(-2, dp(24), Gravity.RIGHT or Gravity.TOP).apply {
+                topMargin = dp(5)
+                rightMargin = dp(5)
+            })
+            row.addView(thumbnail, LinearLayout.LayoutParams(dp(106), dp(82)).apply {
+                rightMargin = dp(12)
+            })
+            val textBox = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            val name = label(entry.title, 16f, MiniVrStyle.text, true).apply { maxLines = 2 }
             textBox.addView(name)
-            val description = label(if (entry.selected) "✓ СЕЙЧАС ВЫБРАНО · ${entry.caption}"
-                else entry.caption, 13f, if (entry.selected) cyan else muted)
+            val description = label(entry.caption, 12f, muted).apply {
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
             description.setPadding(0, dp(5), 0, 0)
             textBox.addView(description)
+            textBox.addView(MiniVrStyle.eyebrow(activity,
+                if (entry.selected) "✓ СЕЙЧАС ОТКРЫТО" else "ОТКРЫТЬ ПРОСТРАНСТВО  ↗").apply {
+                textSize = 9f
+                setPadding(0, dp(6), 0, 0)
+                maxLines = 1
+            })
             row.addView(textBox, LinearLayout.LayoutParams(0, -2, 1f))
-            val check = label(if (entry.selected) "✓" else "›", 25f,
-                if (entry.selected) cyan else 0xFF9BB9C7.toInt(), true)
+            val check = label(if (entry.selected) "✓" else "›", 22f,
+                if (entry.selected) cyan else 0xFF7895A4.toInt(), true)
             check.gravity = Gravity.CENTER
-            row.addView(check, LinearLayout.LayoutParams(dp(38), dp(52)))
+            row.addView(check, LinearLayout.LayoutParams(dp(23), dp(52)))
             container.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
-                bottomMargin = dp(10)
+                bottomMargin = dp(12)
             })
             rows.add(row to entry)
             row.setOnFocusChangeListener { _, focused ->
                 row.background = shape(if (focused || entry.selected) selectedCard else card,
-                    if (focused || entry.selected) cyan else 0xFF2B5364.toInt(),
+                    if (focused || entry.selected) cyan else MiniVrStyle.line,
                     if (focused || entry.selected) 2 else 1)
             }
             row.setOnClickListener {
@@ -209,7 +255,7 @@ class NativeMenuDialogs(private val activity: Activity) {
                 for ((itemView, _) in rows) {
                     itemView.isSelected = itemView === row
                     itemView.background = shape(if (itemView === row) selectedCard else card,
-                        if (itemView === row) cyan else 0xFF2B5364.toInt(),
+                        if (itemView === row) cyan else MiniVrStyle.line,
                         if (itemView === row) 2 else 1)
                 }
                 // Allow a short visible selection acknowledgement before loading.
@@ -237,23 +283,25 @@ class NativeMenuDialogs(private val activity: Activity) {
         fun refresh() {
             val visible = items.filter { it.group == category &&
                 it.title.contains(searchTerm, ignoreCase = true) }
-            layout.caption.text = "${visible.size} материалов · выберите карточку"
+            layout.caption.text = "${visible.size} материалов · открывайте панорамы и экскурсии"
             drawRows(layout.list, layout.dialog, visible, onSelect)
             toursButton?.background = shape(if (category == "tour") selectedCard else card,
-                if (category == "tour") cyan else 0xFF2B5364.toInt(), if (category == "tour") 2 else 1)
+                if (category == "tour") cyan else MiniVrStyle.line, if (category == "tour") 2 else 1)
             panoramasButton?.background = shape(if (category == "panorama") selectedCard else card,
-                if (category == "panorama") cyan else 0xFF2B5364.toInt(), if (category == "panorama") 2 else 1)
+                if (category == "panorama") cyan else MiniVrStyle.line, if (category == "panorama") 2 else 1)
+            toursButton?.setTextColor(if (category == "tour") cyan else MiniVrStyle.muted)
+            panoramasButton?.setTextColor(if (category == "panorama") cyan else MiniVrStyle.muted)
         }
-        layout = shell("Каталог MiniVR", "Текущий материал выделен голубой рамкой.",
+        layout = shell("Выберите пространство", "Экскурсии и панорамы с сайта MiniVR.",
             searchable = true) {
             searchTerm = it
             refresh()
         }
-        toursButton = action("Экскурсии ($tours)") { category = "tour"; refresh() }
-        panoramasButton = action("Панорамы ($panoramas)") { category = "panorama"; refresh() }
+        toursButton = action("ЭКСКУРСИИ · $tours") { category = "tour"; refresh() }
+        panoramasButton = action("ПАНОРАМЫ · $panoramas") { category = "panorama"; refresh() }
         tabs.addView(toursButton, LinearLayout.LayoutParams(0, dp(55), 1f).apply { rightMargin = dp(6) })
         tabs.addView(panoramasButton, LinearLayout.LayoutParams(0, dp(55), 1f).apply { leftMargin = dp(6) })
-        layout.root.addView(tabs, 2)
+        layout.root.addView(tabs, 3)
         refresh()
     }
 
@@ -284,7 +332,7 @@ class NativeMenuDialogs(private val activity: Activity) {
     }
 
     fun showControls(controls: List<Control>) {
-        val layout = shell("Управление", "Все функции доступны крупными кнопками. Голубой цвет — включено.",
+        val layout = shell("Управление просмотром", "Функции и эффекты MiniVR. Голубой цвет — активное состояние.",
             searchable = false) { }
         var lastAction: String? = null
         fun redraw() {
@@ -294,8 +342,13 @@ class NativeMenuDialogs(private val activity: Activity) {
             for (control in controls) {
                 if (control.section != lastSection) {
                     lastSection = control.section
-                    layout.list.addView(label(lastSection, 16f, cyan, true),
-                        LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(8) })
+                    val number = when (lastSection) {
+                        "Просмотр" -> "01 / VIEW"
+                        "Звук" -> "02 / SOUND"
+                        else -> "03 / TOUR"
+                    }
+                    layout.list.addView(MiniVrStyle.eyebrow(activity, "$number    •    ${lastSection.uppercase()}"),
+                        LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(9) })
                 }
                 val canUse = control.enabled()
                 val active = control.active()
@@ -306,7 +359,7 @@ class NativeMenuDialogs(private val activity: Activity) {
                     minimumHeight = dp(78)
                     setPadding(dp(12), dp(12), dp(12), dp(12))
                     background = shape(if ((active || justUsed) && canUse) selectedCard else card,
-                        if ((active || justUsed) && canUse) cyan else 0xFF305A6C.toInt(),
+                        if ((active || justUsed) && canUse) cyan else MiniVrStyle.line,
                         if ((active || justUsed) && canUse) 2 else 1)
                     isClickable = canUse
                     isFocusable = canUse
@@ -314,14 +367,15 @@ class NativeMenuDialogs(private val activity: Activity) {
                     contentDescription = control.title + ". " + control.detail +
                         if (active) ". Включено" else ""
                 }
-                row.addView(label(control.icon, 26f, cyan, true).apply {
+                row.addView(label(control.icon, 20f, cyan, true).apply {
                     gravity = Gravity.CENTER
-                }, LinearLayout.LayoutParams(dp(48), dp(48)))
+                    background = shape(0xFF092330.toInt(), 0xFF255A69.toInt())
+                }, LinearLayout.LayoutParams(dp(45), dp(45)).apply { rightMargin = dp(12) })
                 val texts = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-                texts.addView(label(control.title, 17f, Color.WHITE, true))
+                texts.addView(label(control.title, 17f, MiniVrStyle.text, true))
                 texts.addView(label(if (!canUse) "Недоступно для этой сцены" else
-                    if (justUsed) "✓ ВЫБРАНО · ${control.detail}" else
-                    if (active) "✓ ВКЛЮЧЕНО · ${control.detail}" else control.detail,
+                    if (control.toggle) (if (active) "● ВКЛЮЧЕНО" else "○ ВЫКЛЮЧЕНО") + " · ${control.detail}" else
+                    if (justUsed) "✓ ВЫБРАНО · ${control.detail}" else control.detail,
                     13f, if ((active || justUsed) && canUse) cyan else muted).apply {
                     setPadding(0, dp(4), 0, 0)
                 })
@@ -330,7 +384,7 @@ class NativeMenuDialogs(private val activity: Activity) {
                     if (active || justUsed) cyan else muted, true), LinearLayout.LayoutParams(dp(28), -2))
                 row.setOnFocusChangeListener { _, focused ->
                     row.background = shape(if (focused || active || justUsed) selectedCard else card,
-                        if (focused || active || justUsed) cyan else 0xFF305A6C.toInt(),
+                        if (focused || active || justUsed) cyan else MiniVrStyle.line,
                         if (focused || active || justUsed) 2 else 1)
                 }
                 row.setOnClickListener {
@@ -349,5 +403,97 @@ class NativeMenuDialogs(private val activity: Activity) {
             layout.scroll.post { layout.scroll.scrollTo(0, previousScroll) }
         }
         redraw()
+    }
+
+    /** Centered native equivalent of the site's #hotspot-modal. */
+    private fun modal(title: String, eyebrow: String, body: View,
+                      nextLabel: String? = null, onNext: (() -> Unit)? = null): Dialog {
+        val dialog = Dialog(activity)
+        val panel = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(18))
+            background = shape(0xFF03131B.toInt(), cyan)
+            elevation = dp(15).toFloat()
+        }
+        val top = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        top.addView(MiniVrStyle.eyebrow(activity, eyebrow),
+            LinearLayout.LayoutParams(0, dp(35), 1f))
+        top.addView(action("✕") { dialog.dismiss() },
+            LinearLayout.LayoutParams(dp(44), dp(44)))
+        panel.addView(top)
+        panel.addView(label(title, 24f, MiniVrStyle.text, true).apply { maxLines = 3 },
+            LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(10)
+                bottomMargin = dp(17)
+            })
+        panel.addView(body, body.layoutParams as? LinearLayout.LayoutParams
+            ?: LinearLayout.LayoutParams(-1, -2))
+        val buttons = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+        buttons.addView(action("ЗАКРЫТЬ") { dialog.dismiss() },
+            LinearLayout.LayoutParams(0, dp(53), 1f))
+        if (nextLabel != null && onNext != null) {
+            buttons.addView(action(nextLabel) {
+                dialog.dismiss()
+                onNext()
+            }.apply {
+                background = shape(selectedCard, cyan)
+                setTextColor(cyan)
+            }, LinearLayout.LayoutParams(0, dp(53), 1.3f).apply {
+                leftMargin = dp(10)
+            })
+        }
+        panel.addView(buttons, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(20)
+        })
+        dialog.setContentView(panel)
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setLayout((activity.resources.displayMetrics.widthPixels - dp(32)).coerceAtMost(dp(620)),
+                WindowManager.LayoutParams.WRAP_CONTENT)
+            setDimAmount(.75f)
+            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            statusBarColor = bg
+            navigationBarColor = bg
+        }
+        return dialog
+    }
+
+    fun showInfo(title: String, body: String, eyebrow: String = "MINIVR / ИНФОРМАЦИЯ",
+                 nextLabel: String? = null, onNext: (() -> Unit)? = null) {
+        val message = label(body, 15f, 0xFF9BB4BE.toInt()).apply {
+            setLineSpacing(dp(5).toFloat(), 1f)
+            gravity = Gravity.TOP
+            setTextIsSelectable(true)
+        }
+        val scroll = ScrollView(activity).apply {
+            isVerticalScrollBarEnabled = true
+            addView(message)
+        }
+        val maxHeight = (activity.resources.displayMetrics.heightPixels * .45f).toInt()
+        // Short notes stay compact; longer texts scroll inside the modal.
+        val approximateHeight = dp(55) + (body.length / 38 + body.count { it == '\n' }) * dp(23)
+        scroll.layoutParams = LinearLayout.LayoutParams(-1, approximateHeight.coerceIn(dp(80), maxHeight))
+        modal(title, eyebrow, scroll, nextLabel, onNext)
+    }
+
+    fun showImage(title: String, onReady: (ImageView, Dialog) -> Unit) {
+        val photo = ImageView(activity).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+            background = shape(0xFF02060B.toInt(), MiniVrStyle.line)
+            contentDescription = title
+            minimumHeight = dp(170)
+        }
+        val area = FrameLayout(activity).apply {
+            addView(photo, FrameLayout.LayoutParams(-1, -1))
+        }
+        area.layoutParams = LinearLayout.LayoutParams(-1,
+            (activity.resources.displayMetrics.heightPixels * .53f).toInt())
+        val dialog = modal(title, "MINIVR / ФОТОГРАФИЯ", area)
+        onReady(photo, dialog)
     }
 }

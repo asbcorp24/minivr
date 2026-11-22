@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="512" android:viewportHeight="512">
+    <!-- Same geometric symbol and palette as public/assets/icons/icon.svg. -->
+    <path android:fillColor="#030F19"
+        android:pathData="M0,0 L512,0 L512,512 L0,512 Z" />
+    <path android:fillColor="@android:color/transparent"
+        android:strokeColor="#30E0F0" android:strokeWidth="18"
+        android:pathData="M436,256 A180,180 0,1 1,76 256 A180,180 0,1 1,436 256" />
+    <path android:fillColor="#093C50"
+        android:strokeColor="#7CF7FF" android:strokeWidth="13"
+        android:pathData="M93,256 c80,-95 246,-95 326,0 c-80,95 -246,95 -326,0 Z" />
+    <path android:fillColor="#4DEAFF"
+        android:pathData="M323,256 A67,67 0,1 1,189 256 A67,67 0,1 1,323 256" />
+    <path android:fillColor="#062331"
+        android:pathData="M283,256 A27,27 0,1 1,229 256 A27,27 0,1 1,283 256" />
+</vector>

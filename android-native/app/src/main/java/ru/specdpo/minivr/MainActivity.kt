@@ -1,9 +1,9 @@
 package ru.specdpo.minivr
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.graphics.Typeface
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -19,7 +19,6 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -41,7 +40,8 @@ class MainActivity : Activity(), SensorEventListener {
     private lateinit var nextButton: Button
     private lateinit var scenesButton: Button
     private lateinit var exitVr: Button
-    private val menus by lazy { NativeMenuDialogs(this) }
+    private val thumbnails by lazy { NativeThumbnailLoader(this, api) }
+    private val menus by lazy { NativeMenuDialogs(this, thumbnails) }
     private val renderer = PanoramaRenderer()
     private val ui = Handler(Looper.getMainLooper())
     private val api by lazy { MiniVrApi(BuildConfig.API_BASE, File(filesDir, "minivr-media")) }
@@ -70,20 +70,21 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun button(label: String, action: () -> Unit): Button = Button(this).apply {
         text = label
-        textSize = 15f
+        textSize = 13f
         isAllCaps = false
         minWidth = dp(52)
         minHeight = dp(56)
-        setTextColor(Color.WHITE)
-        setBackgroundColor(0xFF15516A.toInt())
+        typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        setTextColor(MiniVrStyle.text)
+        background = MiniVrStyle.touchBackground(this@MainActivity)
         setPadding(dp(10), 0, dp(10), 0)
         setOnClickListener { action() }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = 0xFF03070D.toInt()
-        window.navigationBarColor = 0xFF03070D.toInt()
+        window.statusBarColor = MiniVrStyle.background
+        window.navigationBarColor = MiniVrStyle.background
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         sensors = getSystemService(SENSOR_SERVICE) as SensorManager
         val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
@@ -119,39 +120,53 @@ class MainActivity : Activity(), SensorEventListener {
 
         topBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            setBackgroundColor(0xCC071622.toInt())
+            setPadding(dp(10), dp(7), dp(10), dp(6))
+            background = MiniVrStyle.border(this@MainActivity, MiniVrStyle.glass,
+                0x883A8294.toInt(), 10)
         }
-        val topRow = LinearLayout(this)
-        topRow.addView(button("☰ Материалы") { openCatalog() })
+        val topRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        topRow.addView(MiniVrStyle.brand(this), LinearLayout.LayoutParams(-2, dp(55)))
         title = TextView(this).apply {
-            text = "MiniVR Native"
-            setTextColor(Color.WHITE)
-            textSize = 17f
+            text = "Панорамы 360°"
+            setTextColor(MiniVrStyle.text)
+            textSize = 14f
+            setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), 0, 0, 0)
+            setPadding(dp(10), 0, dp(6), 0)
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
-        topRow.addView(title, LinearLayout.LayoutParams(0, dp(56), 1f))
+        topRow.addView(title, LinearLayout.LayoutParams(0, dp(55), 1f))
+        topRow.addView(button("☰ МАТЕРИАЛЫ") { openCatalog() }.apply {
+            textSize = 10.5f
+            setPadding(dp(7), 0, dp(7), 0)
+        }, LinearLayout.LayoutParams(-2, dp(46)))
         topBar.addView(topRow)
         notice = TextView(this).apply {
-            textSize = 13f
-            setTextColor(0xFFB1DFEA.toInt())
-            setPadding(dp(5), dp(3), dp(5), dp(5))
+            textSize = 11f
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
+            setTextColor(MiniVrStyle.cyan)
+            letterSpacing = .06f
+            setPadding(dp(5), dp(2), dp(5), dp(5))
+            maxLines = 2
         }
         topBar.addView(notice)
-        root.addView(topBar, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
+        root.addView(topBar, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
+            leftMargin = dp(10)
+            rightMargin = dp(10)
+            topMargin = dp(8)
+        })
 
         bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(5), dp(7), dp(5), dp(7))
-            setBackgroundColor(0xE6071622.toInt())
+            setPadding(dp(5), dp(5), dp(5), dp(5))
+            background = MiniVrStyle.border(this@MainActivity,
+                MiniVrStyle.glass, 0xAA3FDCED.toInt(), 12)
         }
         fun addPrimary(button: Button, weight: Float = 1f) {
-            bottomBar.addView(button, LinearLayout.LayoutParams(0, dp(62), weight).apply {
-                leftMargin = dp(3)
-                rightMargin = dp(3)
+            bottomBar.addView(button, LinearLayout.LayoutParams(0, dp(54), weight).apply {
+                leftMargin = dp(2)
+                rightMargin = dp(2)
             })
         }
         previousButton = button("◀ Назад") { moveScene(-1) }
@@ -160,17 +175,21 @@ class MainActivity : Activity(), SensorEventListener {
         addPrimary(previousButton)
         addPrimary(scenesButton, 1.25f)
         addPrimary(nextButton)
-        addPrimary(button("⚙ Меню") { openControls() })
+        addPrimary(button("⚙ МЕНЮ") { openControls() })
         for (i in 0 until bottomBar.childCount) {
             (bottomBar.getChildAt(i) as Button).apply {
-                textSize = 12.5f
+                textSize = 12f
                 setPadding(dp(3), 0, dp(3), 0)
                 setSingleLine(true)
             }
         }
         updateNavigationButtons()
-        root.addView(bottomBar, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
-        exitVr = button("✕ Закрыть VR") { setCardboard(false) }.apply { visibility = View.GONE }
+        root.addView(bottomBar, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
+            leftMargin = dp(9)
+            rightMargin = dp(9)
+            bottomMargin = dp(10)
+        })
+        exitVr = button("✕ ВЫЙТИ ИЗ VR") { setCardboard(false) }.apply { visibility = View.GONE }
         root.addView(exitVr, FrameLayout.LayoutParams(-2, dp(50), Gravity.TOP or Gravity.RIGHT).apply {
             topMargin = dp(10)
             rightMargin = dp(10)
@@ -213,10 +232,13 @@ class MainActivity : Activity(), SensorEventListener {
         val entries = catalog.map { item ->
             NativeMenuDialogs.Item(
                 item.id, item.title,
-                if (item.isTour) "Виртуальная экскурсия" else "Панорама 360° / изображение",
-                if (item.isTour) "▦" else "◉",
+                item.description.ifBlank {
+                    if (item.isTour) "Интерактивная виртуальная экскурсия" else "Иммерсивный VR-материал"
+                },
+                if (item.isTour) "TOUR" else item.format.uppercase(),
                 if (item.isTour) "tour" else "panorama",
-                selectedMaterialId == item.id && selectedMaterialIsTour == item.isTour
+                selectedMaterialId == item.id && selectedMaterialIsTour == item.isTour,
+                item.thumbnail
             )
         }
         menus.showCatalog(entries) { item ->
@@ -383,23 +405,24 @@ class MainActivity : Activity(), SensorEventListener {
     private fun openControls() {
         fun option(title: String, detail: String, icon: String, section: String,
                    enabled: () -> Boolean = { true }, active: () -> Boolean = { false },
-                   close: Boolean = false, tap: () -> Unit) = NativeMenuDialogs.Control(
-            title, detail, icon, section, enabled, active, close, tap)
+                   close: Boolean = false, toggle: Boolean = false,
+                   tap: () -> Unit) = NativeMenuDialogs.Control(
+            title, detail, icon, section, enabled, active, close, tap, toggle)
 
         menus.showControls(listOf(
             option("Гироскоп", "Обзор поворотом телефона", "◉", "Просмотр",
                 enabled = { sensors.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR) != null },
-                active = { gyro }) { setGyro(!gyro) },
+                active = { gyro }, toggle = true) { setGyro(!gyro) },
             option("3D-параллакс", "Объём по карте глубины", "3D", "Просмотр",
-                enabled = { depthAvailable() }, active = { renderer.depthEnabled }) {
+                enabled = { depthAvailable() }, active = { renderer.depthEnabled }, toggle = true) {
                 renderer.depthEnabled = !renderer.depthEnabled
             },
             option("Графические эффекты", "Вода, частицы, освещение", "FX", "Просмотр",
-                active = { renderer.effectsEnabled }) {
+                active = { renderer.effectsEnabled }, toggle = true) {
                 renderer.effectsEnabled = !renderer.effectsEnabled
             },
             option("Режим VR / SBS", "Два изображения для гарнитуры", "▣", "Просмотр",
-                active = { renderer.cardboard }, close = true) {
+                active = { renderer.cardboard }, close = true, toggle = true) {
                 setCardboard(!renderer.cardboard)
             },
             option("Приблизить", "Уменьшить угол обзора", "+", "Просмотр") {
@@ -412,11 +435,11 @@ class MainActivity : Activity(), SensorEventListener {
                 resetView()
             },
             option("Аудиогид", "Приостановить или продолжить речь", "🎙", "Звук",
-                enabled = { current != null }, active = { !narrationPaused }) {
+                enabled = { current != null }, active = { !narrationPaused }, toggle = true) {
                 narrationPaused = audio.togglePause()
             },
             option("Музыка", "Воспроизведение / пауза", "♫", "Звук",
-                enabled = { music.hasTracks() }, active = { music.isPlayingRequested() }) {
+                enabled = { music.hasTracks() }, active = { music.isPlayingRequested() }, toggle = true) {
                 music.toggle()
             },
             option("Предыдущий трек", "Переключить музыку назад", "◀", "Звук",
@@ -440,7 +463,7 @@ class MainActivity : Activity(), SensorEventListener {
                 showDescription()
             },
             option("Автомаршрут", "Автоматическая смена сцен", "↻", "Экскурсия",
-                enabled = { tour != null }, active = { autoplay }) {
+                enabled = { tour != null }, active = { autoplay }, toggle = true) {
                 autoplay = !autoplay
                 ui.removeCallbacks(nextScene)
                 if (autoplay) current?.let { scheduleNext(it) }
@@ -468,7 +491,8 @@ class MainActivity : Activity(), SensorEventListener {
         val items = t.scenes.mapIndexed { i, scene ->
             NativeMenuDialogs.Item(i, scene.title,
                 "Сцена ${i + 1} из ${t.scenes.size}",
-                (i + 1).toString(), selected = i == index)
+                "%02d".format(i + 1), group = "scene", selected = i == index,
+                thumbnail = scene.preview)
         }
         menus.showList("Сцены экскурсии", t.title, items,
             footerText = if (autoplay) "⏸ Отключить автомаршрут" else "▶ Включить автомаршрут",
@@ -496,19 +520,20 @@ class MainActivity : Activity(), SensorEventListener {
                     NativeStereoPhotoDialog(this, api).show(target, h.imageStereo, h.label)
                     return
                 }
-                val view = ImageView(this).apply { adjustViewBounds = true }
-                val dialog = AlertDialog.Builder(this).setTitle(h.label).setView(view)
-                    .setPositiveButton("Закрыть", null).create()
-                dialog.show()
-                thread(name = "MiniVR-hotspot-image") {
-                    try {
-                        val bmp = api.bitmap(target)
-                        runOnUiThread { if (dialog.isShowing) view.setImageBitmap(bmp) else bmp.recycle() }
-                    } catch (e: Exception) { runOnUiThread { Toast.makeText(this, e.message, Toast.LENGTH_SHORT).show() } }
+                menus.showImage(h.label) { view, dialog ->
+                    thread(name = "MiniVR-hotspot-image") {
+                        try {
+                            val bmp = api.bitmap(target)
+                            runOnUiThread {
+                                if (dialog.isShowing) view.setImageBitmap(bmp) else bmp.recycle()
+                            }
+                        } catch (e: Exception) {
+                            runOnUiThread { Toast.makeText(this, e.message, Toast.LENGTH_SHORT).show() }
+                        }
+                    }
                 }
             }
-            else -> AlertDialog.Builder(this).setTitle(h.label)
-                .setMessage(h.content ?: "").setPositiveButton("Закрыть", null).show()
+            else -> menus.showInfo(h.label, h.content.orEmpty(), "MINIVR / ТОЧКА ИНТЕРЕСА")
         }
     }
 
@@ -524,7 +549,7 @@ class MainActivity : Activity(), SensorEventListener {
             NativeMenuDialogs.Item(i,
                 point.optString("title", "Точка рассказа"),
                 "Аудиоточка ${i + 1} из ${points.length()}",
-                (i + 1).toString(), selected = i == guidedIndex)
+                "%02d".format(i + 1), group = "point", selected = i == guidedIndex)
         }
         menus.showList("Точки рассказа", current?.title.orEmpty(), items) { selected ->
             showGuidedPoint(selected.id)
@@ -534,8 +559,7 @@ class MainActivity : Activity(), SensorEventListener {
     private fun showDescription() {
         val scene = current ?: return
         val message = scene.description.ifBlank { "Описание для этой панорамы не задано" }
-        AlertDialog.Builder(this).setTitle(scene.title).setMessage(message)
-            .setPositiveButton("Закрыть", null).show()
+        menus.showInfo(scene.title, message, "MINIVR / ОПИСАНИЕ")
     }
 
     private fun showGuidedPoint(i: Int) {
@@ -547,12 +571,10 @@ class MainActivity : Activity(), SensorEventListener {
         renderer.pitch = point.optDouble("pitch", 0.0).toFloat()
         val pointAudio = point.optString("audio").takeIf { it.isNotBlank() && it != "null" }
         audio.playPoint(pointAudio)
-        AlertDialog.Builder(this)
-            .setTitle(point.optString("title", "Точка ${i + 1}"))
-            .setMessage(point.optString("text", ""))
-            .setPositiveButton(if (i == points.length() - 1) "Завершить" else "Следующая →") { _, _ ->
-                if (i + 1 < points.length()) showGuidedPoint(i + 1)
-            }.setNegativeButton("Закрыть", null).show()
+        menus.showInfo(point.optString("title", "Точка ${i + 1}"),
+            point.optString("text", ""), "MINIVR / АУДИОТОЧКА ${i + 1}",
+            nextLabel = if (i == points.length() - 1) null else "СЛЕДУЮЩАЯ →",
+            onNext = if (i + 1 < points.length()) ({ showGuidedPoint(i + 1) }) else null)
     }
 
     private fun resetView() {
@@ -631,6 +653,7 @@ class MainActivity : Activity(), SensorEventListener {
         sensors.unregisterListener(this)
         audio.stop()
         music.stop()
+        if (this::surface.isInitialized && this::topBar.isInitialized) thumbnails.shutdown()
         super.onDestroy()
     }
     @Deprecated("Use system Back navigation")
