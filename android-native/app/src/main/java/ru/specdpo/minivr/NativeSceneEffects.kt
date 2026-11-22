@@ -2,6 +2,10 @@ package ru.specdpo.minivr
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
 import android.util.Base64
 import org.json.JSONObject
 
@@ -82,6 +86,55 @@ data class NativeSceneEffects(
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                     ?.takeIf { it.width == 512 && it.height == 256 }
             }.getOrNull()
+        }
+
+        /** Rasterize the polygon masks authored in the browser panorama editor. */
+        fun polygonMask(settings: JSONObject, kind: String): Bitmap? {
+            val masks = settings.optJSONObject("masks")
+            val polygons = when (kind) {
+                "water" -> listOfNotNull(masks?.optJSONArray("water"), masks?.optJSONArray("river"),
+                    masks?.optJSONArray("waterfall"), settings.optJSONArray("waterPolygon"))
+                "vegetation" -> listOfNotNull(masks?.optJSONArray("vegetation"))
+                else -> emptyList()
+            }
+            if (polygons.isEmpty()) return null
+            val result = Bitmap.createBitmap(512, 256, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(result)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
+            var drawn = false
+            for (polygon in polygons) {
+                if (polygon.length() !in 3..80) continue
+                val coords = mutableListOf<Pair<Float, Float>>()
+                for (i in 0 until polygon.length()) {
+                    val point = polygon.optJSONArray(i) ?: continue
+                    if (point.length() != 2) continue
+                    val yaw = point.optDouble(0, Double.NaN)
+                    val pitch = point.optDouble(1, Double.NaN)
+                    if (!yaw.isFinite() || !pitch.isFinite()) continue
+                    var x = ((yaw + 180.0) / 360.0 * 512.0).toFloat()
+                    if (coords.isNotEmpty()) {
+                        val previous = coords.last().first
+                        while (x - previous > 256f) x -= 512f
+                        while (previous - x > 256f) x += 512f
+                    }
+                    coords.add(x to ((90.0 - pitch) / 180.0 * 256.0).toFloat())
+                }
+                if (coords.size < 3) continue
+                val path = Path().apply {
+                    moveTo(coords[0].first, coords[0].second)
+                    for (i in 1 until coords.size) lineTo(coords[i].first, coords[i].second)
+                    close()
+                }
+                for (shift in -1..1) {
+                    canvas.save()
+                    canvas.translate(shift * 512f, 0f)
+                    canvas.drawPath(path, paint)
+                    canvas.restore()
+                }
+                drawn = true
+            }
+            if (!drawn) { result.recycle(); return null }
+            return result
         }
     }
 }

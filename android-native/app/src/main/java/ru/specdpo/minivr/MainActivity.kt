@@ -277,6 +277,12 @@ class MainActivity : Activity(), SensorEventListener {
         renderer.fieldOfView = 75f
         renderer.motionX = 0f
         renderer.motionY = 0f
+        val depthAvailable = scene.projection == "360" && scene.stereo == "mono" &&
+            scene.effects.optBoolean("parallaxEnabled") &&
+            scene.effects.optString("parallaxDepth").let { it.isNotBlank() && it != "null" }
+        depthButton.isEnabled = depthAvailable
+        depthButton.alpha = if (depthAvailable) 1f else .5f
+        depthButton.text = if (!depthAvailable) "3D —" else if (renderer.depthEnabled) "3D ✓" else "3D ×"
         baseline = null
         title.text = scene.title
         notifyUser("Загрузка изображения…")
@@ -315,9 +321,10 @@ class MainActivity : Activity(), SensorEventListener {
                     music.selectTrack(trackId)
                     musicButton.text = if (music.isPlayingRequested()) "♫ ⏸" else "♫ ▶"
                     val quality = if (tiles != null) "тайлы" else "изображение"
+                    val gpu = if (renderer.advancedSupported) "" else "GPU-совместимость · "
                     val depth = if (scene.effects.optBoolean("parallaxEnabled") &&
                         scene.effects.optString("parallaxDepth").startsWith("/")) " · 3D" else ""
-                    notifyUser("${scene.projection}° · ${scene.stereo.uppercase()} · $quality$depth · ${indexLabel()}")
+                    notifyUser("$gpu${scene.projection}° · ${scene.stereo.uppercase()} · $quality$depth · ${indexLabel()}")
                     if (autoplay) scheduleNext(scene)
                 }
             } catch (e: Exception) { showLoadError(token, e) }
@@ -337,10 +344,12 @@ class MainActivity : Activity(), SensorEventListener {
             }
         }
         thread(name = "MiniVR-masks") {
-            NativeSceneEffects.decodeMask(settings, "parallaxWaterMask")?.let {
+            (NativeSceneEffects.decodeMask(settings, "parallaxWaterMask")
+                ?: NativeSceneEffects.polygonMask(settings, "water"))?.let {
                 if (token == generation.get()) renderer.offerWaterMask(it) else it.recycle()
             }
-            NativeSceneEffects.decodeMask(settings, "parallaxFoliageMask")?.let {
+            (NativeSceneEffects.decodeMask(settings, "parallaxFoliageMask")
+                ?: NativeSceneEffects.polygonMask(settings, "vegetation"))?.let {
                 if (token == generation.get()) renderer.offerFoliageMask(it) else it.recycle()
             }
         }
@@ -513,6 +522,7 @@ class MainActivity : Activity(), SensorEventListener {
         sensors.unregisterListener(this)
         audio.pause()
         music.pause()
+        tileStreamer?.setPaused(true)
         musicButton.text = "♫ ▶"
         surface.onPause()
         super.onPause()
@@ -520,6 +530,7 @@ class MainActivity : Activity(), SensorEventListener {
     override fun onResume() {
         super.onResume()
         surface.onResume()
+        tileStreamer?.setPaused(false)
         if (gyro) setGyro(true)
     }
     override fun onDestroy() {

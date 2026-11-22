@@ -27,6 +27,8 @@ class PanoramaRenderer : GLSurfaceView.Renderer {
     @Volatile var cardboard = false
     @Volatile var depthEnabled = true
     @Volatile var effectsEnabled = true
+    @Volatile var advancedSupported = true
+        private set
     @Volatile var motionX = 0f
     @Volatile var motionY = 0f
     @Volatile var viewportWidth = 1080
@@ -112,7 +114,13 @@ class PanoramaRenderer : GLSurfaceView.Renderer {
             return shader
         }
         val vertex = compile(GLES20.GL_VERTEX_SHADER, vertexShader)
-        val fragment = compile(GLES20.GL_FRAGMENT_SHADER, NativePanoramaShader.fragment)
+        val fragment = runCatching {
+            advancedSupported = true
+            compile(GLES20.GL_FRAGMENT_SHADER, NativePanoramaShader.fragment)
+        }.getOrElse {
+            advancedSupported = false
+            compile(GLES20.GL_FRAGMENT_SHADER, NativePanoramaShader.fallback)
+        }
         program = GLES20.glCreateProgram()
         GLES20.glAttachShader(program, vertex)
         GLES20.glAttachShader(program, fragment)

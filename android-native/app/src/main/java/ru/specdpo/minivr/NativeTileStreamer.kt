@@ -21,6 +21,7 @@ class NativeTileStreamer(
     companion object { const val ATLAS_SIZE = 2048 }
 
     @Volatile private var active = false
+    @Volatile private var paused = false
     private val tileCache = object : LinkedHashMap<String, Bitmap>(32, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>?): Boolean {
             if (size <= 24) return false
@@ -104,6 +105,7 @@ class NativeTileStreamer(
             try {
                 var last: Region? = null
                 while (active && !Thread.currentThread().isInterrupted) {
+                    if (paused) { Thread.sleep(240L); continue }
                     val next = region()
                     if (next != last && next.level != manifest.levels.minByOrNull { it.width }) {
                         val composed = Bitmap.createBitmap(ATLAS_SIZE, ATLAS_SIZE, Bitmap.Config.ARGB_8888)
@@ -146,4 +148,5 @@ class NativeTileStreamer(
     }
 
     fun stop() { active = false }
+    fun setPaused(value: Boolean) { paused = value }
 }

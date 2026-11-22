@@ -2,6 +2,50 @@ package ru.specdpo.minivr
 
 /** GLES 2.0 fragment program. Depth, tile layers and effects all run on the phone GPU. */
 object NativePanoramaShader {
+    /** Simple compatibility path if a phone cannot compile the advanced fragment program. */
+    val fallback = """
+        precision highp float;
+        varying vec2 screenPoint;
+        uniform sampler2D panorama;
+        uniform float yaw;
+        uniform float pitch;
+        uniform float tangent;
+        uniform float aspect;
+        uniform float imageAspect;
+        uniform int projection;
+        uniform int sourceStereo;
+        uniform int eye;
+        uniform int mirrorImage;
+        const float PI = 3.14159265358979323846;
+        void main() {
+            float cy = cos(yaw), sy = sin(yaw), cp = cos(pitch), sp = sin(pitch);
+            vec3 forward = vec3(cp * cy, sp, cp * sy);
+            vec3 right = vec3(-sy, 0.0, cy);
+            vec3 up = vec3(-sp * cy, cp, -sp * sy);
+            vec3 ray = normalize(forward + right * screenPoint.x * tangent * aspect +
+                                 up * screenPoint.y * tangent);
+            float lon = atan(ray.z, ray.x);
+            vec2 uv;
+            if (projection == 0) uv = vec2(0.5 - lon / (2.0 * PI),
+                0.5 - asin(clamp(ray.y, -1.0, 1.0)) / PI);
+            else if (projection == 1) {
+                if (abs(lon) > PI * 0.5) { gl_FragColor = vec4(0.0,0.0,0.0,1.0); return; }
+                uv = vec2(0.5 - lon / PI, 0.5 - asin(clamp(ray.y, -1.0, 1.0)) / PI);
+            } else {
+                if (ray.x <= 0.0) { gl_FragColor = vec4(0.0,0.0,0.0,1.0); return; }
+                uv = vec2(0.5 + ray.z / (ray.x * 1.5 * imageAspect),
+                          0.5 - ray.y / (ray.x * 1.5));
+                if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+                    gl_FragColor = vec4(0.0,0.0,0.0,1.0); return;
+                }
+            }
+            if (mirrorImage == 1) uv.x = 1.0 - uv.x;
+            if (sourceStereo == 1) uv.x = uv.x * 0.5 + float(eye) * 0.5;
+            if (sourceStereo == 2) uv.y = uv.y * 0.5 + float(eye) * 0.5;
+            gl_FragColor = texture2D(panorama, uv);
+        }
+    """.trimIndent()
+
     val fragment = """
         precision highp float;
         varying vec2 screenPoint;
