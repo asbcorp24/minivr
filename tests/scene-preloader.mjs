@@ -137,7 +137,7 @@ console.log('scene-preloader: reuse, LRU, cancellation, byte limits and scene re
 console.log('scene-preloader: tiled scene base level prefetch passed');
 
 // Depth-aware tiled scenes cache the small depth PNG alongside base tiles,
-// never the full equirectangular JPEG. Unsupported effects still preload it.
+// never the full equirectangular JPEG. Occlusion fill still preloads it.
 {
  const oldFetch=globalThis.fetch,oldParser=globalThis.DOMParser,oldLocation=globalThis.location;
  let effects={parallaxEnabled:true,parallaxDepth:'/uploads/depth.png',parallaxOcclusionFill:false,parallaxMicroMotion:false};
@@ -165,7 +165,17 @@ console.log('scene-preloader: tiled scene base level prefetch passed');
   assert.equal(withWind.baseTiles.size,2);
   requested.length=0;
   effects={...effects,parallaxWaterMotion:true};
-  const legacy=await fetchPreparedScene('/viewer.php?id=10',new AbortController().signal,{maxBytes:1024*1024});
+  const withWater=await fetchPreparedScene('/viewer.php?id=10',new AbortController().signal,{maxBytes:1024*1024});
+  assert.equal(withWater.assets.image,null,'Water motion must not force the full JPEG to preload');
+  assert.equal(withWater.baseTiles.size,2);
+  requested.length=0;
+  effects={...effects,parallaxContactShadows:true};
+  const withShadows=await fetchPreparedScene('/viewer.php?id=11',new AbortController().signal,{maxBytes:1024*1024});
+  assert.equal(withShadows.assets.image,null,'Contact shadows must not force the full JPEG to preload');
+  assert.equal(withShadows.baseTiles.size,2);
+  requested.length=0;
+  effects={...effects,parallaxOcclusionFill:true};
+  const legacy=await fetchPreparedScene('/viewer.php?id=12',new AbortController().signal,{maxBytes:1024*1024});
   assert.equal(legacy.manifest,null);
   assert.equal(legacy.assets.image.size,5);
   assert.equal(legacy.assets.depth.size,5);
@@ -173,4 +183,4 @@ console.log('scene-preloader: tiled scene base level prefetch passed');
  }finally{globalThis.fetch=oldFetch;globalThis.DOMParser=oldParser;globalThis.location=oldLocation;}
 }
 
-console.log('scene-preloader: depth-aware base tiles and legacy effect fallback passed');
+console.log('scene-preloader: depth-aware water and contact tiles, and occlusion-fill fallback passed');

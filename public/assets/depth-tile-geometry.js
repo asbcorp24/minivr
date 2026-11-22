@@ -67,10 +67,9 @@ export function sampleDepthRadius(field,u,v){
  return top*(1-fy)+bottom*fy;
 }
 
-// Tile-local leaf masks preserve micro-motion without a full-size panorama.
-// Water, contact shadows and inpainting still need the legacy renderer.
+// Wind, masked water motion and contact shadows are tile-compatible. The
+// experimental occlusion-fill reconstruction still needs the legacy renderer.
 export function canUseTiledDepth(settings={}){
  return settings.parallaxEnabled===true&&
-  settings.parallaxWaterMotion!==true&&settings.parallaxContactShadows!==true&&
   settings.parallaxOcclusionFill===false;
 }

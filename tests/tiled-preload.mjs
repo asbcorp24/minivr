@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {makeDepthRadiusField,sampleDepthRadius} from '../public/assets/depth-tile-geometry.js';
 import {makeTileFoliageMask} from '../public/assets/tile-foliage-mask.js';
+import {makeTileContactShadowMask,tileWaterShader,WATER_KINDS} from '../public/assets/tile-environment-effects.js';
 
 const source=readFileSync(new URL('../public/assets/tiled-panorama.js',import.meta.url),'utf8')
  .replace(/^import .*;\s*/gm,'').replace('export async function createTiledPanorama','async function createTiledPanorama');
@@ -39,8 +40,8 @@ class TextureLoader{
   onLoad({colorSpace:null,image:{width:32,height:32,pixels},dispose(){disposed.push('image texture');}});
  }
 }
-class DataTexture{constructor(pixels,width,height){this.image={data:pixels,width,height};}dispose(){disposed.push('depth atlas');}}
-class CanvasTexture{constructor(canvas){this.image=canvas;}dispose(){disposed.push('foliage mask');}}
+class DataTexture{constructor(pixels,width,height){this.image={data:pixels,width,height};}dispose(){disposed.push(this.name==='minivr-contact-shadows'?'contact atlas':'depth atlas');}}
+class CanvasTexture{constructor(canvas){this.image=canvas;}dispose(){disposed.push(this.name==='minivr-water-mask'?'water mask':'foliage mask');}}
 class Vector4{constructor(x,y,z,w){Object.assign(this,{x,y,z,w});}}
 class Vector3{constructor(){this.x=-1;this.y=0;this.z=0;}}
 const THREE={Group,BufferGeometry,Float32BufferAttribute:class{constructor(array){this.array=array;}},MeshBasicMaterial,Mesh,TextureLoader,DataTexture,CanvasTexture,Vector3,Vector4,
@@ -56,7 +57,7 @@ const document={createElement(tag){
  });
  return canvas;
 }};
-const context={THREE,sampleDepthRadius,makeTileFoliageMask,document,performance:{now:()=>1000},
+const context={THREE,sampleDepthRadius,makeTileFoliageMask,makeTileContactShadowMask,tileWaterShader,WATER_KINDS,document,performance:{now:()=>1000},
  fetch:async url=>{calls.push(url);return {ok:true,json:async()=>manifest}},
  URL:{createObjectURL:()=> 'blob:cached-tile',revokeObjectURL:url=>revoked.push(url)}
 };
@@ -194,4 +195,65 @@ assert.match(plainShader.fragmentShader,/microMotionBandWeight/);
 assert.equal(plainShader.uniforms.microMotionBandWeight.value,1);
 plainWind.dispose();
 
-console.log('tiled-preload: cache, depth, wind masks, longitude seam, scene transitions and GPU cleanup passed');
+// Water and contact shadows stay on depth-aware tiles, reusing just one small
+// 512x256 mask and one 256x128 atlas for the entire scene (not per band/tile).
+const waterMask={width:512,height:256};
+const waterAndShadows=await context.createTiledPanorama({url:'/tiles/effects/manifest.json',scene,camera,renderer:{},manifest,depth,
+ foliage:{enabled:true,manualMask,strength:60},
+ water:{enabled:true,manualMask:waterMask,kind:'sea',direction:45,strength:70,speed:1.5},
+ contactShadows:{enabled:true,strength:80}});
+waterAndShadows.update(1000);
+assert.equal(waterAndShadows.group.children.length,8);
+const effectBand=waterAndShadows.group.children[1];
+const effectShader={uniforms:{},vertexShader:'void main() {\n#include <uv_vertex>',fragmentShader:'void main() {\n#include <map_fragment>'};
+effectBand.material.onBeforeCompile(effectShader);
+assert.match(effectShader.fragmentShader,/float waterCoverage = smoothstep/);
+assert.match(effectShader.fragmentShader,/float contactEdge=texture2D\(contactAtlas,vDepthTileUv\)/);
+assert.match(effectShader.fragmentShader,/windMask = smoothstep/,'Foliage still composes with both new effects');
+assert.match(effectShader.fragmentShader,/waterUv=clamp\(waterUv\+localWaterShift/,'Water stays inside tile texture');
+assert.match(effectShader.fragmentShader,/float tileEdge=smoothstep\(0\.0,\.06,edgeDistance\)/,'All tile edges, including 0°/360°, remain stationary');
+assert.match(effectShader.fragmentShader,/depthValue = texture2D\(depthAtlas/,'Depth parallax is unchanged');
+assert.equal(effectShader.fragmentShader.match(/texture2D\(map,/g).length,1,'Foliage and water share one image sample');
+assert.equal(effectShader.uniforms.waterMotionMask.value.image.width,512,'Only small water mask reaches GPU');
+assert.equal(effectShader.uniforms.contactAtlas.value.image.width,256,'Contact atlas remains depth-sized');
+assert.ok(effectShader.uniforms.contactAtlas.value.image.data.some((value,index)=>index%4===0&&value>0),'Depth edges produce shadows');
+const neighborEffects={uniforms:{},vertexShader:'void main() {\n#include <uv_vertex>',fragmentShader:'void main() {\n#include <map_fragment>'};
+waterAndShadows.group.children[5].material.onBeforeCompile(neighborEffects);
+assert.equal(effectShader.uniforms.waterMotionMask.value,neighborEffects.uniforms.waterMotionMask.value);
+assert.equal(effectShader.uniforms.contactAtlas.value,neighborEffects.uniforms.contactAtlas.value);
+assert.equal(effectShader.uniforms.waterTileTransform.value.x,0);
+assert.equal(neighborEffects.uniforms.waterTileTransform.value.x,.5);
+waterAndShadows.update(1100);
+assert.ok(Math.abs(effectShader.uniforms.waterMotionTime.value-1.65)<1e-9,'Water animation updates every frame despite LOD throttle');
+const beforeCombined={water:disposed.filter(x=>x==='water mask').length,contact:disposed.filter(x=>x==='contact atlas').length};
+const nextEffects=await context.createTiledPanorama({url:'/tiles/next-effects/manifest.json',scene,camera,renderer:{},manifest,depth,
+ water:{enabled:true,manualMask:waterMask,kind:'river'},contactShadows:{enabled:true}});
+nextEffects.update();
+waterAndShadows.dispose();
+assert.equal(disposed.filter(x=>x==='water mask').length-beforeCombined.water,1,'One shared water texture disposed on scene switch');
+assert.equal(disposed.filter(x=>x==='contact atlas').length-beforeCombined.contact,1,'One shared contact atlas disposed on scene switch');
+assert.equal(scene.children.includes(nextEffects.group),true,'Next scene remains intact');
+nextEffects.dispose();
+assert.equal(disposed.filter(x=>x==='water mask').length-beforeCombined.water,2);
+assert.equal(disposed.filter(x=>x==='contact atlas').length-beforeCombined.contact,2);
+
+// Contact shadows also work with a single depth-deformed mesh (no bands).
+const noBands=await context.createTiledPanorama({url:'/tiles/contact-no-bands/manifest.json',scene,camera,renderer:{},manifest,
+ depth:{...depth,bands:0},contactShadows:{enabled:true,strength:45}});
+noBands.update();
+const simpleShader={uniforms:{},vertexShader:'void main() {\n#include <uv_vertex>',fragmentShader:'void main() {\n#include <map_fragment>'};
+noBands.group.children[0].material.onBeforeCompile(simpleShader);
+assert.match(simpleShader.vertexShader,/vContactTileUv/);
+assert.match(simpleShader.fragmentShader,/texture2D\(contactAtlas,vContactTileUv\)/);
+assert.equal(simpleShader.uniforms.depthAtlas,undefined,'No unnecessary depth atlas without bands');
+noBands.dispose();
+
+const masklessWater=await context.createTiledPanorama({url:'/tiles/maskless-water/manifest.json',scene,camera,renderer:{},manifest,
+ depth,water:{enabled:true},contactShadows:{enabled:false}});
+masklessWater.update();
+const masklessShader={uniforms:{},vertexShader:'void main() {\n#include <uv_vertex>',fragmentShader:'void main() {\n#include <map_fragment>'};
+masklessWater.group.children[1].material.onBeforeCompile(masklessShader);
+assert.equal(masklessShader.uniforms.waterMotionMask,undefined,'Unmasked water never animates sky by mistake');
+masklessWater.dispose();
+
+console.log('tiled-preload: cache, depth, wind, water, contact shadows, longitude seam, scene transitions and GPU cleanup passed');

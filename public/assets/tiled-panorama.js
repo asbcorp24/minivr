@@ -1,8 +1,9 @@
 import * as THREE from '/assets/vendor/three/three.module.js';
 import {sampleDepthRadius} from '/assets/depth-tile-geometry.js';
 import {makeTileFoliageMask} from '/assets/tile-foliage-mask.js';
+import {makeTileContactShadowMask,tileWaterShader,WATER_KINDS} from '/assets/tile-environment-effects.js';
 /* Independent tiled panorama layer. Never modifies Cardboard renderer or eye cameras. */
-export async function createTiledPanorama({url,scene,camera,renderer,mirror=false,manifest:cachedManifest=null,baseTiles=null,depth=null,foliage=null}){
+export async function createTiledPanorama({url,scene,camera,renderer,mirror=false,manifest:cachedManifest=null,baseTiles=null,depth=null,foliage=null,water=null,contactShadows=null}){
  const response=cachedManifest?null:await fetch(url,{credentials:'same-origin'});
  if(response&&!response.ok)throw Error('Tiles manifest HTTP '+response.status);
  const manifest=cachedManifest||await response.json();if(manifest.projection!=='360'||!Array.isArray(manifest.levels)||!manifest.levels.length)throw Error('Invalid tile manifest');
@@ -24,10 +25,38 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
   manualWindMask.minFilter=THREE.LinearFilter;
   manualWindMask.magFilter=THREE.LinearFilter;
  }
+ // Explicit water regions are shared by all tiles. Without a mask, do not
+ // animate the sky or other blue surfaces as if they were water.
+ const waterMotion=water?.enabled&&water.manualMask?{
+  phase:{value:0},strength:{value:THREE.MathUtils.clamp(Number(water.strength??45),0,100)/100},
+  speed:THREE.MathUtils.clamp(Number(water.speed??1),.1,5),
+  kind:Object.prototype.hasOwnProperty.call(WATER_KINDS,water.kind)?water.kind:'calm',
+  direction:THREE.MathUtils.degToRad(Number(water.direction)||0)
+ }:null;
+ let manualWaterMask=null;
+ if(waterMotion){
+  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=256;
+  canvas.getContext('2d').drawImage(water.manualMask,0,0,512,256);
+  manualWaterMask=new THREE.CanvasTexture(canvas);
+  manualWaterMask.name='minivr-water-mask';
+  manualWaterMask.wrapS=THREE.RepeatWrapping;
+  manualWaterMask.minFilter=THREE.LinearFilter;
+  manualWaterMask.magFilter=THREE.LinearFilter;
+ }
  // One 256×128 atlas is shared by every tile and every depth band. Image
  // resolution, however, is selected independently by the normal tile LOD.
  const depthAtlas=depth?.bands>0?new THREE.DataTexture(new Uint8Array(depth.pixels),256,128,THREE.RGBAFormat,THREE.UnsignedByteType):null;
  if(depthAtlas){depthAtlas.wrapS=THREE.RepeatWrapping;depthAtlas.minFilter=THREE.LinearFilter;depthAtlas.magFilter=THREE.LinearFilter;depthAtlas.needsUpdate=true;}
+ const contactStrength=depth&&contactShadows?.enabled?THREE.MathUtils.clamp(Number(contactShadows.strength??40),0,100)/100:0;
+ const contactAtlas=contactStrength>0?new THREE.DataTexture(makeTileContactShadowMask(depth.pixels,depth.nonlinear),256,128,THREE.RGBAFormat,THREE.UnsignedByteType):null;
+ const contactUniform={value:contactStrength};
+ if(contactAtlas){
+  contactAtlas.name='minivr-contact-shadows';
+  contactAtlas.wrapS=THREE.RepeatWrapping;
+  contactAtlas.minFilter=THREE.LinearFilter;
+  contactAtlas.magFilter=THREE.LinearFilter;
+  contactAtlas.needsUpdate=true;
+ }
  const geometry=(level,x,y,radiusBias=0,backdrop=false)=>{
   const cols=level.cols,rows=level.rows,sw=level.width,sh=level.height,ts=manifest.tileSize;
   const u0=x*ts/sw,u1=Math.min((x+1)*ts/sw,1),v0=y*ts/sh,v1=Math.min((y+1)*ts/sh,1);
@@ -130,6 +159,78 @@ uniform vec4 foliageTileUv;\n`+shader.fragmentShader;
   const originalKey=material.customProgramCacheKey;
   material.customProgramCacheKey=()=>`${originalKey?.call(material)||'tile'}-foliage-v1-${manual?'manual':'auto'}-${showMask?'mask':'normal'}`;
  }
+ function tileTransform(level,x,y){
+  return new THREE.Vector4(x*manifest.tileSize/level.width,y*manifest.tileSize/level.height,
+   Math.min(manifest.tileSize/level.width,1-x*manifest.tileSize/level.width),
+   Math.min(manifest.tileSize/level.height,1-y*manifest.tileSize/level.height));
+ }
+ function installTileContact(material,level,x,y){
+  if(!contactAtlas)return;
+  const previous=material.onBeforeCompile;
+  const layered=depth?.bands>0;
+  const transform=layered?null:tileTransform(level,x,y);
+  material.onBeforeCompile=shader=>{
+   previous?.(shader);
+   shader.uniforms.contactAtlas={value:contactAtlas};
+   shader.uniforms.contactStrength=contactUniform;
+   shader.fragmentShader='uniform sampler2D contactAtlas; uniform float contactStrength;\n'+shader.fragmentShader;
+   if(layered){
+    // Only darker receiving bands have contact shadows, matching legacy.
+    shader.fragmentShader=shader.fragmentShader.replace('diffuseColor.a *= pow(coverage, depthBand.w);',
+     `diffuseColor.a *= pow(coverage, depthBand.w);
+      float contactEdge=texture2D(contactAtlas,vDepthTileUv).r;
+      float receivingBand=1.0-step(depthBand.x+depthBand.y*.5,depthValue);
+      diffuseColor.rgb*=1.0-contactEdge*contactStrength*.48*receivingBand;`);
+   }else{
+    shader.uniforms.contactTileTransform={value:transform};
+    shader.vertexShader='varying vec2 vContactTileUv; uniform vec4 contactTileTransform;\n'+shader.vertexShader;
+    shader.vertexShader=shader.vertexShader.replace('#include <uv_vertex>',
+     '#include <uv_vertex>\n vContactTileUv=contactTileTransform.xy+vec2(uv.x,1.0-uv.y)*contactTileTransform.zw;');
+    shader.fragmentShader='varying vec2 vContactTileUv;\n'+shader.fragmentShader;
+    const shadowCode='diffuseColor.rgb*=1.0-texture2D(contactAtlas,vContactTileUv).r*contactStrength*.48;';
+    if(shader.fragmentShader.includes('diffuseColor *= sampledDiffuseColor;'))
+     shader.fragmentShader=shader.fragmentShader.replace('diffuseColor *= sampledDiffuseColor;',
+      'diffuseColor *= sampledDiffuseColor;\n '+shadowCode);
+    else shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',
+      '#include <map_fragment>\n '+shadowCode);
+   }
+  };
+  const previousKey=material.customProgramCacheKey;
+  material.customProgramCacheKey=()=>`${previousKey?.call(material)||'tile'}-contact-v1-${layered?'layered':'single'}`;
+ }
+ function installTileWater(material,level,x,y){
+  if(!waterMotion||!manualWaterMask)return;
+  const transform=tileTransform(level,x,y);
+  const waterCode=tileWaterShader(waterMotion.kind,waterMotion.direction);
+  const previous=material.onBeforeCompile;
+  material.onBeforeCompile=shader=>{
+   previous?.(shader);
+   shader.uniforms.waterMotionMask={value:manualWaterMask};
+   shader.uniforms.waterMotionTime=waterMotion.phase;
+   shader.uniforms.waterMotionStrength=waterMotion.strength;
+   shader.uniforms.waterTileTransform={value:transform};
+   shader.fragmentShader=`uniform sampler2D waterMotionMask;
+uniform float waterMotionTime;
+uniform float waterMotionStrength;
+uniform vec4 waterTileTransform;\n`+shader.fragmentShader;
+   const windSample='vec4 sampledDiffuseColor = texture2D(map,clamp(windUv,vec2(0.0),vec2(1.0)));';
+   if(shader.fragmentShader.includes(windSample)){
+    shader.fragmentShader=shader.fragmentShader.replace(windSample,`
+     vec2 waterUv=windUv;
+     ${waterCode}
+     vec4 sampledDiffuseColor=texture2D(map,waterUv);`);
+   }else{
+    shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`
+     #ifdef USE_MAP
+     vec2 waterUv=vMapUv;
+     ${waterCode}
+     diffuseColor*=texture2D(map,waterUv);
+     #endif`);
+   }
+  };
+  const previousKey=material.customProgramCacheKey;
+  material.customProgramCacheKey=()=>`${previousKey?.call(material)||'tile'}-water-v1-${waterMotion.kind}-${waterMotion.direction.toFixed(4)}`;
+ }
  function removeTile(item){
   for(const mesh of item.meshes){group.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}
   item.windMask?.dispose();
@@ -154,18 +255,24 @@ uniform vec4 foliageTileUv;\n`+shader.fragmentShader;
    if(depth?.bands>0){
     // Each higher LOD first paints its own original image, covering the lower
     // LOD before its transparent bands are composited. This avoids ghosting.
-    const backdrop=new THREE.Mesh(geometry(level,x,y,0,true),new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,transparent:true,depthWrite:false}));
+    const backdropMaterial=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,transparent:true,depthWrite:false});
+    installTileWater(backdropMaterial,level,x,y);
+    const backdrop=new THREE.Mesh(geometry(level,x,y,0,true),backdropMaterial);
     backdrop.renderOrder=level.level*(depth.bands+1);meshes.push(backdrop);
     for(let band=0;band<depth.bands;band++){
      const bias=depth.occlusion*(band/(depth.bands-1))*1.8;
      const material=bandMaterial(texture,level,x,y,band);
      installTileWind(material,level,x,y,band,windMask);
+     installTileContact(material,level,x,y);
+     installTileWater(material,level,x,y);
      const mesh=new THREE.Mesh(geometry(level,x,y,bias),material);
      mesh.renderOrder=level.level*(depth.bands+1)+band+1;meshes.push(mesh);
     }
    }else{
     const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,depthWrite:false});
     installTileWind(material,level,x,y,0,windMask);
+    installTileContact(material,level,x,y);
+    installTileWater(material,level,x,y);
     const mesh=new THREE.Mesh(geometry(level,x,y),material);mesh.renderOrder=level.level;meshes.push(mesh);
    }
    for(const mesh of meshes){mesh.frustumCulled=false;group.add(mesh);}
@@ -179,6 +286,7 @@ uniform vec4 foliageTileUv;\n`+shader.fragmentShader;
   if(disposed)return;
   // Animate at display refresh even though LOD selection is throttled.
   if(wind)wind.phase.value=time*.001*wind.speed;
+  if(waterMotion)waterMotion.phase.value=time*.001*waterMotion.speed;
   if(time-last<160)return;last=time;
   for(const [bx,by] of baseQueue)load(low,bx,by);
  const fov=camera.fov||75;
@@ -207,6 +315,6 @@ uniform vec4 foliageTileUv;\n`+shader.fragmentShader;
    }else item.last=now;
   }
  }
- function dispose(){disposed=true;scene.remove(group);for(const item of tiles.values())removeTile(item);tiles.clear();pending.clear();depthAtlas?.dispose();manualWindMask?.dispose();group.clear()}
+ function dispose(){disposed=true;scene.remove(group);for(const item of tiles.values())removeTile(item);tiles.clear();pending.clear();depthAtlas?.dispose();contactAtlas?.dispose();manualWindMask?.dispose();manualWaterMask?.dispose();group.clear()}
  return {update,dispose,manifest,group};
 }

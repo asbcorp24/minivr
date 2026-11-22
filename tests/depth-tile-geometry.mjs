@@ -32,9 +32,9 @@ assert.throws(()=>makeDepthRadiusField(new Uint8Array(4),{parallaxStrength:80}),
 
 const compatible={parallaxEnabled:true,parallaxMicroMotion:false,parallaxWaterMotion:false,parallaxContactShadows:false,parallaxOcclusionFill:false};
 assert.equal(canUseTiledDepth(compatible),true);
-for(const setting of ['parallaxWaterMotion','parallaxContactShadows','parallaxOcclusionFill']){
- assert.equal(canUseTiledDepth({...compatible,[setting]:true}),false,`${setting} uses legacy full-image renderer`);
-}
+for(const setting of ['parallaxWaterMotion','parallaxContactShadows'])
+ assert.equal(canUseTiledDepth({...compatible,[setting]:true}),true,`${setting} now works with depth tiles`);
+assert.equal(canUseTiledDepth({...compatible,parallaxOcclusionFill:true}),false,'Experimental inpainting still uses the legacy renderer');
 assert.equal(canUseTiledDepth({...compatible,parallaxMicroMotion:true}),true,'Wind now works with depth tiles');
 assert.equal(canUseTiledDepth({...compatible,parallaxMicroMotion:undefined}),true,'Historical wind default works with depth tiles');
 assert.equal(canUseTiledDepth({...compatible,parallaxEnabled:false}),false);
