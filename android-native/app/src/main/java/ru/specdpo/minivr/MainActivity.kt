@@ -1,6 +1,7 @@
 package ru.specdpo.minivr
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.os.Bundle
 import android.graphics.BitmapFactory
 import android.hardware.Sensor
