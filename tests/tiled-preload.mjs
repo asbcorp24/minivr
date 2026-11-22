@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {makeDepthRadiusField,sampleDepthRadius} from '../public/assets/depth-tile-geometry.js';
+import {makeTileFoliageMask} from '../public/assets/tile-foliage-mask.js';
 
 const source=readFileSync(new URL('../public/assets/tiled-panorama.js',import.meta.url),'utf8')
  .replace(/^import .*;\s*/gm,'').replace('export async function createTiledPanorama','async function createTiledPanorama');
@@ -18,21 +19,44 @@ class Group{
  remove(value){this.children=this.children.filter(item=>item!==value)}
  clear(){this.children=[]}
 }
-class MeshBasicMaterial{constructor(options){Object.assign(this,options);}dispose(){disposed.push('material');}}
+class MeshBasicMaterial{
+ constructor(options){Object.assign(this,options);}
+ customProgramCacheKey(){return this.onBeforeCompile.toString();}
+ dispose(){disposed.push('material');}
+}
 class Mesh{constructor(geometry,material){this.geometry=geometry;this.material=material;this.frustumCulled=true;}}
 class TextureLoader{
  load(url,onLoad){
   loaded.push(url);
-  onLoad({colorSpace:null,dispose(){disposed.push('image texture');}});
+  const pixels=new Uint8ClampedArray(32*32*4);
+  for(let i=0;i<32*32;i++){
+   const x=i%32,green=x<16;
+   pixels[i*4]=green?40:140;
+   pixels[i*4+1]=green?(i%2?200:120):140;
+   pixels[i*4+2]=green?35:140;
+   pixels[i*4+3]=255;
+  }
+  onLoad({colorSpace:null,image:{width:32,height:32,pixels},dispose(){disposed.push('image texture');}});
  }
 }
 class DataTexture{constructor(pixels,width,height){this.image={data:pixels,width,height};}dispose(){disposed.push('depth atlas');}}
+class CanvasTexture{constructor(canvas){this.image=canvas;}dispose(){disposed.push('foliage mask');}}
 class Vector4{constructor(x,y,z,w){Object.assign(this,{x,y,z,w});}}
 class Vector3{constructor(){this.x=-1;this.y=0;this.z=0;}}
-const THREE={Group,BufferGeometry,Float32BufferAttribute:class{constructor(array){this.array=array;}},MeshBasicMaterial,Mesh,TextureLoader,DataTexture,Vector3,Vector4,
+const THREE={Group,BufferGeometry,Float32BufferAttribute:class{constructor(array){this.array=array;}},MeshBasicMaterial,Mesh,TextureLoader,DataTexture,CanvasTexture,Vector3,Vector4,
  BackSide:1,SRGBColorSpace:2,RGBAFormat:3,UnsignedByteType:4,RepeatWrapping:5,LinearFilter:6,
  MathUtils:{degToRad:value=>value*Math.PI/180,clamp:(v,min,max)=>Math.max(min,Math.min(max,v))}};
-const context={THREE,sampleDepthRadius,performance:{now:()=>1000},
+const document={createElement(tag){
+ assert.equal(tag,'canvas');
+ const canvas={width:0,height:0};
+ canvas.getContext=()=>({
+  drawImage(image){canvas.sourcePixels=image.pixels||null},
+  getImageData(){return {data:new Uint8ClampedArray(canvas.sourcePixels||canvas.width*canvas.height*4)}},
+  putImageData(image){canvas.maskPixels=image.data}
+ });
+ return canvas;
+}};
+const context={THREE,sampleDepthRadius,makeTileFoliageMask,document,performance:{now:()=>1000},
  fetch:async url=>{calls.push(url);return {ok:true,json:async()=>manifest}},
  URL:{createObjectURL:()=> 'blob:cached-tile',revokeObjectURL:url=>revoked.push(url)}
 };
@@ -87,6 +111,10 @@ for(let row=0;row<37;row++)for(let axis=0;axis<3;axis++){
  const edge0=first[(row*verticesPerRow+36)*3+axis],edge1=second[(row*verticesPerRow)*3+axis];
  assert.ok(Math.abs(edge0-edge1)<1e-5,`Adjacent depth tiles have no crack at row ${row}, axis ${axis}`);
 }
+for(let row=0;row<37;row++)for(let axis=0;axis<3;axis++){
+ const left=first[(row*verticesPerRow)*3+axis],right=second[(row*verticesPerRow+36)*3+axis];
+ assert.ok(Math.abs(left-right)<1e-5,`Longitude 0°/360° meets at row ${row}, axis ${axis}`);
+}
 const texturesBefore=disposed.filter(value=>value==='image texture').length;
 tiledDepth.dispose();
 assert.equal(disposed.filter(value=>value==='image texture').length-texturesBefore,2,'Each image texture disposed once, not once per layer');
@@ -102,4 +130,68 @@ for(let row=0;row<37;row++)for(let axis=0;axis<3;axis++){
 }
 mirrored.dispose();
 
-console.log('tiled-preload: cached tiles, ordinary fallback, depth bands and resource disposal passed');
+// Manual masks are authored in global panorama UV, shared by all tile LODs
+// and depth bands. The shader must sample alpha rather than RGB.
+const manualMask={width:512,height:256};
+const manual=await context.createTiledPanorama({url:'/tiles/manual/manifest.json',scene,camera,renderer:{},manifest,depth,
+ foliage:{enabled:true,manualMask,strength:55,speed:2}});
+manual.update(1000);
+assert.equal(manual.group.children.length,8);
+const manualShader={uniforms:{},vertexShader:'void main() {\n#include <uv_vertex>',fragmentShader:'void main() {\n#include <map_fragment>'};
+manual.group.children[1].material.onBeforeCompile(manualShader);
+assert.match(manualShader.fragmentShader,/texture2D\(foliageWindMask,vec2\(panoramaUv.x,1.0-panoramaUv.y\)\)\.a/);
+assert.match(manualShader.fragmentShader,/tileEdge = smoothstep\(0\.0,0\.025,edgeDistance\)/,'Tile borders and the 360° seam cannot tear');
+assert.match(manualShader.fragmentShader,/depthValue = texture2D\(depthAtlas/,'Hybrid depth mask remains intact');
+assert.equal(manualShader.uniforms.foliageTileUv.value.x,0);
+const neighborShader={uniforms:{},vertexShader:'void main() {\n#include <uv_vertex>',fragmentShader:'void main() {\n#include <map_fragment>'};
+manual.group.children[5].material.onBeforeCompile(neighborShader);
+assert.equal(neighborShader.uniforms.foliageTileUv.value.x,.5,'Each tile samples its actual global longitude');
+assert.equal(manualShader.uniforms.foliageWindMask.value,neighborShader.uniforms.foliageWindMask.value,'Manual mask reused across tiles');
+manual.update(1240);
+assert.equal(manualShader.uniforms.microMotionTime.value,2.48,'Wind clock updates even within the LOD throttling interval');
+const masksBeforeManual=disposed.filter(item=>item==='foliage mask').length;
+manual.dispose();
+assert.equal(disposed.filter(item=>item==='foliage mask').length-masksBeforeManual,1,'One shared manual GPU mask disposed once');
+
+// Automatic candidate masks are built from each small decoded tile; farther
+// depth bands remain still and every GPU mask belongs to exactly one tile.
+const automatic=await context.createTiledPanorama({url:'/tiles/automatic/manifest.json',scene,camera,renderer:{},manifest,depth,
+ foliage:{enabled:true,strength:80,speed:1}});
+automatic.update();
+assert.equal(automatic.group.children[1].material.onBeforeCompile.toString().includes('previous?.'),false,'Far depth band has no wind shader');
+const autoShader={uniforms:{},vertexShader:'void main() {\n#include <uv_vertex>',fragmentShader:'void main() {\n#include <map_fragment>'};
+automatic.group.children[3].material.onBeforeCompile(autoShader);
+assert.match(automatic.group.children[3].material.customProgramCacheKey(),/foliage-v1-auto/,'Wind shader compiles with Three.js material program caching');
+assert.match(autoShader.fragmentShader,/texture2D\(foliageWindMask,windUv\)\.r/);
+assert.match(autoShader.fragmentShader,/microMotionBandWeight/);
+const middleShader={uniforms:{},vertexShader:'void main() {\n#include <uv_vertex>',fragmentShader:'void main() {\n#include <map_fragment>'};
+automatic.group.children[2].material.onBeforeCompile(middleShader);
+assert.ok(middleShader.uniforms.microMotionBandWeight.value<autoShader.uniforms.microMotionBandWeight.value,'Foreground bands have independent wind strengths');
+assert.equal(autoShader.uniforms.foliageWindMask.value.image.width,32,'Automatic mask is tile-sized, not panorama-sized');
+const nextAutoShader={uniforms:{},vertexShader:'void main() {\n#include <uv_vertex>',fragmentShader:'void main() {\n#include <map_fragment>'};
+automatic.group.children[7].material.onBeforeCompile(nextAutoShader);
+assert.notEqual(autoShader.uniforms.foliageWindMask.value,nextAutoShader.uniforms.foliageWindMask.value,'Every tile owns its own mask');
+assert.ok(autoShader.uniforms.foliageWindMask.value.image.maskPixels[0]>=0);
+const masksBeforeAuto=disposed.filter(item=>item==='foliage mask').length;
+const oldGroup=automatic.group;
+const replacement=await context.createTiledPanorama({url:'/tiles/replacement/manifest.json',scene,camera,renderer:{},manifest,depth,
+ foliage:{enabled:true,manualMask,strength:55}});
+replacement.update();
+automatic.dispose();
+assert.equal(disposed.filter(item=>item==='foliage mask').length-masksBeforeAuto,2,'Two automatic GPU masks disposed on scene switch');
+assert.ok(scene.children.includes(replacement.group)&&!scene.children.includes(oldGroup),'New scene remains active after old scene disposal');
+const masksBeforeReplacement=disposed.filter(item=>item==='foliage mask').length;
+replacement.dispose();
+assert.equal(disposed.filter(item=>item==='foliage mask').length-masksBeforeReplacement,1,'Next scene mask independently disposed');
+
+const plainWind=await context.createTiledPanorama({url:'/tiles/plain-wind/manifest.json',scene,camera,renderer:{},manifest,
+ foliage:{enabled:true,strength:40}});
+plainWind.update();
+assert.equal(plainWind.group.children.length,2,'Wind also works with ordinary non-depth tiles');
+const plainShader={uniforms:{},vertexShader:'void main() {\n#include <uv_vertex>',fragmentShader:'void main() {\n#include <map_fragment>'};
+plainWind.group.children[0].material.onBeforeCompile(plainShader);
+assert.match(plainShader.fragmentShader,/microMotionBandWeight/);
+assert.equal(plainShader.uniforms.microMotionBandWeight.value,1);
+plainWind.dispose();
+
+console.log('tiled-preload: cache, depth, wind masks, longitude seam, scene transitions and GPU cleanup passed');

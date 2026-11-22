@@ -8,7 +8,10 @@ const viewer=readFileSync(new URL('../public/assets/viewer.js',import.meta.url),
 const start=viewer.indexOf('async function switchSceneInPlace(');
 const end=viewer.indexOf('\nfunction reportSceneSwitchError(',start);
 assert(start>=0&&end>start,'Scene switch function must exist');
-const code=viewer.slice(start,end);
+const windStart=viewer.indexOf('function tiledFoliageConfig(');
+const windEnd=viewer.indexOf('function tiledDepthConfig(',windStart);
+assert(windStart>=0&&windEnd>windStart,'Tile wind configuration must exist');
+const code=viewer.slice(windStart,windEnd)+'\n'+viewer.slice(start,end);
 
 const disposed=[];
 const effect=name=>({dispose(){disposed.push(name)}});
@@ -43,7 +46,7 @@ const context={
  parallaxDepthPixels:null,manualFoliageMaskImage:null,manualWaterMaskImage:null,
  effectSystem:effect('effects'),atmosphereSystem:effect('atmosphere'),
  moonSystem:effect('moon'),environmentSystem:effect('environment'),
- scene:{},renderer:{},
+ scene:{},renderer:{},location:{search:''},URLSearchParams,
  createPanoramaEffects:()=>effect('new effects'),
  createAtmosphere:()=>effect('new atmosphere'),
  createMoonlight:()=>effect('new moon'),
@@ -111,13 +114,23 @@ nextDataset.tiles='/tiles/depth/manifest.json';
 nextDataset.effects=JSON.stringify({parallaxEnabled:true,parallaxOcclusionFill:false});
 const depthPixels=new Uint8ClampedArray(256*128*4);
 context.fetchParallaxDepth=async()=>depthPixels;
-let receivedDepth=null;
-context.createTiledPanorama=async options=>{receivedDepth=options.depth;return {update(){},dispose(){},group:{visible:true}}};
+let receivedDepth=null,receivedFoliage=null,disposedTileCount=0;
+context.createTiledPanorama=async options=>{receivedDepth=options.depth;receivedFoliage=options.foliage;return {update(){},dispose(){disposedTileCount++},group:{visible:true}}};
 context.loadSceneTexture=async()=>{throw Error('Depth tiled scene must not load the original image')};
 await context.switchSceneInPlace('/viewer.php?id=5&tour=7&scene=45');
 assert.equal(receivedDepth.pixels,depthPixels);
 assert.equal(receivedDepth.bands,3);
 assert.equal(context.tiledPanorama.group.visible,true,'In-place switch makes the new tile group visible');
+assert.equal(receivedFoliage.enabled,true,'Missing old wind setting retains the enabled default');
+
+// Next scene gets its own manual mask and disposes the previous tiled scene.
+const nextManualMask={width:512,height:256};
+context.fetchManualFoliageMask=async()=>nextManualMask;
+nextDataset.effects=JSON.stringify({parallaxEnabled:true,parallaxOcclusionFill:false,parallaxMicroMotion:true,parallaxMicroMotionSpeed:2});
+await context.switchSceneInPlace('/viewer.php?id=5&tour=7&scene=47');
+assert.equal(receivedFoliage.manualMask,nextManualMask);
+assert.equal(receivedFoliage.speed,2);
+assert.equal(disposedTileCount,1,'Previous tiled scene was disposed exactly once');
 
 // A scene requiring the original occlusion fill must stay on the legacy path.
 nextDataset.effects=JSON.stringify({parallaxEnabled:true,parallaxOcclusionFill:true});
