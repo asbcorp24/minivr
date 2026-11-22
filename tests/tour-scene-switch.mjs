@@ -28,6 +28,8 @@ const context={
   }[selector]}
  }}},
  fetchParallaxDepth:async()=>null,
+ canUseTiledDepth:settings=>settings.parallaxEnabled===true&&settings.parallaxOcclusionFill===false,
+ tiledDepthConfig:(_settings,pixels)=>pixels?{pixels,bands:3}:null,
  fetchManualFoliageMask:async()=>null,
  fetchManualWaterMask:async()=>null,
  scenePreloader:{getReady:()=>null,cancel(){}},
@@ -101,3 +103,28 @@ assert.equal(inputs[0][1],prepared.assets.depth);
 assert.equal(inputs[3][1],prepared.assets.image);
 assert.equal(updated.at(-2),'cached texture');
 console.log('Prepared scene HTML and image/mask assets reused on transition');
+
+// When a prepared depth map and tile manifest coexist, the scene switch must
+// keep the tiled renderer, rather than silently downloading the source image.
+context.scenePreloader.getReady=()=>null;
+nextDataset.tiles='/tiles/depth/manifest.json';
+nextDataset.effects=JSON.stringify({parallaxEnabled:true,parallaxOcclusionFill:false});
+const depthPixels=new Uint8ClampedArray(256*128*4);
+context.fetchParallaxDepth=async()=>depthPixels;
+let receivedDepth=null;
+context.createTiledPanorama=async options=>{receivedDepth=options.depth;return {update(){},dispose(){},group:{visible:true}}};
+context.loadSceneTexture=async()=>{throw Error('Depth tiled scene must not load the original image')};
+await context.switchSceneInPlace('/viewer.php?id=5&tour=7&scene=45');
+assert.equal(receivedDepth.pixels,depthPixels);
+assert.equal(receivedDepth.bands,3);
+assert.equal(context.tiledPanorama.group.visible,true,'In-place switch makes the new tile group visible');
+
+// A scene requiring the original occlusion fill must stay on the legacy path.
+nextDataset.effects=JSON.stringify({parallaxEnabled:true,parallaxOcclusionFill:true});
+receivedDepth=null;
+context.loadSceneTexture=async()=>({name:'fallback image'});
+context.installPanorama=texture=>updated.push(texture.name);
+await context.switchSceneInPlace('/viewer.php?id=6&tour=7&scene=46');
+assert.equal(receivedDepth,null,'An unsupported depth effect cannot silently disappear');
+assert.equal(updated.at(-2),'fallback image');
+console.log('In-place scene switch: depth tiles and legacy effect fallback passed');

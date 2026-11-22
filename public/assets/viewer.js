@@ -3,6 +3,7 @@ import {createMoonlight} from '/assets/panorama-moonlight.js';
 import {createAtmosphere} from '/assets/panorama-atmosphere.js';
 import {createPanoramaEffects} from '/assets/panorama-effects.js';
 import {createTiledPanorama} from '/assets/tiled-panorama.js';
+import {makeDepthRadiusField,canUseTiledDepth} from '/assets/depth-tile-geometry.js';
 import {createScenePreloader,fetchPreparedScene} from '/assets/scene-preloader.js';
 import {createDesktop3DWindow} from '/assets/desktop-3d-window.js';
 import {createMobileMotionParallax} from '/assets/mobile-motion-parallax.js';
@@ -908,6 +909,19 @@ function clearPanoramaMeshes(){
  leftMesh=rightMesh=null;
 }
 let tiledPanorama=null,panoramaLoadEpoch=0;
+function tiledDepthConfig(settings,pixels){
+ if(!pixels||!canUseTiledDepth(settings))return null;
+ const relief=getViewerMode()===ViewerMode.DESKTOP;
+ const hybrid=relief||settings.parallaxMode==='hybrid';
+ const budget=parallaxQualityBudget();
+ const bands=hybrid?Math.max(2,Math.min(budget.layers,Number(settings.parallaxGroups)||5)):0;
+ const occlusion=settings.parallaxDynamicOcclusion===true||relief
+  ?Math.max(relief?.55:0,THREE.MathUtils.clamp(Number(settings.parallaxOcclusionStrength??50),0,100)/100):0;
+ return {
+  pixels,field:makeDepthRadiusField(pixels,settings,relief),relief,bands,occlusion,
+  nonlinear:settings.parallaxNonlinear===true?THREE.MathUtils.clamp(Number(settings.parallaxNonlinearStrength??50),0,100)/100:0
+ };
+}
 async function loadInitialPanorama(){
  const epoch=panoramaLoadEpoch;
  const [depthPixels,foliageMask,waterMask]=await Promise.all([
@@ -917,9 +931,10 @@ async function loadInitialPanorama(){
  if(epoch!==panoramaLoadEpoch)return;
  parallaxDepthPixels=depthPixels;manualFoliageMaskImage=foliageMask;manualWaterMaskImage=waterMask;
  requestAnimationFrame(syncMobileMotionButton);
- if(projection==='360'&&stereoMode==='mono'&&root.dataset.tiles&&!parallaxDepthPixels){
+ if(projection==='360'&&stereoMode==='mono'&&root.dataset.tiles&&(!parallaxDepthPixels||canUseTiledDepth(effectSettings))){
   try{
-   const tiles=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer,mirror:!!effectSettings.mirrorHorizontal});
+   const tiles=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer,mirror:!!effectSettings.mirrorHorizontal,
+    depth:tiledDepthConfig(effectSettings,parallaxDepthPixels)});
    if(epoch!==panoramaLoadEpoch){tiles.dispose();return;}
    tiledPanorama=tiles;
    document.body.classList.remove('scene-loading');queueNeighborPreload();return;
@@ -1324,9 +1339,10 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
   fetchManualWaterMask(nextSettings,prepared?.assets?.water)
  ]);
  let nextTiles=null,texture=null;
- if(nextProjection==='360'&&nextStereo==='mono'&&next.dataset.tiles&&!nextDepth){
+ if(nextProjection==='360'&&nextStereo==='mono'&&next.dataset.tiles&&(!nextDepth||canUseTiledDepth(nextSettings))){
   try{
-   nextTiles=await createTiledPanorama({url:next.dataset.tiles,scene,camera,renderer,mirror:!!nextSettings.mirrorHorizontal,manifest:prepared?.manifest,baseTiles:prepared?.baseTiles});
+   nextTiles=await createTiledPanorama({url:next.dataset.tiles,scene,camera,renderer,mirror:!!nextSettings.mirrorHorizontal,
+    manifest:prepared?.manifest,baseTiles:prepared?.baseTiles,depth:tiledDepthConfig(nextSettings,nextDepth)});
    if(nextTiles.group)nextTiles.group.visible=false;
   }catch(error){console.warn('Tour scene tiles unavailable, using image',error)}
  }
