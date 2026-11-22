@@ -137,7 +137,7 @@ console.log('scene-preloader: reuse, LRU, cancellation, byte limits and scene re
 console.log('scene-preloader: tiled scene base level prefetch passed');
 
 // Depth-aware tiled scenes cache the small depth PNG alongside base tiles,
-// never the full equirectangular JPEG. Legacy effects still preload the image.
+// never the full equirectangular JPEG. Unsupported effects still preload it.
 {
  const oldFetch=globalThis.fetch,oldParser=globalThis.DOMParser,oldLocation=globalThis.location;
  let effects={parallaxEnabled:true,parallaxDepth:'/uploads/depth.png',parallaxOcclusionFill:false,parallaxMicroMotion:false};
@@ -160,7 +160,12 @@ console.log('scene-preloader: tiled scene base level prefetch passed');
   assert.equal(requested.some(url=>url.includes('huge.jpg')),false);
   requested.length=0;
   effects={...effects,parallaxMicroMotion:true};
-  const legacy=await fetchPreparedScene('/viewer.php?id=9',new AbortController().signal,{maxBytes:1024*1024});
+  const withWind=await fetchPreparedScene('/viewer.php?id=9',new AbortController().signal,{maxBytes:1024*1024});
+  assert.equal(withWind.assets.image,null,'Foliage wind must not force the full JPEG to preload');
+  assert.equal(withWind.baseTiles.size,2);
+  requested.length=0;
+  effects={...effects,parallaxWaterMotion:true};
+  const legacy=await fetchPreparedScene('/viewer.php?id=10',new AbortController().signal,{maxBytes:1024*1024});
   assert.equal(legacy.manifest,null);
   assert.equal(legacy.assets.image.size,5);
   assert.equal(legacy.assets.depth.size,5);

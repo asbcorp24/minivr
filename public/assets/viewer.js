@@ -909,6 +909,15 @@ function clearPanoramaMeshes(){
  leftMesh=rightMesh=null;
 }
 let tiledPanorama=null,panoramaLoadEpoch=0;
+function tiledFoliageConfig(settings,manualMask){
+ const query=new URLSearchParams(location.search);
+ return {
+  enabled:settings.parallaxMicroMotion!==false&&query.get('micro_motion')!=='0',
+  manualMask,strength:settings.parallaxMicroMotionStrength??60,
+  speed:settings.parallaxMicroMotionSpeed??1,
+  preview:query.get('micro_motion_preview')==='1',showMask:query.get('micro_motion_mask')==='1'
+ };
+}
 function tiledDepthConfig(settings,pixels){
  if(!pixels||!canUseTiledDepth(settings))return null;
  const relief=getViewerMode()===ViewerMode.DESKTOP;
@@ -934,7 +943,7 @@ async function loadInitialPanorama(){
  if(projection==='360'&&stereoMode==='mono'&&root.dataset.tiles&&(!parallaxDepthPixels||canUseTiledDepth(effectSettings))){
   try{
    const tiles=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer,mirror:!!effectSettings.mirrorHorizontal,
-    depth:tiledDepthConfig(effectSettings,parallaxDepthPixels)});
+    depth:tiledDepthConfig(effectSettings,parallaxDepthPixels),foliage:tiledFoliageConfig(effectSettings,manualFoliageMaskImage)});
    if(epoch!==panoramaLoadEpoch){tiles.dispose();return;}
    tiledPanorama=tiles;
    document.body.classList.remove('scene-loading');queueNeighborPreload();return;
@@ -1342,7 +1351,8 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  if(nextProjection==='360'&&nextStereo==='mono'&&next.dataset.tiles&&(!nextDepth||canUseTiledDepth(nextSettings))){
   try{
    nextTiles=await createTiledPanorama({url:next.dataset.tiles,scene,camera,renderer,mirror:!!nextSettings.mirrorHorizontal,
-    manifest:prepared?.manifest,baseTiles:prepared?.baseTiles,depth:tiledDepthConfig(nextSettings,nextDepth)});
+    manifest:prepared?.manifest,baseTiles:prepared?.baseTiles,depth:tiledDepthConfig(nextSettings,nextDepth),
+    foliage:tiledFoliageConfig(nextSettings,nextFoliage)});
    if(nextTiles.group)nextTiles.group.visible=false;
   }catch(error){console.warn('Tour scene tiles unavailable, using image',error)}
  }
@@ -1513,7 +1523,7 @@ renderer.setAnimationLoop((time)=>{
  if(guidedTarget&&getViewerMode()===ViewerMode.DESKTOP&&!orientation){const delta=((guidedTarget.yaw-lon+540)%360)-180;lon+=delta*.045;lat+=(guidedTarget.pitch-lat)*.045;if(Math.abs(delta)<.12&&Math.abs(guidedTarget.pitch-lat)<.12)guidedTarget=null;}
  // GPU-side micro-motion for the nearest depth groups; no CPU texture updates.
  for(const entry of microMotionMaterials)entry.phase.value=time*.001*entry.speed;
- tiledPanorama?.update();
+ tiledPanorama?.update(time);
  effectSystem?.update(time,camera);atmosphereSystem?.update(time,camera);moonSystem?.update(time,camera);environmentSystem?.update(time,camera);
  if(getViewerMode()===ViewerMode.DESKTOP&&!down&&!orientation&&effectSettings.rotation){
   const dt=lastEffectTime?Math.min(.05,(time-lastEffectTime)/1000):0;

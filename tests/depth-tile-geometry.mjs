@@ -32,9 +32,10 @@ assert.throws(()=>makeDepthRadiusField(new Uint8Array(4),{parallaxStrength:80}),
 
 const compatible={parallaxEnabled:true,parallaxMicroMotion:false,parallaxWaterMotion:false,parallaxContactShadows:false,parallaxOcclusionFill:false};
 assert.equal(canUseTiledDepth(compatible),true);
-for(const setting of ['parallaxWaterMotion','parallaxContactShadows','parallaxOcclusionFill','parallaxMicroMotion']){
+for(const setting of ['parallaxWaterMotion','parallaxContactShadows','parallaxOcclusionFill']){
  assert.equal(canUseTiledDepth({...compatible,[setting]:true}),false,`${setting} uses legacy full-image renderer`);
 }
-assert.equal(canUseTiledDepth({...compatible,parallaxMicroMotion:undefined}),false,'Legacy undefined micro-motion enables animation');
+assert.equal(canUseTiledDepth({...compatible,parallaxMicroMotion:true}),true,'Wind now works with depth tiles');
+assert.equal(canUseTiledDepth({...compatible,parallaxMicroMotion:undefined}),true,'Historical wind default works with depth tiles');
 assert.equal(canUseTiledDepth({...compatible,parallaxEnabled:false}),false);
 console.log('depth-tile-geometry: inverse-depth shell, seam, poles, fallback and zero-strength passed');

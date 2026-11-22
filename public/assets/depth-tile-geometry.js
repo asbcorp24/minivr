@@ -67,11 +67,10 @@ export function sampleDepthRadius(field,u,v){
  return top*(1-fy)+bottom*fy;
 }
 
-// These effects currently require a full-image render path. Preserve them
-// exactly rather than silently suppressing wind/water or background filling.
+// Tile-local leaf masks preserve micro-motion without a full-size panorama.
+// Water, contact shadows and inpainting still need the legacy renderer.
 export function canUseTiledDepth(settings={}){
  return settings.parallaxEnabled===true&&
-  // Undefined micro-motion is enabled by the historical viewer defaults.
-  settings.parallaxMicroMotion===false&&settings.parallaxWaterMotion!==true&&
-  settings.parallaxContactShadows!==true&&settings.parallaxOcclusionFill===false;
+  settings.parallaxWaterMotion!==true&&settings.parallaxContactShadows!==true&&
+  settings.parallaxOcclusionFill===false;
 }
