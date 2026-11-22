@@ -42,6 +42,8 @@ class MainActivity : Activity(), SensorEventListener {
     private lateinit var gyroButton: Button
     private lateinit var audioButton: Button
     private lateinit var musicButton: Button
+    private lateinit var depthButton: Button
+    private lateinit var effectsButton: Button
     private lateinit var exitVr: Button
     private val renderer = PanoramaRenderer()
     private val ui = Handler(Looper.getMainLooper())
@@ -53,6 +55,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var tour: TourEntry? = null
     private var index = -1
     private var current: SceneEntry? = null
+    private var tileStreamer: NativeTileStreamer? = null
     private var gyro = false
     private var gyroSensor: Sensor? = null
     private var baseline: Pair<Float, Float>? = null
@@ -102,6 +105,8 @@ class MainActivity : Activity(), SensorEventListener {
                     MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1 && !gyro && !scale.isInProgress) {
                         renderer.yaw -= (event.x - lastTouchX) * .18f
                         renderer.pitch = (renderer.pitch + (lastTouchY - event.y) * .18f).coerceIn(-89f, 89f)
+                        renderer.motionX = (renderer.motionX + (event.x - lastTouchX) * .004f).coerceIn(-.8f, .8f)
+                        renderer.motionY = (renderer.motionY + (lastTouchY - event.y) * .004f).coerceIn(-.8f, .8f)
                     }
                 }
                 lastTouchX = event.x; lastTouchY = event.y
@@ -155,6 +160,16 @@ class MainActivity : Activity(), SensorEventListener {
         buttons.addView(button("♫ ›") { music.skip(1)?.let { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() } })
         gyroButton = button("GYRO") { setGyro(!gyro) }
         buttons.addView(gyroButton)
+        depthButton = button("3D ✓") {
+            renderer.depthEnabled = !renderer.depthEnabled
+            depthButton.text = if (renderer.depthEnabled) "3D ✓" else "3D ×"
+        }
+        buttons.addView(depthButton)
+        effectsButton = button("FX ✓") {
+            renderer.effectsEnabled = !renderer.effectsEnabled
+            effectsButton.text = if (renderer.effectsEnabled) "FX ✓" else "FX ×"
+        }
+        buttons.addView(effectsButton)
         vrButton = button("▣ SBS") { setCardboard(!renderer.cardboard) }
         buttons.addView(vrButton)
         buttons.addView(button("−") { renderer.fieldOfView = (renderer.fieldOfView + 8).coerceAtMost(100f) })
@@ -251,6 +266,8 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun displayScene(scene: SceneEntry, token: Int = generation.incrementAndGet()) {
         ui.removeCallbacks(nextScene)
+        tileStreamer?.stop()
+        tileStreamer = null
         audio.stop()
         current = scene
         guidedIndex = -1
@@ -258,12 +275,25 @@ class MainActivity : Activity(), SensorEventListener {
         renderer.yaw = 0f
         renderer.pitch = 0f
         renderer.fieldOfView = 75f
+        renderer.motionX = 0f
+        renderer.motionY = 0f
         baseline = null
         title.text = scene.title
         notifyUser("Загрузка изображения…")
         thread(name = "MiniVR-image") {
             try {
-                val bitmap = api.bitmap(scene.image)
+                var tiles: NativeTileStreamer? = null
+                val tiled = scene.tilesManifest.takeIf {
+                    scene.projection == "360" && scene.stereo == "mono"
+                }
+                val bitmap = if (tiled != null) {
+                    runCatching {
+                        val streamer = NativeTileStreamer(api, renderer, api.tileManifest(tiled))
+                        val low = streamer.baseBitmap()
+                        tiles = streamer
+                        low
+                    }.getOrElse { api.bitmap(scene.image) }
+                } else api.bitmap(scene.image)
                 if (token != generation.get()) { bitmap.recycle(); return@thread }
                 val aspect = if (scene.stereo.equals("sbs", true)) bitmap.width / 2f / bitmap.height
                     else if (scene.stereo.equals("tb", true)) bitmap.width * 2f / bitmap.height
@@ -272,19 +302,47 @@ class MainActivity : Activity(), SensorEventListener {
                     scene.projection, scene.stereo,
                     scene.effects.optBoolean("mirrorHorizontal", false), aspect
                 )
-                renderer.offerImage(bitmap, spec)
+                renderer.offerImage(bitmap, spec, NativeSceneEffects.from(scene.effects))
+                loadDepthAndMasks(scene, token)
                 runOnUiThread {
-                    if (token != generation.get()) return@runOnUiThread
+                    if (token != generation.get()) { tiles?.stop(); return@runOnUiThread }
+                    tileStreamer = tiles
+                    tiles?.start()
                     val stops = tour?.hotspots?.filter { it.sceneId == scene.id } ?: emptyList()
                     overlay.hotspots = stops
                     audio.enterScene(scene.audio)
                     val trackId = scene.effects.optInt("musicTrackId", 0)
                     music.selectTrack(trackId)
                     musicButton.text = if (music.isPlayingRequested()) "♫ ⏸" else "♫ ▶"
-                    notifyUser("${scene.projection}° · ${scene.stereo.uppercase()} · ${indexLabel()}")
+                    val quality = if (tiles != null) "тайлы" else "изображение"
+                    val depth = if (scene.effects.optBoolean("parallaxEnabled") &&
+                        scene.effects.optString("parallaxDepth").startsWith("/")) " · 3D" else ""
+                    notifyUser("${scene.projection}° · ${scene.stereo.uppercase()} · $quality$depth · ${indexLabel()}")
                     if (autoplay) scheduleNext(scene)
                 }
             } catch (e: Exception) { showLoadError(token, e) }
+        }
+    }
+
+    private fun loadDepthAndMasks(scene: SceneEntry, token: Int) {
+        val settings = scene.effects
+        if (scene.projection != "360" || scene.stereo != "mono") return
+        val depth = settings.optString("parallaxDepth").takeIf {
+            settings.optBoolean("parallaxEnabled") && it.isNotBlank() && it != "null"
+        }
+        if (depth != null) thread(name = "MiniVR-depth") {
+            runCatching {
+                val map = api.bitmap(depth, 1024)
+                if (token == generation.get()) renderer.offerDepth(map) else map.recycle()
+            }
+        }
+        thread(name = "MiniVR-masks") {
+            NativeSceneEffects.decodeMask(settings, "parallaxWaterMask")?.let {
+                if (token == generation.get()) renderer.offerWaterMask(it) else it.recycle()
+            }
+            NativeSceneEffects.decodeMask(settings, "parallaxFoliageMask")?.let {
+                if (token == generation.get()) renderer.offerFoliageMask(it) else it.recycle()
+            }
         }
     }
 
@@ -397,6 +455,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun resetView() {
         renderer.yaw = 0f; renderer.pitch = 0f
+        renderer.motionX = 0f; renderer.motionY = 0f
         baseline = null
     }
 
@@ -444,6 +503,8 @@ class MainActivity : Activity(), SensorEventListener {
         } else {
             renderer.yaw = baselineView.first - wrap(yaw - first.first)
             renderer.pitch = (baselineView.second + pitch - first.second).coerceIn(-89f, 89f)
+            renderer.motionX = (wrap(yaw - first.first) / 45f).coerceIn(-.7f, .7f)
+            renderer.motionY = ((pitch - first.second) / 45f).coerceIn(-.7f, .7f)
         }
     }
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -463,6 +524,7 @@ class MainActivity : Activity(), SensorEventListener {
     }
     override fun onDestroy() {
         generation.incrementAndGet()
+        tileStreamer?.stop()
         ui.removeCallbacks(nextScene)
         sensors.unregisterListener(this)
         audio.stop()

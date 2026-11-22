@@ -14,6 +14,13 @@ function publicUrl(?string $path):?string {
  if(preg_match('~^https://~i',$path))return $path;
  return '/'.ltrim($path,'/');
 }
+function tilesManifest(?string $image,string $projection,string $stereo):?string {
+ if($projection!=='360'||$stereo!=='mono'||!$image)return null;
+ $name=pathinfo(basename(parse_url($image,PHP_URL_PATH)?:''),PATHINFO_FILENAME);
+ if(!$name||!preg_match('/^[a-zA-Z0-9_.-]+$/D',$name))return null;
+ $relative='/tiles/'.$name.'/manifest.json';
+ return is_file(__DIR__.'/..'.$relative)?$relative:null;
+}
 if($action==='catalog'){
  $panoramas=$db->query('SELECT id,title,description,image,preview,projection,stereo FROM panoramas WHERE published=1 ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
  $tours=$db->query('SELECT id,title,description,cover FROM tours WHERE published=1 ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
@@ -32,6 +39,7 @@ if($action==='panorama'&&$id){
  $q->execute([$id]);$p=$q->fetch(PDO::FETCH_ASSOC);
  if(!$p){http_response_code(404);output(['error'=>'not_found']);}
  $p['image']=publicUrl($p['image']);$p['preview']=publicUrl($p['preview']);
+ $p['tiles_manifest']=tilesManifest($p['image'],(string)$p['projection'],(string)$p['stereo']);
  $p['effects']=json_decode($p['effects']??'{}',true)?:[];
  output(['version'=>1,'panorama'=>$p]);
 }
@@ -45,6 +53,7 @@ if($action==='tour'&&$id){
  foreach($scenes as &$s){
   $visibleIds[(int)$s['id']]=true;
   $s['image']=publicUrl($s['image']);$s['preview']=publicUrl($s['preview']);
+  $s['tiles_manifest']=tilesManifest($s['image'],(string)$s['projection'],(string)$s['stereo']);
   $s['scene_audio']=publicUrl($s['scene_audio']);
   $s['guided_points']=json_decode($s['guided_points']??'[]',true)?:[];
   $s['effects']=json_decode($s['effects']??'{}',true)?:[];

@@ -26,8 +26,15 @@ data class SceneEntry(
     val audio: String?,
     val guidedPoints: JSONArray,
     val lat: Double?,
-    val lng: Double?
+    val lng: Double?,
+    val tilesManifest: String?
 )
+
+data class TileLevel(val number: Int, val width: Int, val height: Int, val columns: Int, val rows: Int)
+data class TileManifest(val path: String, val tileSize: Int, val levels: List<TileLevel>) {
+    fun imagePath(level: TileLevel, x: Int, y: Int): String =
+        path.substringBeforeLast('/') + "/${level.number}/${x}_${y}.jpg"
+}
 
 data class HotspotEntry(
     val sceneId: Int,
@@ -134,7 +141,8 @@ class MiniVrApi(baseUrl: String, private val imageCache: File) {
         row.audioUrl("scene_audio"),
         row.optJSONArray("guided_points") ?: JSONArray(),
         if (row.isNull("geo_lat")) null else row.optDouble("geo_lat"),
-        if (row.isNull("geo_lng")) null else row.optDouble("geo_lng")
+        if (row.isNull("geo_lng")) null else row.optDouble("geo_lng"),
+        row.audioUrl("tiles_manifest")
     )
 
     fun panorama(id: Int): SceneEntry {
@@ -143,8 +151,26 @@ class MiniVrApi(baseUrl: String, private val imageCache: File) {
             id, id, row.getString("title"), row.optString("description", ""),
             row.getString("image"), row.optString("projection", "360"),
             row.optString("stereo", "mono"), row.optJSONObject("effects") ?: JSONObject(),
-            null, null, JSONArray(), null, null
+            null, null, JSONArray(), null, null, row.audioUrl("tiles_manifest")
         )
+    }
+
+    fun tileManifest(path: String): TileManifest {
+        val result = json(path)
+        require(result.optString("projection") == "360") { "Unsupported tiled projection" }
+        val size = result.optInt("tileSize", 512)
+        require(size in 128..1024) { "Invalid tile size" }
+        val array = result.getJSONArray("levels")
+        val levels = (0 until array.length()).map { index ->
+            val level = array.getJSONObject(index)
+            TileLevel(level.getInt("level"), level.getInt("width"), level.getInt("height"),
+                level.getInt("cols"), level.getInt("rows"))
+        }
+        require(levels.isNotEmpty() && levels.size <= 20 && levels.all {
+            it.width > 0 && it.height > 0 && it.columns > 0 && it.rows > 0 &&
+                it.width <= 131072 && it.height <= 65536 && it.columns <= 256 && it.rows <= 128
+        }) { "Invalid tile manifest" }
+        return TileManifest(path, size, levels)
     }
 
     fun tour(id: Int): TourEntry {
@@ -174,7 +200,8 @@ class MiniVrApi(baseUrl: String, private val imageCache: File) {
      * Images are cached on disk, and decoded to <= 4096 pixels per axis.
      * This keeps 8K panoramas from exhausting the GPU or Java heap.
      */
-    fun bitmap(path: String): Bitmap {
+    fun bitmap(path: String, maxDimension: Int = 4096): Bitmap {
+        require(maxDimension in 256..4096)
         val mediaUrl = url(path) ?: error("Image URL is empty")
         val key = digest(mediaUrl)
         if (!imageCache.exists()) imageCache.mkdirs()
@@ -193,7 +220,7 @@ class MiniVrApi(baseUrl: String, private val imageCache: File) {
         BitmapFactory.decodeFile(cached.path, bounds)
         require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Unsupported image format" }
         var sample = 1
-        while (bounds.outWidth / sample > 4096 || bounds.outHeight / sample > 4096) sample *= 2
+        while (bounds.outWidth / sample > maxDimension || bounds.outHeight / sample > maxDimension) sample *= 2
         val options = BitmapFactory.Options().apply {
             inSampleSize = sample
             inPreferredConfig = Bitmap.Config.ARGB_8888
