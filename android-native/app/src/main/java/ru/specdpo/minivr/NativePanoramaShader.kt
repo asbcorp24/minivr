@@ -61,6 +61,7 @@ object NativePanoramaShader {
         uniform float imageAspect;
         uniform float clockTime;
         uniform vec2 parallaxOffset;
+        uniform vec3 depthParams;
         uniform vec4 atlasCoords;
         uniform vec4 waterParams;
         uniform vec2 waterCenter;
@@ -88,10 +89,17 @@ object NativePanoramaShader {
         vec3 sphericalDirection(vec2 angles) {
             float cy = cos(angles.x), sy = sin(angles.x);
             float cp = cos(angles.y), sp = sin(angles.y);
-            return vec3(cp * cy, sp, cp * sy);
+            // The site's authored longitude increases towards -Z.
+            return vec3(cp * cy, sp, -cp * sy);
         }
         float random2(vec2 v) {
             return fract(sin(dot(v, vec2(127.1, 311.7))) * 43758.5453);
+        }
+        float noise2(vec2 p) {
+            vec2 i=floor(p),f=fract(p);
+            f=f*f*(3.0-2.0*f);
+            return mix(mix(random2(i),random2(i+vec2(1,0)),f.x),
+                       mix(random2(i+vec2(0,1)),random2(i+vec2(1,1)),f.x),f.y);
         }
         vec4 panoramaPixel(vec2 uv) {
             float sourceU = projection == 0 ? fract(uv.x + 2.0) : clamp(uv.x, 0.0, 1.0);
@@ -128,7 +136,31 @@ object NativePanoramaShader {
                     vec3 cameraOffset = right * parallaxOffset.x + up * parallaxOffset.y;
                     for (int i = 0; i < 3; i++) {
                         vec2 depthUv = sphereUv(radial);
-                        float d = texture2D(depthMap, vec2(fract(depthUv.x + 2.0), depthUv.y)).r;
+                        vec2 wrapped = vec2(fract(depthUv.x + 2.0), clamp(depthUv.y, 0.0, 1.0));
+                        float d = texture2D(depthMap, wrapped).r;
+                        if (i == 0) {
+                            // Edge-preserving filter: smooth map noise, never mix a tree
+                            // silhouette with the distant sky across a depth jump.
+                            vec2 texel = depthParams.yz;
+                            float leftD = texture2D(depthMap, vec2(fract(wrapped.x - texel.x + 1.0), wrapped.y)).r;
+                            float rightD = texture2D(depthMap, vec2(fract(wrapped.x + texel.x), wrapped.y)).r;
+                            float upperD = texture2D(depthMap, vec2(wrapped.x, max(0.0, wrapped.y - texel.y))).r;
+                            float lowerD = texture2D(depthMap, vec2(wrapped.x, min(1.0, wrapped.y + texel.y))).r;
+                            float sum = d * 4.0;
+                            float weights = 4.0;
+                            float diff = abs(leftD - d);
+                            if (diff < 0.115) { sum += leftD * (1.0 - diff * 6.0); weights += 1.0 - diff * 6.0; }
+                            diff = abs(rightD - d);
+                            if (diff < 0.115) { sum += rightD * (1.0 - diff * 6.0); weights += 1.0 - diff * 6.0; }
+                            diff = abs(upperD - d);
+                            if (diff < 0.115) { sum += upperD * (1.0 - diff * 6.0); weights += 1.0 - diff * 6.0; }
+                            diff = abs(lowerD - d);
+                            if (diff < 0.115) { sum += lowerD * (1.0 - diff * 6.0); weights += 1.0 - diff * 6.0; }
+                            d = sum / weights;
+                        }
+                        float polarFade = clamp(sin(PI * wrapped.y) * 8.0, 0.0, 1.0);
+                        d = mix(0.5, d, polarFade);
+                        d = mix(d, pow(d, 2.2), depthParams.x);
                         // MiniVR depth convention: 0 is far, 1 is near.
                         float distance = 1.0 / (1.0 / 58.0 + (1.0 / 8.0 - 1.0 / 58.0) * d);
                         float projectionLength = dot(cameraOffset, ray);
@@ -185,9 +217,18 @@ object NativePanoramaShader {
             if (projection == 0) {
                 float fog = atmosphereParams.x;
                 if (fog > 0.0) {
-                    float horizon = exp(-abs(ray.y + 0.06) * 6.0);
-                    color = mix(color, vec3(0.53, 0.63, 0.67),
-                                clamp(horizon * fog * 0.36, 0.0, 0.34));
+                    // Site fog banks: slow noise near the horizon, not a flat grey band.
+                    float latitude = asin(clamp(ray.y,-1.0,1.0));
+                    float heightOffset = atmosphereParams.z * 0.018;
+                    float low = 1.0-smoothstep(-0.19+heightOffset,0.32+heightOffset,latitude);
+                    float ground = smoothstep(-1.3,-0.30+heightOffset,latitude);
+                    vec2 drift = vec2(atan(ray.z,ray.x)*1.7+clockTime*0.012,
+                                      ray.y*5.2+clockTime*0.008);
+                    float n=noise2(drift)*0.55+noise2(drift*2.15+8.3)*0.30+
+                            noise2(drift*4.2+16.7)*0.15;
+                    float banks=smoothstep(0.20,0.79,n);
+                    float alpha=fog*(0.075+0.34*banks)*low*ground;
+                    color=mix(color,vec3(0.78,0.84,0.87),clamp(alpha,0.0,0.52));
                 }
                 if (sunParams.x > 0.0) {
                     vec3 sunDir = sphericalDirection(sunParams.yz);
