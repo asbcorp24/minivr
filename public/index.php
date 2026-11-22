@@ -1,25 +1,24 @@
 <?php
 require_once __DIR__.'/../src/db.php';
 require_once __DIR__.'/../src/panorama-thumbnails.php';
+require_once __DIR__.'/../src/home-gallery.php';
 $db=db();
+$toursGallery=homeGalleryPage($db,'tours',$_GET['tours_page']??1);
+$materialsGallery=homeGalleryPage($db,'materials',$_GET['materials_page']??1);
+
+// The same server-rendered cards serve full navigation and no-reload pagination.
+$fragment=(string)($_GET['gallery_fragment']??'');
+if(in_array($fragment,['tours','materials'],true)){
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: private, no-store');
+    $galleryType=$fragment;
+    $gallery=$galleryType==='tours'?$toursGallery:$materialsGallery;
+    require __DIR__.'/../src/home-gallery-view.php';
+    exit;
+}
+
 $db->exec("CREATE TABLE IF NOT EXISTS music_tracks (id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,artist TEXT NOT NULL DEFAULT '',file_path TEXT NOT NULL,sort_order INTEGER NOT NULL DEFAULT 0,is_active INTEGER NOT NULL DEFAULT 1,created_at TEXT DEFAULT CURRENT_TIMESTAMP)");
 $tracks=$db->query("SELECT title,artist,file_path FROM music_tracks WHERE is_active=1 ORDER BY sort_order,id")->fetchAll();
-$tours=$db->query("SELECT t.*,(SELECT COUNT(*) FROM tour_scenes s WHERE s.tour_id=t.id) scene_count,(SELECT COALESCE(p.preview,p.image) FROM tour_scenes s JOIN panoramas p ON p.id=s.panorama_id WHERE s.tour_id=t.id ORDER BY s.sort_order,s.id LIMIT 1) fallback_cover FROM tours t WHERE t.published=1 ORDER BY t.id DESC")->fetchAll();
-
-// Only fetch the materials displayed on the requested page, even for large galleries.
-$materialsPerPage=12;
-$materialsCount=(int)$db->query('SELECT COUNT(*) FROM panoramas WHERE published=1')->fetchColumn();
-$materialsPages=max(1,(int)ceil($materialsCount/$materialsPerPage));
-$requestedMaterialsPage=filter_var($_GET['materials_page']??1,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
-$materialsPage=min($materialsPages,$requestedMaterialsPage===false?1:$requestedMaterialsPage);
-$materialsOffset=($materialsPage-1)*$materialsPerPage;
-$visibleMaterialsPages=array_values(array_unique(array_merge([1,$materialsPages],range(max(1,$materialsPage-2),min($materialsPages,$materialsPage+2)))));
-sort($visibleMaterialsPages,SORT_NUMERIC);
-$panosStmt=$db->prepare('SELECT id,title,description,image,projection,stereo FROM panoramas WHERE published=1 ORDER BY id DESC LIMIT :count OFFSET :offset');
-$panosStmt->bindValue(':count',$materialsPerPage,PDO::PARAM_INT);
-$panosStmt->bindValue(':offset',$materialsOffset,PDO::PARAM_INT);
-$panosStmt->execute();
-$panos=$panosStmt->fetchAll();
 ?>
 <!doctype html>
 <html lang="ru"><head>
@@ -39,30 +38,15 @@ $panos=$panosStmt->fetchAll();
 </style>
 </head><body>
 <canvas id="space"></canvas>
-<header><a class="brand" href="/">MINI<span>VR</span></a><nav id="main-nav"><a href="#tours">ЭКСКУРСИИ</a><a href="#how">КАК СМОТРЕТЬ</a><a href="#panoramas">VR-МАТЕРИАЛЫ</a></nav><button class="nav-toggle" id="nav-toggle" aria-label="Меню">☰</button><div class="device-badge" id="device-badge">WEB VIEW</div></header>
+<header><a class="brand" href="/">MINI<span>VR</span></a><nav id="main-nav"><a href="#tours">ЭКСКУРСИИ</a><a href="#panoramas">VR-МАТЕРИАЛЫ</a></nav><button class="nav-toggle" id="nav-toggle" aria-label="Меню">☰</button><div class="device-badge" id="device-badge">WEB VIEW</div></header>
 <main><section class="hero"><div class="hero-copy"><div class="eyebrow">IMMERSIVE DIGITAL SPACE / WEBXR</div><h1>Окажитесь<br><em>внутри истории.</em></h1><p>Виртуальные пространства, стереофотографии и панорамы 180°/360°. Откройте на экране, вставьте телефон в Cardboard или войдите через VR-гарнитуру.</p><div class="hero-actions"><a class="primary" href="#tours">ВЫБРАТЬ ЭКСКУРСИЮ →</a><a class="ghost" href="#panoramas">СМОТРЕТЬ МАТЕРИАЛЫ</a></div></div><div class="orb"><div><b>360°</b><span>LOOK AROUND</span></div></div></section>
-<section id="tours" class="journeys"><div class="section-title"><small>01 / JOURNEYS</small><h2>Виртуальные экскурсии</h2><p>Последовательности связанных пространств с интерактивными переходами.</p></div><div class="tour-grid"><?php foreach($tours as $i=>$t):?><a class="tour-card <?=!$i?'featured':''?>" href="/tour.php?id=<?=$t['id']?>"><div class="tour-image" style="background-image:url('<?=htmlspecialchars(($t['cover'] ? panoramaThumbnailUrl($t['cover'],'card') : ($t['fallback_cover'] ? panoramaThumbnailUrl($t['fallback_cover'],'card') : '')))?>')"><span class="tour-no"><?=str_pad((string)($i+1),2,'0',STR_PAD_LEFT)?></span><span class="tour-scenes"><?=$t['scene_count']?> SCENES</span></div><div class="tour-meta"><small>VR TOUR</small><h3><?=htmlspecialchars($t['title'])?></h3><p><?=htmlspecialchars($t['description']?:'Интерактивная виртуальная экскурсия')?></p><span>ВОЙТИ В ПРОСТРАНСТВО →</span></div></a><?php endforeach;?><?php if(!$tours):?><div class="empty">Экскурсии появятся здесь после публикации.</div><?php endif;?></div></section>
-<section id="how" class="how-section"><div class="section-title"><small>02 / ACCESS</small><h2>Смотрите как удобно</h2><p>Один и тот же материал открывается без установки приложения — от обычного браузера до полноценной VR-гарнитуры.</p></div><div class="mode-grid"><article><i>01</i><b>ЭКРАН</b><h3>Компьютер</h3><p>Осматривайте 180°/360° мышью, открывайте точки и переходите между сценами.</p><span>DESKTOP / NOTEBOOK</span></article><article><i>02</i><b>TOUCH</b><h3>Телефон</h3><p>Поворачивайте сцену пальцем или включите гироскоп для естественного обзора.</p><span>ANDROID / IOS</span></article><article><i>03</i><b>SBS</b><h3>Cardboard</h3><p>Вставьте смартфон в очки. Меню, переходы и информационные точки доступны прямо внутри VR.</p><span>PHONE VR</span></article><article><i>04</i><b>XR</b><h3>VR-гарнитура</h3><p>WebXR запускает пространство непосредственно в совместимой гарнитуре с контроллерами и наведением взглядом.</p><span>QUEST / PICO / WEBXR</span></article></div></section>
-<section id="panoramas">
- <div class="section-title"><small>03 / EXPLORE</small><h2>VR-материалы</h2><p>Отдельные панорамы и стереоизображения.</p></div>
- <div class="grid">
-  <?php foreach($panos as $p):?>
-   <a class="card" href="/viewer.php?id=<?=(int)$p['id']?>"><div class="thumb" style="background-image:url('<?=htmlspecialchars(panoramaThumbnailUrl($p['image'],'card'),ENT_QUOTES,'UTF-8')?>')"><i><?=strtoupper(htmlspecialchars($p['projection']??'360'))?></i></div><div class="meta"><div><b><?=htmlspecialchars($p['title'])?></b><small><?=htmlspecialchars($p['description']?:'Immersive material')?></small></div><span><?=strtoupper(htmlspecialchars($p['stereo']??'mono'))?> ↗</span></div></a>
-  <?php endforeach;?>
-  <?php if(!$panos):?><div class="empty">Материалов пока нет.</div><?php endif;?>
- </div>
- <?php if($materialsPages>1):?>
-  <div class="materials-pagination-wrap">
-   <p class="materials-pagination-info">Показаны <?=($materialsOffset+1)?>–<?=min($materialsCount,$materialsOffset+$materialsPerPage)?> из <?=$materialsCount?> материалов</p>
-   <nav class="materials-pagination" aria-label="Страницы VR-материалов">
-    <?php if($materialsPage>1):?><a class="materials-page-arrow" rel="prev" href="/?materials_page=<?=$materialsPage-1?>#panoramas" aria-label="Предыдущая страница">← Назад</a><?php endif;?>
-    <?php $lastVisiblePage=0;foreach($visibleMaterialsPages as $page):?>
-     <?php if($lastVisiblePage&&$page>$lastVisiblePage+1):?><span class="materials-page-gap" aria-hidden="true">…</span><?php endif;?>
-     <?php if($page===$materialsPage):?><span class="materials-page-number active" aria-current="page" aria-label="Страница <?=$page?>"><?=$page?></span>
-     <?php else:?><a class="materials-page-number" href="/?materials_page=<?=$page?>#panoramas" aria-label="Страница <?=$page?>"><?=$page?></a><?php endif;?>
-     <?php $lastVisiblePage=$page;endforeach;?>
-    <?php if($materialsPage<$materialsPages):?><a class="materials-page-arrow" rel="next" href="/?materials_page=<?=$materialsPage+1?>#panoramas" aria-label="Следующая страница">Далее →</a><?php endif;?>
-   </nav>
-  </div>
- <?php endif;?>
-</section></main><footer><span>MINIVR / IMMERSIVE PLATFORM</span><span>DESKTOP · MOBILE · CARDBOARD · WEBXR</span><a href="/admin/">ADMIN</a></footer><script type="module" src="/assets/home.js"></script><script src="/assets/pwa.js" defer></script><?php require __DIR__.'/assets/music-player.php'; ?></body></html>
+<section id="tours" class="journeys" data-gallery="tours" data-gallery-page="<?=$toursGallery['page']?>">
+ <div class="section-title"><small>01 / JOURNEYS</small><h2>Виртуальные экскурсии</h2><p>Последовательности связанных пространств с интерактивными переходами.</p></div>
+ <?php $galleryType='tours';$gallery=$toursGallery;require __DIR__.'/../src/home-gallery-view.php';?>
+ <p class="gallery-status" data-gallery-status role="status" aria-live="polite" hidden></p>
+</section>
+<section id="panoramas" data-gallery="materials" data-gallery-page="<?=$materialsGallery['page']?>">
+ <div class="section-title"><small>02 / EXPLORE</small><h2>VR-материалы</h2><p>Отдельные панорамы и стереоизображения.</p></div>
+ <?php $galleryType='materials';$gallery=$materialsGallery;require __DIR__.'/../src/home-gallery-view.php';?>
+ <p class="gallery-status" data-gallery-status role="status" aria-live="polite" hidden></p>
+</section></main><footer><span>MINIVR / IMMERSIVE PLATFORM</span><span>DESKTOP · MOBILE · CARDBOARD · WEBXR</span><a href="/admin/">ADMIN</a></footer><script type="module" src="/assets/home.js"></script><script src="/assets/home-galleries.js?v=<?=filemtime(__DIR__.'/assets/home-galleries.js')?>" defer></script><script src="/assets/pwa.js" defer></script><?php require __DIR__.'/assets/music-player.php'; ?></body></html>
