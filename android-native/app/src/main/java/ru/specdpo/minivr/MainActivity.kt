@@ -351,6 +351,12 @@ class MainActivity : Activity(), SensorEventListener {
     private fun loadDepthAndMasks(scene: SceneEntry, token: Int) {
         val settings = scene.effects
         if (scene.projection != "360" || scene.stereo != "mono") return
+        thread(name = "MiniVR-environment-masks") {
+            runCatching { NativeEffectMasks.from(settings) }.getOrNull()?.let { masks ->
+                if (token == generation.get()) renderer.offerEnvironmentMasks(masks)
+                else masks.recycle()
+            }
+        }
         val depth = settings.optString("parallaxDepth").takeIf {
             settings.optBoolean("parallaxEnabled") && it.isNotBlank() && it != "null"
         }

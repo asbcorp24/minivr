@@ -12,6 +12,9 @@ import org.json.JSONObject
 /** GPU effect parameters copied from the existing MiniVR panorama settings. */
 data class NativeSceneEffects(
     val depthStrength: Float = 0f,
+    val depthNonlinear: Float = 0f,
+    val depthAuto: Float = 0f,
+    val depthAutoSpeed: Float = .6f,
     val waterStrength: Float = 0f,
     val waterSpeed: Float = 1f,
     val waterYaw: Float = 0f,
@@ -21,6 +24,7 @@ data class NativeSceneEffects(
     val foliageSpeed: Float = 1f,
     val particles: Int = 0,
     val particleDensity: Float = 0f,
+    val particleOpacity: Float = 0.8f,
     val particleSpeed: Float = 1f,
     val wind: Float = 0f,
     val fog: Float = 0f,
@@ -33,6 +37,19 @@ data class NativeSceneEffects(
     val moonPitch: Float = 35f,
     val stars: Float = 0f,
     val clouds: Float = 0f,
+    val waterShimmer: Float = 0f,
+    val riverIntensity: Float = 0f,
+    val riverSpeed: Float = 1f,
+    val waterfallIntensity: Float = 0f,
+    val waterfallSpeed: Float = 1f,
+    val beamIntensity: Float = 0f,
+    val lampIntensity: Float = 0f,
+    val lampPositions: FloatArray = FloatArray(0),
+    val bubblesIntensity: Float = 0f,
+    val steamIntensity: Float = 0f,
+    val floatingDensity: Float = 0f,
+    val fireflyDensity: Float = 0f,
+    val fogHeight: Float = -3f,
     val rotationSpeed: Float = 0f
 ) {
     companion object {
@@ -48,8 +65,25 @@ data class NativeSceneEffects(
             val waterEnabled = settings.optBoolean("parallaxWaterMotion") ||
                 settings.optBoolean("liveWater") || settings.optBoolean("riverFlow") ||
                 settings.optBoolean("waterfallFlow")
+            val lamps = settings.optJSONArray("lamps")
+            val lampAngles = mutableListOf<Float>()
+            if (lamps != null) for (i in 0 until minOf(lamps.length(), 8)) {
+                val point = lamps.optJSONArray(i) ?: continue
+                if (point.length() != 2) continue
+                val lon = point.optDouble(0, Double.NaN)
+                val lat = point.optDouble(1, Double.NaN)
+                if (lon.isFinite() && lat.isFinite()) {
+                    lampAngles.add(Math.toRadians(lon).toFloat())
+                    lampAngles.add(Math.toRadians(lat).toFloat())
+                }
+            }
             return NativeSceneEffects(
                 depthStrength = if (settings.optBoolean("parallaxEnabled")) amount("parallaxStrength", 75.0) else 0f,
+                depthNonlinear = if (settings.optBoolean("parallaxNonlinear"))
+                    amount("parallaxNonlinearStrength", 50.0) else 0f,
+                depthAuto = if (settings.optBoolean("parallaxAuto"))
+                    amount("parallaxAutoAmplitude", 35.0) else 0f,
+                depthAutoSpeed = velocity("parallaxAutoSpeed", 0.6),
                 waterStrength = if (waterEnabled) amount("parallaxWaterStrength", 45.0) else 0f,
                 waterSpeed = velocity("parallaxWaterSpeed"),
                 waterYaw = settings.optDouble("waterYaw", 0.0).toFloat(),
@@ -59,7 +93,8 @@ data class NativeSceneEffects(
                     amount("parallaxMicroMotionStrength", 60.0) else 0f,
                 foliageSpeed = velocity("parallaxMicroMotionSpeed"),
                 particles = particles,
-                particleDensity = if (particles > 0) amount("density", 35.0) * amount("opacity", 80.0) else 0f,
+                particleDensity = if (particles > 0) amount("density", 35.0) else 0f,
+                particleOpacity = amount("opacity", 80.0),
                 particleSpeed = velocity("speed"),
                 wind = settings.optDouble("wind", 0.0).toFloat().coerceIn(-8f, 8f),
                 fog = if (settings.optBoolean("fog")) amount("fogDensity", 25.0) else 0f,
@@ -72,6 +107,21 @@ data class NativeSceneEffects(
                 moonPitch = settings.optDouble("moonPitch", 35.0).toFloat(),
                 stars = if (settings.optBoolean("stars")) amount("starDensity", 55.0) else 0f,
                 clouds = if (settings.optBoolean("clouds")) amount("cloudDensity", 35.0) else 0f,
+                waterShimmer = if (settings.optBoolean("liveWater")) amount("waterShimmer", 35.0) else 0f,
+                riverIntensity = if (settings.optBoolean("riverFlow")) amount("riverIntensity", 65.0) *
+                    amount("riverOpacity", 100.0) else 0f,
+                riverSpeed = velocity("riverSpeed"),
+                waterfallIntensity = if (settings.optBoolean("waterfallFlow"))
+                    amount("waterfallIntensity", 75.0) * amount("waterfallOpacity", 100.0) else 0f,
+                waterfallSpeed = velocity("waterfallSpeed", 1.4),
+                beamIntensity = if (settings.optBoolean("lightBeams")) amount("beamIntensity", 40.0) else 0f,
+                lampIntensity = if (settings.optBoolean("lampGlow")) amount("lampIntensity", 60.0) else 0f,
+                lampPositions = lampAngles.toFloatArray(),
+                bubblesIntensity = if (settings.optBoolean("bubbles")) amount("bubbleIntensity", 50.0) else 0f,
+                steamIntensity = if (settings.optBoolean("steam")) amount("steamIntensity", 45.0) else 0f,
+                floatingDensity = if (settings.optBoolean("floatingLeaves")) amount("floatingDensity", 40.0) else 0f,
+                fireflyDensity = if (settings.optBoolean("fireflies")) amount("fireflyDensity", 30.0) else 0f,
+                fogHeight = settings.optDouble("fogHeight", -3.0).toFloat().coerceIn(-10f, 10f),
                 rotationSpeed = if (settings.optBoolean("rotation")) velocity("rotationSpeed") else 0f
             )
         }
@@ -94,6 +144,9 @@ data class NativeSceneEffects(
             val polygons = when (kind) {
                 "water" -> listOfNotNull(masks?.optJSONArray("water"), masks?.optJSONArray("river"),
                     masks?.optJSONArray("waterfall"), settings.optJSONArray("waterPolygon"))
+                "surface" -> listOfNotNull(masks?.optJSONArray("water"), settings.optJSONArray("waterPolygon"))
+                "river", "waterfall", "sky", "light", "bubbles", "steam", "floating" ->
+                    listOfNotNull(masks?.optJSONArray(kind))
                 "vegetation" -> listOfNotNull(masks?.optJSONArray("vegetation"))
                 else -> emptyList()
             }
