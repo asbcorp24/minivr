@@ -135,3 +135,37 @@ console.log('scene-preloader: reuse, LRU, cancellation, byte limits and scene re
 }
 
 console.log('scene-preloader: tiled scene base level prefetch passed');
+
+// Depth-aware tiled scenes cache the small depth PNG alongside base tiles,
+// never the full equirectangular JPEG. Legacy effects still preload the image.
+{
+ const oldFetch=globalThis.fetch,oldParser=globalThis.DOMParser,oldLocation=globalThis.location;
+ let effects={parallaxEnabled:true,parallaxDepth:'/uploads/depth.png',parallaxOcclusionFill:false,parallaxMicroMotion:false};
+ const requested=[];
+ globalThis.location={href:'https://vr.example.test/viewer.php',origin:'https://vr.example.test'};
+ globalThis.DOMParser=class{parseFromString(){return {querySelector:()=>({dataset:{
+  image:'/uploads/huge.jpg',tiles:'/tiles/depth/manifest.json',projection:'360',stereo:'mono',effects:JSON.stringify(effects)
+ }})};}};
+ globalThis.fetch=async url=>{
+  requested.push(String(url));
+  if(String(url).includes('viewer.php'))return new Response('<html>depth scene</html>');
+  if(String(url).endsWith('manifest.json'))return Response.json({projection:'360',tileSize:512,levels:[{level:0,width:1024,height:512,cols:2,rows:1}]});
+  return new Response('image',{headers:{'Content-Type':'image/png'}});
+ };
+ try{
+  const safe=await fetchPreparedScene('/viewer.php?id=8',new AbortController().signal,{maxBytes:1024*1024});
+  assert.equal(safe.assets.image,null);
+  assert.equal(safe.assets.depth.size,5);
+  assert.equal(safe.baseTiles.size,2);
+  assert.equal(requested.some(url=>url.includes('huge.jpg')),false);
+  requested.length=0;
+  effects={...effects,parallaxMicroMotion:true};
+  const legacy=await fetchPreparedScene('/viewer.php?id=9',new AbortController().signal,{maxBytes:1024*1024});
+  assert.equal(legacy.manifest,null);
+  assert.equal(legacy.assets.image.size,5);
+  assert.equal(legacy.assets.depth.size,5);
+  assert.equal(requested.some(url=>url.includes('huge.jpg')),true);
+ }finally{globalThis.fetch=oldFetch;globalThis.DOMParser=oldParser;globalThis.location=oldLocation;}
+}
+
+console.log('scene-preloader: depth-aware base tiles and legacy effect fallback passed');

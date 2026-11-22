@@ -1,3 +1,5 @@
+import {canUseTiledDepth} from './depth-tile-geometry.js';
+
 // Network-only tour scene cache. No GPU textures, renderer objects or decoded
 // full-size panoramas are kept alive between scene switches.
 export function createScenePreloader({prepare, maxEntries=3, maxBytes=24*1024*1024, concurrency=1, maxAgeMs=120000}) {
@@ -114,7 +116,7 @@ export async function fetchPreparedScene(url,signal,{maxBytes=24*1024*1024}={}){
  let settings={};try{settings=JSON.parse(viewer.dataset.effects||'{}')}catch{}
  const projection=viewer.dataset.projection||'360',stereo=viewer.dataset.stereo||'mono';
  const useTiles=projection==='360'&&stereo==='mono'&&viewer.dataset.tiles&&
-  !(settings.parallaxEnabled&&settings.parallaxDepth);
+  (!(settings.parallaxEnabled&&settings.parallaxDepth)||canUseTiledDepth(settings));
  const remaining=Math.max(0,maxBytes-html.length*2-16384);
  const sizes={image:Math.floor(remaining*.75),depth:Math.floor(remaining*.12),foliage:Math.floor(remaining*.06),water:Math.floor(remaining*.06)};
  const sources={
