@@ -919,6 +919,17 @@ function tiledFoliageConfig(settings,manualMask){
   preview:query.get('micro_motion_preview')==='1',showMask:query.get('micro_motion_mask')==='1'
  };
 }
+function tiledWaterConfig(settings,manualMask){
+ return {
+  enabled:settings.parallaxWaterMotion===true&&new URLSearchParams(location.search).get('water_motion')!=='0',
+  manualMask,strength:settings.parallaxWaterStrength??45,
+  speed:settings.parallaxWaterSpeed??1,kind:settings.parallaxWaterType??'calm',
+  direction:settings.parallaxWaterDirection??0
+ };
+}
+function tiledContactConfig(settings){
+ return {enabled:settings.parallaxContactShadows===true,strength:settings.parallaxContactShadowStrength??40};
+}
 function tiledDepthConfig(settings,pixels){
  if(!pixels||!canUseTiledDepth(settings))return null;
  const relief=getViewerMode()===ViewerMode.DESKTOP;
@@ -944,7 +955,8 @@ async function loadInitialPanorama(){
  if(projection==='360'&&stereoMode==='mono'&&root.dataset.tiles&&(!parallaxDepthPixels||canUseTiledDepth(effectSettings))){
   try{
    const tiles=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer,mirror:!!effectSettings.mirrorHorizontal,
-    depth:tiledDepthConfig(effectSettings,parallaxDepthPixels),foliage:tiledFoliageConfig(effectSettings,manualFoliageMaskImage)});
+    depth:tiledDepthConfig(effectSettings,parallaxDepthPixels),foliage:tiledFoliageConfig(effectSettings,manualFoliageMaskImage),
+    water:tiledWaterConfig(effectSettings,manualWaterMaskImage),contactShadows:tiledContactConfig(effectSettings)});
    if(epoch!==panoramaLoadEpoch){tiles.dispose();return;}
    tiledPanorama=tiles;
    document.body.classList.remove('scene-loading');queueNeighborPreload();return;
@@ -1410,7 +1422,8 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
   try{
    nextTiles=await createTiledPanorama({url:next.dataset.tiles,scene,camera,renderer,mirror:!!nextSettings.mirrorHorizontal,
     manifest:prepared?.manifest,baseTiles:prepared?.baseTiles,depth:tiledDepthConfig(nextSettings,nextDepth),
-    foliage:tiledFoliageConfig(nextSettings,nextFoliage)});
+    foliage:tiledFoliageConfig(nextSettings,nextFoliage),
+    water:tiledWaterConfig(nextSettings,nextWater),contactShadows:tiledContactConfig(nextSettings)});
    if(nextTiles.group)nextTiles.group.visible=false;
   }catch(error){console.warn('Tour scene tiles unavailable, using image',error)}
  }

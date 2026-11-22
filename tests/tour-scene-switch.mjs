@@ -114,8 +114,8 @@ nextDataset.tiles='/tiles/depth/manifest.json';
 nextDataset.effects=JSON.stringify({parallaxEnabled:true,parallaxOcclusionFill:false});
 const depthPixels=new Uint8ClampedArray(256*128*4);
 context.fetchParallaxDepth=async()=>depthPixels;
-let receivedDepth=null,receivedFoliage=null,disposedTileCount=0;
-context.createTiledPanorama=async options=>{receivedDepth=options.depth;receivedFoliage=options.foliage;return {update(){},dispose(){disposedTileCount++},group:{visible:true}}};
+let receivedDepth=null,receivedFoliage=null,receivedWater=null,receivedContact=null,disposedTileCount=0;
+context.createTiledPanorama=async options=>{receivedDepth=options.depth;receivedFoliage=options.foliage;receivedWater=options.water;receivedContact=options.contactShadows;return {update(){},dispose(){disposedTileCount++},group:{visible:true}}};
 context.loadSceneTexture=async()=>{throw Error('Depth tiled scene must not load the original image')};
 await context.switchSceneInPlace('/viewer.php?id=5&tour=7&scene=45');
 assert.equal(receivedDepth.pixels,depthPixels);
@@ -125,11 +125,20 @@ assert.equal(receivedFoliage.enabled,true,'Missing old wind setting retains the 
 
 // Next scene gets its own manual mask and disposes the previous tiled scene.
 const nextManualMask={width:512,height:256};
+const nextWaterMask={width:512,height:256};
 context.fetchManualFoliageMask=async()=>nextManualMask;
-nextDataset.effects=JSON.stringify({parallaxEnabled:true,parallaxOcclusionFill:false,parallaxMicroMotion:true,parallaxMicroMotionSpeed:2});
+context.fetchManualWaterMask=async()=>nextWaterMask;
+nextDataset.effects=JSON.stringify({parallaxEnabled:true,parallaxOcclusionFill:false,parallaxMicroMotion:true,parallaxMicroMotionSpeed:2,
+ parallaxWaterMotion:true,parallaxWaterType:'surf',parallaxWaterStrength:70,parallaxWaterSpeed:2,
+ parallaxContactShadows:true,parallaxContactShadowStrength:55});
 await context.switchSceneInPlace('/viewer.php?id=5&tour=7&scene=47');
 assert.equal(receivedFoliage.manualMask,nextManualMask);
 assert.equal(receivedFoliage.speed,2);
+assert.equal(receivedWater.manualMask,nextWaterMask,'Prepared water mask belongs to the new scene');
+assert.equal(receivedWater.enabled,true,'Water remains active in tiled depth scene');
+assert.equal(receivedWater.kind,'surf');
+assert.equal(receivedContact.enabled,true,'Contact shadows remain active in tiled depth scene');
+assert.equal(receivedContact.strength,55);
 assert.equal(disposedTileCount,1,'Previous tiled scene was disposed exactly once');
 
 // A scene requiring the original occlusion fill must stay on the legacy path.
