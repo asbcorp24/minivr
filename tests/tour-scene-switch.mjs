@@ -15,8 +15,9 @@ const effect=name=>({dispose(){disposed.push(name)}});
 const nextDataset={image:'/uploads/next.jpg',projection:'360',stereo:'mono',effects:'{}',scene:'42',musicTrack:'0',tiles:''};
 const title={textContent:'Old panorama'};
 const updated=[];
+let htmlRequests=0;
 const context={
- fetch:async()=>({ok:true,text:async()=>'<html></html>'}),
+ fetch:async()=>{htmlRequests++;return {ok:true,text:async()=>'<html></html>'}},
  DOMParser:class{parseFromString(){return {
   title:'New panorama — MiniVR',
   querySelector(selector){return {
@@ -29,6 +30,9 @@ const context={
  fetchParallaxDepth:async()=>null,
  fetchManualFoliageMask:async()=>null,
  fetchManualWaterMask:async()=>null,
+ scenePreloader:{getReady:()=>null,cancel(){}},
+ loadSceneTexture:async()=>({name:'next texture'}),
+ queueNeighborPreload(){},
  THREE:{TextureLoader:class{async loadAsync(){return {name:'next texture'}}}},
  panoramaLoadEpoch:0,
  clearSceneHotspots(){updated.push('hotspots cleared')},
@@ -61,6 +65,7 @@ assert.deepEqual(updated,['hotspots cleared','next texture','/viewer.php?id=2&to
 assert.equal(context.tourData.current,1);
 assert.equal(context.root.dataset.scene,'42');
 assert.equal(title.textContent,'New panorama');
+assert.equal(htmlRequests,1);
 
 console.log('In-place tour scene transition executes without undeclared state');
 
@@ -77,3 +82,22 @@ assert.equal(context.root.dataset.scene,'42'); // The mocked DOM keeps scene 42.
 assert.equal(context.root.dataset.tiles,'/tiles/next/manifest.json');
 assert.ok(updated.includes('panorama meshes cleared'));
 console.log('Tiled tour scene switches even without a group visibility handle');
+
+// A completed neighbor preload is reused instead of fetching another PHP page.
+// Its image and masks are passed to the same existing panorama installation path.
+const prepared={html:'<html>cached</html>',assets:{image:{cached:true},depth:{depth:true},foliage:{foliage:true},water:{water:true}},manifest:null,baseTiles:null};
+context.scenePreloader.getReady=()=>prepared;
+nextDataset.tiles='';
+const inputs=[];
+context.fetchParallaxDepth=async(...args)=>{inputs.push(['depth',args[3]]);return null};
+context.fetchManualFoliageMask=async(...args)=>{inputs.push(['foliage',args[1]]);return null};
+context.fetchManualWaterMask=async(...args)=>{inputs.push(['water',args[1]]);return null};
+context.loadSceneTexture=async(_image,blob)=>{inputs.push(['image',blob]);return {name:'cached texture'}};
+context.installPanorama=texture=>updated.push(texture.name);
+await context.switchSceneInPlace('/viewer.php?id=4&tour=7&scene=44');
+assert.equal(htmlRequests,2,'Cached HTML avoids a third page request');
+assert.deepEqual(inputs.map(([kind])=>kind),['depth','foliage','water','image']);
+assert.equal(inputs[0][1],prepared.assets.depth);
+assert.equal(inputs[3][1],prepared.assets.image);
+assert.equal(updated.at(-2),'cached texture');
+console.log('Prepared scene HTML and image/mask assets reused on transition');
