@@ -1,0 +1,36 @@
+name: MiniVR Native Android
+on:
+  pull_request:
+    paths:
+      - 'android-native/**'
+      - '.github/workflows/android-native.yml'
+  push:
+    branches:
+      - feature/android-app
+    paths:
+      - 'android-native/**'
+      - '.github/workflows/android-native.yml'
+permissions:
+  contents: read
+jobs:
+  debug-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Build debug APK without WebView
+        working-directory: android-native
+        run: gradle --no-daemon :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MiniVR-Native-debug
+          path: android-native/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

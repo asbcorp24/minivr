@@ -128,6 +128,9 @@ function db(): PDO
     if (!in_array('scene_audio', $sceneColumns, true)) {
         $db->exec("ALTER TABLE tour_scenes ADD COLUMN scene_audio TEXT NOT NULL DEFAULT ''");
     }
+    if (!in_array('duration_seconds', $sceneColumns, true)) {
+        $db->exec('ALTER TABLE tour_scenes ADD COLUMN duration_seconds INTEGER DEFAULT NULL');
+    }
     // Positions belong to tour stops, so shared panorama assets stay reusable.
     if (!in_array('geo_lat', $sceneColumns, true)) {
         $db->exec('ALTER TABLE tour_scenes ADD COLUMN geo_lat REAL DEFAULT NULL');

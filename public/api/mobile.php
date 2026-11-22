@@ -32,10 +32,26 @@ if($action==='panorama'&&$id){
 if($action==='tour'&&$id){
  $q=$db->prepare('SELECT id,title,description,cover,start_scene_id FROM tours WHERE id=? AND published=1');$q->execute([$id]);$tour=$q->fetch(PDO::FETCH_ASSOC);
  if(!$tour){http_response_code(404);output(['error'=>'not_found']);}
- $q=$db->prepare('SELECT s.id,s.panorama_id,s.title,s.description,s.duration_seconds,s.guided_points,s.scene_audio,p.image,p.projection,p.stereo,p.effects FROM tour_scenes s JOIN panoramas p ON p.id=s.panorama_id WHERE s.tour_id=? AND p.published=1 ORDER BY s.sort_order,s.id');
+ $tour['cover']=publicUrl($tour['cover']);
+ $q=$db->prepare('SELECT s.id,s.panorama_id,COALESCE(NULLIF(s.title,\'\'),p.title) title,p.description,s.duration_seconds,s.guided_points,s.scene_audio,s.geo_lat,s.geo_lng,p.image,p.preview,p.projection,p.stereo,p.effects FROM tour_scenes s JOIN panoramas p ON p.id=s.panorama_id WHERE s.tour_id=? AND p.published=1 ORDER BY s.sort_order,s.id');
  $q->execute([$id]);$scenes=$q->fetchAll(PDO::FETCH_ASSOC);
- foreach($scenes as &$s){$s['image']=publicUrl($s['image']);$s['scene_audio']=publicUrl($s['scene_audio']);$s['guided_points']=json_decode($s['guided_points']??'[]',true)?:[];$s['effects']=json_decode($s['effects']??'{}',true)?:[];}unset($s);
- $q=$db->prepare('SELECT h.* FROM hotspots h JOIN tour_scenes s ON s.id=h.scene_id JOIN panoramas p ON p.id=s.panorama_id WHERE s.tour_id=? AND p.published=1');$q->execute([$id]);
- output(['version'=>1,'tour'=>$tour,'scenes'=>$scenes,'hotspots'=>$q->fetchAll(PDO::FETCH_ASSOC)]);
+ $visibleIds=[];
+ foreach($scenes as &$s){
+  $visibleIds[(int)$s['id']]=true;
+  $s['image']=publicUrl($s['image']);$s['preview']=publicUrl($s['preview']);
+  $s['scene_audio']=publicUrl($s['scene_audio']);
+  $s['guided_points']=json_decode($s['guided_points']??'[]',true)?:[];
+  $s['effects']=json_decode($s['effects']??'{}',true)?:[];
+ }unset($s);
+ $q=$db->prepare('SELECT h.*,target.panorama_id target_panorama_id FROM hotspots h JOIN tour_scenes s ON s.id=h.scene_id JOIN panoramas p ON p.id=s.panorama_id LEFT JOIN tour_scenes target ON target.id=h.target_scene_id WHERE s.tour_id=? AND p.published=1 ORDER BY h.id');
+ $q->execute([$id]);
+ $hotspots=[];
+ foreach($q->fetchAll(PDO::FETCH_ASSOC) as $h){
+  if(!isset($visibleIds[(int)$h['scene_id']]))continue;
+  if($h['type']==='scene'&&!isset($visibleIds[(int)($h['target_scene_id']??0)]))continue;
+  if($h['type']==='image'){$h['content']=publicUrl($h['content']);$h['depth_map']=publicUrl($h['depth_map']??null);}
+  $hotspots[]=$h;
+ }
+ output(['version'=>1,'tour'=>$tour,'scenes'=>$scenes,'hotspots'=>$hotspots]);
 }
 http_response_code(400);output(['error'=>'bad_request']);

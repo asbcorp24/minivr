@@ -2,8 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
  <uses-permission android:name="android.permission.INTERNET"/>
  <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="false"/>
+ <uses-feature android:glEsVersion="0x00020000" android:required="true"/>
  <application android:label="MiniVR" android:theme="@android:style/Theme.Material.NoActionBar" android:usesCleartextTraffic="false" android:allowBackup="false">
-  <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="unspecified">
+  <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="unspecified"
+      android:configChanges="orientation|screenSize|keyboardHidden">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
   </activity>
  </application>
