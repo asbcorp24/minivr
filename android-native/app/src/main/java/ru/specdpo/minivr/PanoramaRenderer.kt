@@ -44,6 +44,10 @@ class PanoramaRenderer : GLSurfaceView.Renderer {
         nextImage?.bitmap?.recycle()
         nextImage = NewImage(bitmap, spec)
     }
+    @Synchronized fun discardPendingImage() {
+        nextImage?.bitmap?.recycle()
+        nextImage = null
+    }
     @Synchronized private fun takeImage(): NewImage? = nextImage.also { nextImage = null }
 
     private val vertexShader = """

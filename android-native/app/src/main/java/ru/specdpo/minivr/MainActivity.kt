@@ -90,6 +90,7 @@ class MainActivity : Activity(), SensorEventListener {
         })
         surface = GLSurfaceView(this).apply {
             setEGLContextClientVersion(2)
+            setPreserveEGLContextOnPause(true)
             setRenderer(renderer)
             renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
             setOnTouchListener { _, event ->
@@ -139,6 +140,7 @@ class MainActivity : Activity(), SensorEventListener {
         buttons.addView(button("‹") { moveScene(-1) })
         buttons.addView(button("Сцены") { openScenes() })
         buttons.addView(button("›") { moveScene(1) })
+        buttons.addView(button("ⓘ Описание") { showDescription() })
         buttons.addView(button("🎙 Точки") { openGuidedPoints() })
         audioButton = button("♪ Звук") { val paused = audio.togglePause(); audioButton.text = if (paused) "▶ Звук" else "♪ Звук" }
         buttons.addView(audioButton)
@@ -320,6 +322,10 @@ class MainActivity : Activity(), SensorEventListener {
             }
             "image" -> {
                 val target = h.content ?: return
+                if (h.imageStereo.equals("sbs", true) || h.imageStereo.equals("tb", true)) {
+                    NativeStereoPhotoDialog(this, api).show(target, h.imageStereo, h.label)
+                    return
+                }
                 val view = ImageView(this).apply { adjustViewBounds = true }
                 val dialog = AlertDialog.Builder(this).setTitle(h.label).setView(view)
                     .setPositiveButton("Закрыть", null).create()
@@ -349,6 +355,13 @@ class MainActivity : Activity(), SensorEventListener {
         AlertDialog.Builder(this).setTitle("Точки рассказа")
             .setItems(labels.toTypedArray()) { _, i -> showGuidedPoint(i) }
             .setNegativeButton("Закрыть", null).show()
+    }
+
+    private fun showDescription() {
+        val scene = current ?: return
+        val message = scene.description.ifBlank { "Описание для этой панорамы не задано" }
+        AlertDialog.Builder(this).setTitle(scene.title).setMessage(message)
+            .setPositiveButton("Закрыть", null).show()
     }
 
     private fun showGuidedPoint(i: Int) {
