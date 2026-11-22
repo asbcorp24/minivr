@@ -338,7 +338,11 @@ class MainActivity : Activity(), SensorEventListener {
                     val trackId = scene.effects.optInt("musicTrackId", 0)
                     music.selectTrack(trackId)
                     val quality = if (tiles != null) "тайлы" else "изображение"
-                    val gpu = if (renderer.advancedSupported) "" else "GPU-совместимость · "
+                    val gpu = when {
+                        !renderer.advancedSupported -> "GPU Basic · "
+                        !renderer.environmentSupported -> "FX Lite · "
+                        else -> "FX Pro · "
+                    }
                     val depth = if (scene.effects.optBoolean("parallaxEnabled") &&
                         scene.effects.optString("parallaxDepth").startsWith("/")) " · 3D" else ""
                     notifyUser("$gpu${scene.projection}° · ${scene.stereo.uppercase()} · $quality$depth · ${indexLabel()}")

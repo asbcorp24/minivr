@@ -30,6 +30,10 @@ class PanoramaRenderer : GLSurfaceView.Renderer {
     @Volatile var effectsEnabled = true
     @Volatile var advancedSupported = true
         private set
+    @Volatile var environmentSupported = false
+        private set
+    @Volatile var particleSpritesSupported = false
+        private set
     @Volatile var motionX = 0f
     @Volatile var motionY = 0f
     @Volatile var viewportWidth = 1080
@@ -159,8 +163,10 @@ class PanoramaRenderer : GLSurfaceView.Renderer {
             GLES20.glDeleteShader(ef)
             extra
         }.getOrElse { Log.w("MiniVR", "Environment GLES2 shader not supported", it); 0 }
+        environmentSupported = environmentProgram != 0
         environmentLocations.clear()
         particles.initialize()
+        particleSpritesSupported = particles.supported
         uniformCache.clear()
         val textures = IntArray(5)
         GLES20.glGenTextures(5, textures, 0)
