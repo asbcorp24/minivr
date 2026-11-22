@@ -4,6 +4,7 @@ import {createAtmosphere} from '/assets/panorama-atmosphere.js';
 import {createPanoramaEffects} from '/assets/panorama-effects.js';
 import {createTiledPanorama} from '/assets/tiled-panorama.js';
 import {makeDepthRadiusField,canUseTiledDepth} from '/assets/depth-tile-geometry.js';
+import {makeFoliageWindMask} from '/assets/foliage-wind-mask.js';
 import {createScenePreloader,fetchPreparedScene} from '/assets/scene-preloader.js';
 import {createDesktop3DWindow} from '/assets/desktop-3d-window.js';
 import {createMobileMotionParallax} from '/assets/mobile-motion-parallax.js';
@@ -596,39 +597,6 @@ function foliageMaskForGeometry(geo,imagePixels,w,h){
 // foliage occupies only a few pixels inside a large sphere triangle.
 const microMotionMaterials=[];
 let foliageWindMask=null;
-function makeFoliageWindMask(original,w,h){
- const mw=Math.min(512,w),mh=Math.min(256,h);
- const mask=document.createElement('canvas');mask.width=mw;mask.height=mh;
- const ctx=mask.getContext('2d'),frame=ctx.createImageData(mw,mh);
- const colour=(x,y)=>{
-  x=Math.max(0,Math.min(w-1,x));y=Math.max(0,Math.min(h-1,y));
-  const i=(y*w+x)*4,r=original[i]/255,g=original[i+1]/255,b=original[i+2]/255;
-  const hi=Math.max(r,g,b),lo=Math.min(r,g,b),d=hi-lo;
-  if(hi<.12||hi>.96||d<.07)return 0;
-  let hue=0;
-  if(hi===r)hue=60*(((g-b)/d+6)%6);
-  else if(hi===g)hue=60*((b-r)/d+2);
-  else hue=60*((r-g)/d+4);
-  const seasonal=(hue>=35&&hue<=165)?1:(hue>=12&&hue<35)?.75:(hue<12||hue>345)?.55:0;
-  return seasonal*Math.min(1,d/hi*3);
- };
- for(let y=0;y<mh;y++)for(let x=0;x<mw;x++){
-  const sx=Math.floor((x+.5)*w/mw),sy=Math.floor((y+.5)*h/mh);
-  const step=Math.max(1,Math.floor(w/mw/2));
-  let sum=0,min=1,max=0;
-  for(let yy=-2;yy<=2;yy++)for(let xx=-2;xx<=2;xx++){
-   const v=colour(sx+xx*step,sy+yy*step);sum+=v;min=Math.min(min,v);max=Math.max(max,v);
-  }
-  const weight=Math.min(1,sum/25)*Math.min(1,(max-min)*5);
-  const i=(y*mw+x)*4;
-  frame.data[i]=frame.data[i+1]=frame.data[i+2]=Math.round(weight*255);
-  frame.data[i+3]=255;
- }
- ctx.putImageData(frame,0,0);
- const texture=new THREE.CanvasTexture(mask);
- texture.wrapS=THREE.RepeatWrapping;texture.minFilter=THREE.LinearFilter;
- return texture;
-}
 function installMicroMotion(material,band,count){
  if(effectSettings.parallaxMicroMotion===false||new URLSearchParams(location.search).get('micro_motion')==='0')return;
  // Never animate every depth layer: restrict wind to the two foreground bands.
@@ -801,7 +769,7 @@ function makeHybridDepthGroups(source){
  foliageWindMask=null;
  if(effectSettings.parallaxMicroMotion!==false){
   if(manualFoliageMaskImage){const maskCanvas=document.createElement('canvas');maskCanvas.width=512;maskCanvas.height=256;const maskCtx=maskCanvas.getContext('2d');maskCtx.drawImage(manualFoliageMaskImage,0,0,512,256);foliageWindMask=new THREE.CanvasTexture(maskCanvas);foliageWindMask.wrapS=THREE.RepeatWrapping;foliageWindMask.minFilter=THREE.LinearFilter;}
-  else foliageWindMask=makeFoliageWindMask(original,w,h);
+  else foliageWindMask=makeFoliageWindMask(THREE,original,w,h);
  }
  waterMotionMask=null;
  if(manualWaterMaskImage){const maskCanvas=document.createElement('canvas');maskCanvas.width=512;maskCanvas.height=256;maskCanvas.getContext('2d').drawImage(manualWaterMaskImage,0,0,512,256);waterMotionMask=new THREE.CanvasTexture(maskCanvas);waterMotionMask.wrapS=THREE.RepeatWrapping;waterMotionMask.minFilter=THREE.LinearFilter;}
@@ -909,7 +877,7 @@ function clearPanoramaMeshes(){
  leftMesh=rightMesh=null;
 }
 let tiledPanorama=null,panoramaLoadEpoch=0;
-function tiledDepthConfig(settings,pixels){
+function tiledDepthConfig(settings,pixels,foliageImage=null){
  if(!pixels||!canUseTiledDepth(settings))return null;
  const relief=getViewerMode()===ViewerMode.DESKTOP;
  const hybrid=relief||settings.parallaxMode==='hybrid';
@@ -917,9 +885,14 @@ function tiledDepthConfig(settings,pixels){
  const bands=hybrid?Math.max(2,Math.min(budget.layers,Number(settings.parallaxGroups)||5)):0;
  const occlusion=settings.parallaxDynamicOcclusion===true||relief
   ?Math.max(relief?.55:0,THREE.MathUtils.clamp(Number(settings.parallaxOcclusionStrength??50),0,100)/100):0;
+ const preview=new URLSearchParams(location.search);
+ const motion=bands>0&&settings.parallaxMicroMotion!==false&&preview.get('micro_motion')!=='0'
+  ?{manualImage:foliageImage,previewMask:preview.get('micro_motion_mask')==='1',
+    strength:preview.get('micro_motion_preview')==='1'?1:THREE.MathUtils.clamp(Number(settings.parallaxMicroMotionStrength??60),0,100)/100,
+    speed:THREE.MathUtils.clamp(Number(settings.parallaxMicroMotionSpeed??1),.1,5)}:null;
  return {
   pixels,field:makeDepthRadiusField(pixels,settings,relief),relief,bands,occlusion,
-  nonlinear:settings.parallaxNonlinear===true?THREE.MathUtils.clamp(Number(settings.parallaxNonlinearStrength??50),0,100)/100:0
+  nonlinear:settings.parallaxNonlinear===true?THREE.MathUtils.clamp(Number(settings.parallaxNonlinearStrength??50),0,100)/100:0,motion
  };
 }
 async function loadInitialPanorama(){
@@ -934,7 +907,7 @@ async function loadInitialPanorama(){
  if(projection==='360'&&stereoMode==='mono'&&root.dataset.tiles&&(!parallaxDepthPixels||canUseTiledDepth(effectSettings))){
   try{
    const tiles=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer,mirror:!!effectSettings.mirrorHorizontal,
-    depth:tiledDepthConfig(effectSettings,parallaxDepthPixels)});
+    depth:tiledDepthConfig(effectSettings,parallaxDepthPixels,manualFoliageMaskImage)});
    if(epoch!==panoramaLoadEpoch){tiles.dispose();return;}
    tiledPanorama=tiles;
    document.body.classList.remove('scene-loading');queueNeighborPreload();return;
@@ -1342,7 +1315,7 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  if(nextProjection==='360'&&nextStereo==='mono'&&next.dataset.tiles&&(!nextDepth||canUseTiledDepth(nextSettings))){
   try{
    nextTiles=await createTiledPanorama({url:next.dataset.tiles,scene,camera,renderer,mirror:!!nextSettings.mirrorHorizontal,
-    manifest:prepared?.manifest,baseTiles:prepared?.baseTiles,depth:tiledDepthConfig(nextSettings,nextDepth)});
+    manifest:prepared?.manifest,baseTiles:prepared?.baseTiles,depth:tiledDepthConfig(nextSettings,nextDepth,nextFoliage)});
    if(nextTiles.group)nextTiles.group.visible=false;
   }catch(error){console.warn('Tour scene tiles unavailable, using image',error)}
  }
@@ -1513,6 +1486,7 @@ renderer.setAnimationLoop((time)=>{
  if(guidedTarget&&getViewerMode()===ViewerMode.DESKTOP&&!orientation){const delta=((guidedTarget.yaw-lon+540)%360)-180;lon+=delta*.045;lat+=(guidedTarget.pitch-lat)*.045;if(Math.abs(delta)<.12&&Math.abs(guidedTarget.pitch-lat)<.12)guidedTarget=null;}
  // GPU-side micro-motion for the nearest depth groups; no CPU texture updates.
  for(const entry of microMotionMaterials)entry.phase.value=time*.001*entry.speed;
+ tiledPanorama?.setMotionTime?.(time);
  tiledPanorama?.update();
  effectSystem?.update(time,camera);atmosphereSystem?.update(time,camera);moonSystem?.update(time,camera);environmentSystem?.update(time,camera);
  if(getViewerMode()===ViewerMode.DESKTOP&&!down&&!orientation&&effectSettings.rotation){

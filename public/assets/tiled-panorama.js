@@ -1,5 +1,6 @@
 import * as THREE from '/assets/vendor/three/three.module.js';
 import {sampleDepthRadius} from '/assets/depth-tile-geometry.js';
+import {makeFoliageWindMask} from '/assets/foliage-wind-mask.js';
 /* Independent tiled panorama layer. Never modifies Cardboard renderer or eye cameras. */
 export async function createTiledPanorama({url,scene,camera,renderer,mirror=false,manifest:cachedManifest=null,baseTiles=null,depth=null}){
  const response=cachedManifest?null:await fetch(url,{credentials:'same-origin'});
@@ -12,6 +13,28 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
  // resolution, however, is selected independently by the normal tile LOD.
  const depthAtlas=depth?.bands>0?new THREE.DataTexture(new Uint8Array(depth.pixels),256,128,THREE.RGBAFormat,THREE.UnsignedByteType):null;
  if(depthAtlas){depthAtlas.wrapS=THREE.RepeatWrapping;depthAtlas.minFilter=THREE.LinearFilter;depthAtlas.magFilter=THREE.LinearFilter;depthAtlas.needsUpdate=true;}
+ const motion=depth?.motion||null,windPhase={value:0};
+ let manualWindMask=null;
+ if(motion?.manualImage){
+  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=256;
+  canvas.getContext('2d').drawImage(motion.manualImage,0,0,512,256);
+  manualWindMask=new THREE.CanvasTexture(canvas);
+  manualWindMask.wrapS=THREE.RepeatWrapping;manualWindMask.minFilter=THREE.LinearFilter;
+ }
+ // Automatic foliage masks follow each image tile instead of decoding the
+ // full-resolution panorama. At most 96² mask pixels are kept per tile.
+ function autoWindMask(texture){
+  if(!motion||manualWindMask)return null;
+  const image=texture.image;
+  if(!image?.width||!image?.height)return null;
+  try{
+   const canvas=document.createElement('canvas');canvas.width=Math.min(image.width,256);canvas.height=Math.min(image.height,256);
+   const ctx=canvas.getContext('2d',{willReadFrequently:true});
+   ctx.drawImage(image,0,0,canvas.width,canvas.height);
+   const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+   return makeFoliageWindMask(THREE,pixels,canvas.width,canvas.height,{maxWidth:96,maxHeight:96});
+  }catch(error){console.warn('Tile foliage mask unavailable',error);return null;}
+ }
  const geometry=(level,x,y,radiusBias=0,backdrop=false)=>{
   const cols=level.cols,rows=level.rows,sw=level.width,sh=level.height,ts=manifest.tileSize;
   const u0=x*ts/sw,u1=Math.min((x+1)*ts/sw,1),v0=y*ts/sh,v1=Math.min((y+1)*ts/sh,1);
@@ -31,9 +54,11 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
  };
  // Reproduce the existing hybrid band weights on the GPU instead of uploading
  // a full-size transparent panorama texture separately for every depth band.
- function bandMaterial(texture,level,x,y,band){
+ function bandMaterial(texture,level,x,y,band,tileWindMask){
   const count=depth.bands,foreground=band/(count-1),center=(band+.5)/count;
   const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,transparent:true,depthWrite:false,alphaTest:depth.relief?.055:.015});
+  const windMask=manualWindMask||tileWindMask;
+  const windEnabled=!!motion&&!!windMask&&(!!manualWindMask||band>=count-2);
   const transform=new THREE.Vector4(x*manifest.tileSize/level.width,y*manifest.tileSize/level.height,
    Math.min(manifest.tileSize/level.width,1-x*manifest.tileSize/level.width),
    Math.min(manifest.tileSize/level.height,1-y*manifest.tileSize/level.height));
@@ -43,18 +68,40 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
    shader.uniforms.depthBand={value:new THREE.Vector4(center,1/count,depth.nonlinear,1+depth.occlusion*foreground*2.2)};
    shader.vertexShader=shader.vertexShader.replace('void main() {','varying vec2 vDepthTileUv; uniform vec4 depthUvTransform;\nvoid main() {')
     .replace('#include <uv_vertex>','#include <uv_vertex>\n vDepthTileUv = depthUvTransform.xy + vec2(uv.x, 1.0 - uv.y) * depthUvTransform.zw;');
+   if(windEnabled){
+    shader.uniforms.microMotionTime=windPhase;
+    shader.uniforms.microMotionStrength={value:motion.strength};
+    shader.uniforms.foliageWindMask={value:windMask};
+   }
    shader.fragmentShader=shader.fragmentShader.replace('void main() {','varying vec2 vDepthTileUv; uniform sampler2D depthAtlas; uniform vec4 depthBand;\nvoid main() {')
-    .replace('#include <map_fragment>',`#include <map_fragment>
+    .replace('#include <map_fragment>',`${windEnabled?`
+      #ifdef USE_MAP
+      vec2 globalWindUv = vec2(vDepthTileUv.x, 1.0 - vDepthTileUv.y);
+      float foliage = texture2D(foliageWindMask, ${manualWindMask?'globalWindUv':'vMapUv'}).${manualWindMask?'a':'r'};
+      foliage = smoothstep(0.025, 0.32, foliage);
+      float phaseA = microMotionTime * 1.3 + globalWindUv.y * 34.0 + sin(globalWindUv.x * 38.0);
+      float phaseB = microMotionTime * 0.8 + globalWindUv.x * 51.0;
+      vec2 windShift = vec2(sin(phaseA)*0.006 + sin(phaseB)*0.002, cos(phaseB)*0.003);
+      float gust = 0.72 + 0.18*sin(microMotionTime*0.31 + globalWindUv.x*12.0)
+                          + 0.10*sin(microMotionTime*0.17 - globalWindUv.y*9.0);
+      float edge = min(min(vMapUv.x, 1.0-vMapUv.x),min(vMapUv.y,1.0-vMapUv.y));
+      edge = smoothstep(0.0, 0.02, edge);
+      vec2 localShift = clamp(windShift/depthUvTransform.zw,-0.1,0.1) * foliage * microMotionStrength * ${manualWindMask?'1.0':(.38+.62*foreground).toFixed(4)} * gust * edge;
+      diffuseColor *= texture2D(map,vMapUv+localShift);
+      ${motion.previewMask?'diffuseColor.rgb = mix(diffuseColor.rgb,vec3(1.0,0.1,0.75),foliage*0.8);':''}
+      #endif`: '#include <map_fragment>'}
       float depthValue = texture2D(depthAtlas, vDepthTileUv).r;
       depthValue = mix(depthValue, pow(depthValue, 2.2), depthBand.z);
       float coverage = clamp((depthBand.y - abs(depthValue - depthBand.x)) / (depthBand.y * 0.5), 0.0, 1.0);
       diffuseColor.a *= pow(coverage, depthBand.w);`);
+   if(windEnabled)shader.fragmentShader='uniform vec4 depthUvTransform; uniform float microMotionTime; uniform float microMotionStrength; uniform sampler2D foliageWindMask;\n'+shader.fragmentShader;
   };
-  material.customProgramCacheKey=()=> 'minivr-depth-tiles-v1';
+  material.customProgramCacheKey=()=> 'minivr-depth-tiles-v2-'+(windEnabled?(manualWindMask?'manual':'auto'):'still')+(motion?.previewMask?'-mask':'');
   return material;
  }
  function removeTile(item){
   for(const mesh of item.meshes){group.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}
+  item.windMask?.dispose();
   item.texture.dispose();
  }
  function load(level,x,y){
@@ -67,6 +114,7 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
    finish();
    pending.delete(key);if(disposed){texture.dispose();return;}texture.colorSpace=THREE.SRGBColorSpace;
    const meshes=[];
+   const tileWindMask=depth?.bands>0?autoWindMask(texture):null;
    if(depth?.bands>0){
     // Each higher LOD first paints its own original image, covering the lower
     // LOD before its transparent bands are composited. This avoids ghosting.
@@ -74,7 +122,7 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
     backdrop.renderOrder=level.level*(depth.bands+1);meshes.push(backdrop);
     for(let band=0;band<depth.bands;band++){
      const bias=depth.occlusion*(band/(depth.bands-1))*1.8;
-     const mesh=new THREE.Mesh(geometry(level,x,y,bias),bandMaterial(texture,level,x,y,band));
+     const mesh=new THREE.Mesh(geometry(level,x,y,bias),bandMaterial(texture,level,x,y,band,tileWindMask));
      mesh.renderOrder=level.level*(depth.bands+1)+band+1;meshes.push(mesh);
     }
    }else{
@@ -82,7 +130,7 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
     const mesh=new THREE.Mesh(geometry(level,x,y),material);mesh.renderOrder=level.level;meshes.push(mesh);
    }
    for(const mesh of meshes){mesh.frustumCulled=false;group.add(mesh);}
-   tiles.set(key,{meshes,texture,level:level.level,last:performance.now()});
+   tiles.set(key,{meshes,texture,windMask:tileWindMask,level:level.level,last:performance.now()});
   },undefined,()=>{finish();pending.delete(key)});
  }
  const low=manifest.levels[0];
@@ -118,6 +166,7 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
    }else item.last=now;
   }
  }
- function dispose(){disposed=true;scene.remove(group);for(const item of tiles.values())removeTile(item);tiles.clear();pending.clear();depthAtlas?.dispose();group.clear()}
- return {update,dispose,manifest,group};
+ function dispose(){disposed=true;scene.remove(group);for(const item of tiles.values())removeTile(item);tiles.clear();pending.clear();depthAtlas?.dispose();manualWindMask?.dispose();group.clear()}
+ function setMotionTime(time){if(motion)windPhase.value=time*.001*motion.speed;}
+ return {update,dispose,setMotionTime,manifest,group};
 }

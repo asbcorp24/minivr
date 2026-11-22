@@ -38,7 +38,7 @@ $rawLamps=json_decode((string)($_POST['effectLamps']??'[]'),true);if(is_array($r
 <label class="check"><input type="checkbox" name="parallaxContactShadows" <?=!empty($savedEffects['parallaxContactShadows'])?'checked':''?>> Контактные тени между слоями (гибридный режим)</label>
 <label>Сила контактных теней, % <input type="range" name="parallaxContactShadowStrength" min="0" max="100" value="<?=htmlspecialchars((string)($savedEffects['parallaxContactShadowStrength']??40))?>" oninput="this.nextElementSibling.textContent=this.value+'%'"><output><?=htmlspecialchars((string)($savedEffects['parallaxContactShadowStrength']??40))?>%</output></label>
 <small>Мягкое затемнение дальних слоёв у границ более близких объектов по карте глубины. Экспериментальный эффект без расчёта физических теней; для каждой панорамы отдельно, по умолчанию выключен.</small>
-<label class="check"><input type="checkbox" name="parallaxOcclusionFill" <?=!array_key_exists('parallaxOcclusionFill',$savedEffects)||!empty($savedEffects['parallaxOcclusionFill'])?'checked':''?>> Заполнение фона за ближними объектами (экспериментально)</label>
+<label class="check"><input type="checkbox" name="parallaxOcclusionFill" <?=!empty($savedEffects['parallaxOcclusionFill'])?'checked':''?>> Заполнение фона за ближними объектами (экспериментально, несовместимо с тайловым режимом)</label>
 <small>Локальное восстановление фона по соседним пикселям, без загрузки модели ИИ. Помогает скрыть просветы при движении камеры, но не восстанавливает реальные невидимые детали.</small>
 <fieldset><legend>Живая вода — ручная маска</legend>
 <?php if($existing&&($existing['projection']??'')==='360'&&($existing['stereo']??'')==='mono'):?>

@@ -140,7 +140,7 @@ console.log('scene-preloader: tiled scene base level prefetch passed');
 // never the full equirectangular JPEG. Legacy effects still preload the image.
 {
  const oldFetch=globalThis.fetch,oldParser=globalThis.DOMParser,oldLocation=globalThis.location;
- let effects={parallaxEnabled:true,parallaxDepth:'/uploads/depth.png',parallaxOcclusionFill:false,parallaxMicroMotion:false};
+ let effects={parallaxEnabled:true,parallaxDepth:'/uploads/depth.png',parallaxOcclusionFill:false,parallaxMicroMotion:true};
  const requested=[];
  globalThis.location={href:'https://vr.example.test/viewer.php',origin:'https://vr.example.test'};
  globalThis.DOMParser=class{parseFromString(){return {querySelector:()=>({dataset:{
@@ -159,7 +159,7 @@ console.log('scene-preloader: tiled scene base level prefetch passed');
   assert.equal(safe.baseTiles.size,2);
   assert.equal(requested.some(url=>url.includes('huge.jpg')),false);
   requested.length=0;
-  effects={...effects,parallaxMicroMotion:true};
+  effects={...effects,parallaxWaterMotion:true};
   const legacy=await fetchPreparedScene('/viewer.php?id=9',new AbortController().signal,{maxBytes:1024*1024});
   assert.equal(legacy.manifest,null);
   assert.equal(legacy.assets.image.size,5);

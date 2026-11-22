@@ -71,7 +71,8 @@ export function sampleDepthRadius(field,u,v){
 // exactly rather than silently suppressing wind/water or background filling.
 export function canUseTiledDepth(settings={}){
  return settings.parallaxEnabled===true&&
-  // Undefined micro-motion is enabled by the historical viewer defaults.
-  settings.parallaxMicroMotion===false&&settings.parallaxWaterMotion!==true&&
+  // Foliage motion is supported by the tiled renderer as of v2. Animated
+  // water, contact shadows and experimental background fill still fall back.
+  settings.parallaxWaterMotion!==true&&
   settings.parallaxContactShadows!==true&&settings.parallaxOcclusionFill===false;
 }
