@@ -10,7 +10,14 @@ import java.net.URL
 import java.security.MessageDigest
 import java.io.IOException
 
-data class CatalogEntry(val id: Int, val title: String, val isTour: Boolean)
+data class CatalogEntry(
+    val id: Int,
+    val title: String,
+    val isTour: Boolean,
+    val description: String = "",
+    val thumbnail: String? = null,
+    val format: String = ""
+)
 data class MusicTrack(val id: Int, val title: String, val artist: String, val path: String)
 
 data class SceneEntry(
@@ -27,7 +34,8 @@ data class SceneEntry(
     val guidedPoints: JSONArray,
     val lat: Double?,
     val lng: Double?,
-    val tilesManifest: String?
+    val tilesManifest: String?,
+    val preview: String? = null
 )
 
 data class TileLevel(val number: Int, val width: Int, val height: Int, val columns: Int, val rows: Int)
@@ -111,7 +119,12 @@ class MiniVrApi(baseUrl: String, private val imageCache: File) {
             val items = data.optJSONArray(field) ?: continue
             for (index in 0 until items.length()) {
                 val row = items.getJSONObject(index)
-                entries.add(CatalogEntry(row.getInt("id"), row.getString("title"), isTour))
+                val thumbnail = if (isTour) row.optString("cover")
+                    else row.optString("preview")
+                val projection = if (isTour) "TOUR" else row.optString("projection", "360")
+                entries.add(CatalogEntry(row.getInt("id"), row.getString("title"), isTour,
+                    row.optString("description", ""),
+                    thumbnail.takeIf { it.isNotBlank() && it != "null" }, projection))
             }
         }
         return entries
@@ -142,7 +155,8 @@ class MiniVrApi(baseUrl: String, private val imageCache: File) {
         row.optJSONArray("guided_points") ?: JSONArray(),
         if (row.isNull("geo_lat")) null else row.optDouble("geo_lat"),
         if (row.isNull("geo_lng")) null else row.optDouble("geo_lng"),
-        row.audioUrl("tiles_manifest")
+        row.audioUrl("tiles_manifest"),
+        row.audioUrl("preview")
     )
 
     fun panorama(id: Int): SceneEntry {
@@ -151,7 +165,8 @@ class MiniVrApi(baseUrl: String, private val imageCache: File) {
             id, id, row.getString("title"), row.optString("description", ""),
             row.getString("image"), row.optString("projection", "360"),
             row.optString("stereo", "mono"), row.optJSONObject("effects") ?: JSONObject(),
-            null, null, JSONArray(), null, null, row.audioUrl("tiles_manifest")
+            null, null, JSONArray(), null, null, row.audioUrl("tiles_manifest"),
+            row.audioUrl("preview")
         )
     }
 
