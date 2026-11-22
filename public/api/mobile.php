@@ -21,6 +21,12 @@ if($action==='catalog'){
  foreach($tours as &$t)$t['cover']=publicUrl($t['cover']);unset($t);
  output(['version'=>1,'panoramas'=>$panoramas,'tours'=>$tours]);
 }
+if($action==='music'){
+ $exists=$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='music_tracks'")->fetchColumn();
+ $tracks=$exists?$db->query('SELECT id,title,artist,file_path FROM music_tracks WHERE is_active=1 ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC):[];
+ foreach($tracks as &$track)$track['file_path']=publicUrl($track['file_path']);unset($track);
+ output(['version'=>1,'tracks'=>$tracks]);
+}
 if($action==='panorama'&&$id){
  $q=$db->prepare('SELECT id,title,description,image,preview,projection,stereo,effects FROM panoramas WHERE id=? AND published=1');
  $q->execute([$id]);$p=$q->fetch(PDO::FETCH_ASSOC);

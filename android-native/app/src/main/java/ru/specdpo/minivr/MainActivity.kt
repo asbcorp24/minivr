@@ -41,11 +41,13 @@ class MainActivity : Activity(), SensorEventListener {
     private lateinit var vrButton: Button
     private lateinit var gyroButton: Button
     private lateinit var audioButton: Button
+    private lateinit var musicButton: Button
     private lateinit var exitVr: Button
     private val renderer = PanoramaRenderer()
     private val ui = Handler(Looper.getMainLooper())
     private val api by lazy { MiniVrApi(BuildConfig.API_BASE, File(filesDir, "minivr-media")) }
-    private val audio by lazy { NativeAudioGuide { api.url(it) } }
+    private val music by lazy { NativeMusicPlayer { api.url(it) } }
+    private val audio by lazy { NativeAudioGuide({ api.url(it) }) { music.duck(it) } }
     private val generation = AtomicInteger()
     private var catalog: List<CatalogEntry> = emptyList()
     private var tour: TourEntry? = null
@@ -144,6 +146,13 @@ class MainActivity : Activity(), SensorEventListener {
         buttons.addView(button("🎙 Точки") { openGuidedPoints() })
         audioButton = button("♪ Звук") { val paused = audio.togglePause(); audioButton.text = if (paused) "▶ Звук" else "♪ Звук" }
         buttons.addView(audioButton)
+        buttons.addView(button("♫ ‹") { music.skip(-1)?.let { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() } })
+        musicButton = button("♫ ▶") {
+            if (!music.hasTracks()) Toast.makeText(this, "Музыкальный плейлист пуст", Toast.LENGTH_SHORT).show()
+            else musicButton.text = if (music.toggle()) "♫ ⏸" else "♫ ▶"
+        }
+        buttons.addView(musicButton)
+        buttons.addView(button("♫ ›") { music.skip(1)?.let { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() } })
         gyroButton = button("GYRO") { setGyro(!gyro) }
         buttons.addView(gyroButton)
         vrButton = button("▣ SBS") { setCardboard(!renderer.cardboard) }
@@ -174,8 +183,10 @@ class MainActivity : Activity(), SensorEventListener {
         thread(name = "MiniVR-catalog") {
             try {
                 val entries = api.catalog()
+                val tracks = runCatching { api.music() }.getOrDefault(emptyList())
                 runOnUiThread {
                     catalog = entries
+                    music.setTracks(tracks)
                     notifyUser("${entries.size} материалов и экскурсий")
                     showCatalogDialog()
                 }
@@ -267,6 +278,9 @@ class MainActivity : Activity(), SensorEventListener {
                     val stops = tour?.hotspots?.filter { it.sceneId == scene.id } ?: emptyList()
                     overlay.hotspots = stops
                     audio.enterScene(scene.audio)
+                    val trackId = scene.effects.optInt("musicTrackId", 0)
+                    music.selectTrack(trackId)
+                    musicButton.text = if (music.isPlayingRequested()) "♫ ⏸" else "♫ ▶"
                     notifyUser("${scene.projection}° · ${scene.stereo.uppercase()} · ${indexLabel()}")
                     if (autoplay) scheduleNext(scene)
                 }
@@ -371,7 +385,8 @@ class MainActivity : Activity(), SensorEventListener {
         guidedIndex = i
         renderer.yaw = point.optDouble("yaw", 0.0).toFloat()
         renderer.pitch = point.optDouble("pitch", 0.0).toFloat()
-        audio.playPoint(point.optString("audio").takeIf { it.isNotBlank() && it != "null" })
+        val pointAudio = point.optString("audio").takeIf { it.isNotBlank() && it != "null" }
+        audio.playPoint(pointAudio)
         AlertDialog.Builder(this)
             .setTitle(point.optString("title", "Точка ${i + 1}"))
             .setMessage(point.optString("text", ""))
@@ -436,6 +451,8 @@ class MainActivity : Activity(), SensorEventListener {
         ui.removeCallbacks(nextScene)
         sensors.unregisterListener(this)
         audio.pause()
+        music.pause()
+        musicButton.text = "♫ ▶"
         surface.onPause()
         super.onPause()
     }
@@ -449,6 +466,7 @@ class MainActivity : Activity(), SensorEventListener {
         ui.removeCallbacks(nextScene)
         sensors.unregisterListener(this)
         audio.stop()
+        music.stop()
         super.onDestroy()
     }
     @Deprecated("Use system Back navigation")

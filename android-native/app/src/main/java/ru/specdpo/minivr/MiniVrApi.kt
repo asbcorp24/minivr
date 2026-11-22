@@ -11,6 +11,7 @@ import java.security.MessageDigest
 import java.io.IOException
 
 data class CatalogEntry(val id: Int, val title: String, val isTour: Boolean)
+data class MusicTrack(val id: Int, val title: String, val artist: String, val path: String)
 
 data class SceneEntry(
     val id: Int,
@@ -107,6 +108,15 @@ class MiniVrApi(baseUrl: String, private val imageCache: File) {
             }
         }
         return entries
+    }
+
+    fun music(): List<MusicTrack> {
+        val tracks = json("api/mobile.php?action=music").optJSONArray("tracks") ?: return emptyList()
+        return (0 until tracks.length()).map { i ->
+            val item = tracks.getJSONObject(i)
+            MusicTrack(item.getInt("id"), item.getString("title"),
+                item.optString("artist", ""), item.getString("file_path"))
+        }
     }
 
     private fun JSONObject.audioUrl(name: String): String? = optString(name).takeIf { it.isNotBlank() && it != "null" }
