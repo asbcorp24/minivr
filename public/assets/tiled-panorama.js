@@ -1,8 +1,9 @@
 import * as THREE from '/assets/vendor/three/three.module.js';
 /* Independent tiled panorama layer. Never modifies Cardboard renderer or eye cameras. */
-export async function createTiledPanorama({url,scene,camera,renderer,mirror=false}){
- const response=await fetch(url,{credentials:'same-origin'});if(!response.ok)throw Error('Tiles manifest HTTP '+response.status);
- const manifest=await response.json();if(manifest.projection!=='360'||!Array.isArray(manifest.levels)||!manifest.levels.length)throw Error('Invalid tile manifest');
+export async function createTiledPanorama({url,scene,camera,renderer,mirror=false,manifest:cachedManifest=null,baseTiles=null}){
+ const response=cachedManifest?null:await fetch(url,{credentials:'same-origin'});
+ if(response&&!response.ok)throw Error('Tiles manifest HTTP '+response.status);
+ const manifest=cachedManifest||await response.json();if(manifest.projection!=='360'||!Array.isArray(manifest.levels)||!manifest.levels.length)throw Error('Invalid tile manifest');
  const base=url.slice(0,url.lastIndexOf('/')+1),group=new THREE.Group();scene.add(group);
  const loader=new THREE.TextureLoader(),tiles=new Map(),pending=new Set(),maxConcurrent=8;
  let disposed=false;
@@ -22,12 +23,16 @@ export async function createTiledPanorama({url,scene,camera,renderer,mirror=fals
  function load(level,x,y){
   const key=level.level+':'+x+':'+y;if(disposed||tiles.has(key)||pending.has(key)||pending.size>=maxConcurrent)return;
   pending.add(key);
-  loader.load(base+level.level+'/'+x+'_'+y+'.jpg',texture=>{
+  const path=level.level+'/'+x+'_'+y+'.jpg',blob=baseTiles?.get(path);
+  const objectUrl=blob?URL.createObjectURL(blob):null;
+  const finish=()=>{if(objectUrl)URL.revokeObjectURL(objectUrl);};
+  loader.load(objectUrl||base+path,texture=>{
+   finish();
    pending.delete(key);if(disposed){texture.dispose();return;}texture.colorSpace=THREE.SRGBColorSpace;
    const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,depthWrite:false});
    const mesh=new THREE.Mesh(geometry(level,x,y),material);mesh.renderOrder=level.level;
    mesh.frustumCulled=false;group.add(mesh);tiles.set(key,{mesh,level:level.level,last:performance.now()});
-  },undefined,()=>pending.delete(key));
+  },undefined,()=>{finish();pending.delete(key)});
  }
  const low=manifest.levels[0];
  const baseQueue=[];for(let y=0;y<low.rows;y++)for(let x=0;x<low.cols;x++)baseQueue.push([x,y]);

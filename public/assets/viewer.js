@@ -3,6 +3,7 @@ import {createMoonlight} from '/assets/panorama-moonlight.js';
 import {createAtmosphere} from '/assets/panorama-atmosphere.js';
 import {createPanoramaEffects} from '/assets/panorama-effects.js';
 import {createTiledPanorama} from '/assets/tiled-panorama.js';
+import {createScenePreloader,fetchPreparedScene} from '/assets/scene-preloader.js';
 import {createDesktop3DWindow} from '/assets/desktop-3d-window.js';
 import {createMobileMotionParallax} from '/assets/mobile-motion-parallax.js';
 import {canTranslateDepthCamera,depthOffsetInWorld} from '/assets/depth-motion.js';
@@ -46,6 +47,33 @@ if(new URLSearchParams(location.search).has('effects_debug')){
 let projection=root.dataset.projection||'360', stereoMode=root.dataset.stereo||'mono';
 const tour=Number(root.dataset.tour||0),backUrl=root.dataset.back||'/',embedToken=root.dataset.embedToken||'';let hotspotData=JSON.parse(document.querySelector('#hotspots-data')?.textContent||'[]');
 const tourData=JSON.parse(document.querySelector('#tour-data')?.textContent||'{"scenes":[],"current":-1}');
+// Keep only compressed network assets for adjacent scenes; the GPU still owns
+// exactly one active panorama. On phones the cache is smaller and sequential.
+const preloadIsMobile=window.matchMedia('(pointer: coarse)').matches;
+const preloadBudget=(preloadIsMobile?12:32)*1024*1024;
+const scenePreloader=createScenePreloader({
+ prepare:(url,signal)=>fetchPreparedScene(url,signal,{maxBytes:preloadBudget}),
+ maxBytes:preloadBudget,maxEntries:preloadIsMobile?2:3,concurrency:preloadIsMobile?1:2
+});
+const preloadSaveData=navigator.connection?.saveData||['slow-2g','2g'].includes(navigator.connection?.effectiveType);
+function tourSceneUrl(index){
+ const item=tourData.scenes[index];
+ if(!item)return null;
+ const target=viewerTargetWithEmbed(new URL('/viewer.php?id='+item.panorama_id+'&tour='+tour+'&scene='+item.id+(immersiveLaunch?'&immersive=1':''),location.href),location.origin,embedToken);
+ return target.pathname+target.search;
+}
+function scheduleNeighborScenes(){
+ if(!tour||preloadSaveData||document.visibilityState==='hidden'||tourData.current<0)return;
+ const index=tourData.current;
+ const candidates=[index+1,index-1,index+2].filter(i=>i>=0&&i<tourData.scenes.length);
+ scenePreloader.schedule(candidates.slice(0,2).map(tourSceneUrl).filter(Boolean));
+}
+function queueNeighborPreload(){if(tour&&!preloadSaveData)setTimeout(scheduleNeighborScenes,700);}
+document.addEventListener('visibilitychange',()=>{
+ if(document.visibilityState==='hidden')scenePreloader.pause();
+ else if(!preloadSaveData){scenePreloader.resume();scheduleNeighborScenes();}
+});
+window.addEventListener('pagehide',()=>scenePreloader.dispose());
 // Each panorama may contain its own ordered narrative stops.
 function sceneNarrationPoints(){
  const raw=tourData.scenes[tourData.current]?.guided_points;
@@ -336,20 +364,30 @@ let parallaxDepthPixels=null;
 
 let manualFoliageMaskImage=null;
 let manualWaterMaskImage=null,waterMotionMask=null;
-async function fetchManualWaterMask(settings){
+async function decodeSceneImage(url,blob,anonymous=false){
+ const create=source=>{const img=new Image();if(anonymous)img.crossOrigin='anonymous';img.src=source;return img;};
+ if(!blob){const img=create(url);await img.decode();return img;}
+ const objectUrl=URL.createObjectURL(blob);
+ try{
+  const img=create(objectUrl);await img.decode();return img;
+ }catch{
+  const img=create(url);await img.decode();return img;
+ }finally{URL.revokeObjectURL(objectUrl);}
+}
+async function fetchManualWaterMask(settings,preloadedBlob=null){
  if(!settings.parallaxWaterMotion||!settings.parallaxWaterMask)return null;
- try{const img=new Image();img.src=settings.parallaxWaterMask;await img.decode();return img;}
+ try{return await decodeSceneImage(settings.parallaxWaterMask,preloadedBlob);}
  catch(e){console.warn('MiniVR water mask unavailable',e);return null;}
 }
-async function fetchManualFoliageMask(settings){
+async function fetchManualFoliageMask(settings,preloadedBlob=null){
  if(!settings.parallaxFoliageMask)return null;
- try{const img=new Image();img.src=settings.parallaxFoliageMask;await img.decode();return img;}
+ try{return await decodeSceneImage(settings.parallaxFoliageMask,preloadedBlob);}
  catch(e){console.warn('MiniVR manual foliage mask unavailable',e);return null;}
 }
-async function fetchParallaxDepth(settings,projectionMode,stereo){
+async function fetchParallaxDepth(settings,projectionMode,stereo,preloadedBlob=null){
  if(projectionMode!=='360'||stereo!=='mono'||!settings.parallaxEnabled||!settings.parallaxDepth)return null;
  try{
-  const img=new Image();img.crossOrigin='anonymous';img.src=settings.parallaxDepth;await img.decode();
+  const img=await decodeSceneImage(settings.parallaxDepth,preloadedBlob,true);
   const canvas=document.createElement('canvas');canvas.width=256;canvas.height=128;
   const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,256,128);
   return ctx.getImageData(0,0,256,128).data;
@@ -884,10 +922,10 @@ async function loadInitialPanorama(){
    const tiles=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer,mirror:!!effectSettings.mirrorHorizontal});
    if(epoch!==panoramaLoadEpoch){tiles.dispose();return;}
    tiledPanorama=tiles;
-   document.body.classList.remove('scene-loading');return;
+   document.body.classList.remove('scene-loading');queueNeighborPreload();return;
   }catch(err){console.warn('Tile mode unavailable; falling back to original image',err)}
  }
- new THREE.TextureLoader().load(root.dataset.image,texture=>{if(epoch!==panoramaLoadEpoch){texture.dispose();return;}installPanorama(texture)},undefined,err=>{if(epoch!==panoramaLoadEpoch)return;console.error('Scene texture load failed',err);document.querySelector('#loader span').textContent='SCENE LOAD ERROR';});
+ new THREE.TextureLoader().load(root.dataset.image,texture=>{if(epoch!==panoramaLoadEpoch){texture.dispose();return;}installPanorama(texture);queueNeighborPreload()},undefined,err=>{if(epoch!==panoramaLoadEpoch)return;console.error('Scene texture load failed',err);document.querySelector('#loader span').textContent='SCENE LOAD ERROR';});
 }
 loadInitialPanorama();
 
@@ -1250,10 +1288,26 @@ function clearSceneHotspots(){
 }
 let sceneSwitchInProgress=false;
 const cardboardRestoreKey='minivr:cardboard:restore';
+async function loadSceneTexture(image,preloadedBlob){
+ const loader=new THREE.TextureLoader();
+ if(!preloadedBlob)return loader.loadAsync(image);
+ const objectUrl=URL.createObjectURL(preloadedBlob);
+ try{return await loader.loadAsync(objectUrl);}
+ catch(error){console.warn('Cached scene image unavailable; loading original',error);return loader.loadAsync(image);}
+ finally{URL.revokeObjectURL(objectUrl);}
+}
 async function switchSceneInPlace(url,{pushHistory=true}={}){
- const response=await fetch(url,{credentials:'same-origin'});
- if(!response.ok)throw new Error('Scene HTTP '+response.status);
- const doc=new DOMParser().parseFromString(await response.text(),'text/html');
+ const prepared=scenePreloader.getReady(url);
+ // If this scene is not fully ready, the normal viewer loader takes over.
+ // Stop its background fetch so the same large image is not downloaded twice.
+ if(!prepared)scenePreloader.cancel(url);
+ let html=prepared?.html;
+ if(!html){
+  const response=await fetch(url,{credentials:'same-origin'});
+  if(!response.ok)throw new Error('Scene HTTP '+response.status);
+  html=await response.text();
+ }
+ const doc=new DOMParser().parseFromString(html,'text/html');
  const next=doc.querySelector('#viewer');
  if(!next)throw new Error('Scene data missing');
  const image=next.dataset.image;
@@ -1265,17 +1319,18 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  // Prepare the next scene before touching the one currently being viewed.
  // Depth, masks and settings must belong to the same panorama as its texture.
  const [nextDepth,nextFoliage,nextWater]=await Promise.all([
-  fetchParallaxDepth(nextSettings,nextProjection,nextStereo),
-  fetchManualFoliageMask(nextSettings),fetchManualWaterMask(nextSettings)
+  fetchParallaxDepth(nextSettings,nextProjection,nextStereo,prepared?.assets?.depth),
+  fetchManualFoliageMask(nextSettings,prepared?.assets?.foliage),
+  fetchManualWaterMask(nextSettings,prepared?.assets?.water)
  ]);
  let nextTiles=null,texture=null;
  if(nextProjection==='360'&&nextStereo==='mono'&&next.dataset.tiles&&!nextDepth){
   try{
-   nextTiles=await createTiledPanorama({url:next.dataset.tiles,scene,camera,renderer,mirror:!!nextSettings.mirrorHorizontal});
+   nextTiles=await createTiledPanorama({url:next.dataset.tiles,scene,camera,renderer,mirror:!!nextSettings.mirrorHorizontal,manifest:prepared?.manifest,baseTiles:prepared?.baseTiles});
    if(nextTiles.group)nextTiles.group.visible=false;
   }catch(error){console.warn('Tour scene tiles unavailable, using image',error)}
  }
- if(!nextTiles){if(!image)throw new Error('Scene image missing');texture=await new THREE.TextureLoader().loadAsync(image);}
+ if(!nextTiles){if(!image)throw new Error('Scene image missing');texture=await loadSceneTexture(image,prepared?.assets?.image);}
  ++panoramaLoadEpoch;
  clearSceneHotspots();
  if(tiledPanorama){tiledPanorama.dispose();tiledPanorama=null;}
@@ -1310,6 +1365,7 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  syncTourRail();syncMobileTourNav();syncTourMap();syncMobileMotionButton();
  cardboardMenuPlaced=false;
  if(getViewerMode()===ViewerMode.CARDBOARD)placeCardboardMenu();
+ queueNeighborPreload();
 }
 function reportSceneSwitchError(error){
  console.error('Tour scene switch failed; keeping the current viewing mode',error);
