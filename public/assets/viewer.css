@@ -39,6 +39,16 @@
 #mobile-motion-parallax:disabled{opacity:.65}
 #mobile-motion-parallax[hidden],.cardboard #mobile-motion-parallax,.xr-presenting #mobile-motion-parallax{display:none!important}
 
+/* Visible tablet/phone sensor diagnostics: permission, missing samples, retry. */
+#minivr-gyro-diagnostic{position:fixed;z-index:950;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 76px);transform:translateX(-50%);display:grid;gap:10px;width:min(460px,calc(100vw - 24px));max-height:38dvh;overflow:auto;padding:14px 16px;background:#092634f2;border:1px solid #59d9e9;border-radius:13px;box-shadow:0 12px 36px #000a;backdrop-filter:blur(12px);font:13px/1.55 system-ui;color:#e7faff}
+#minivr-gyro-diagnostic[data-state="error"]{border-color:#efad67;background:#322315f5;color:#fff2df}
+#minivr-gyro-diagnostic[hidden],#minivr-gyro-diagnostic button[hidden],.cardboard #minivr-gyro-diagnostic,.xr-presenting #minivr-gyro-diagnostic{display:none!important}
+#minivr-gyro-diagnostic p{margin:0;overflow-wrap:anywhere}
+#minivr-gyro-diagnostic>div{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:9px}
+#minivr-gyro-diagnostic button{min-height:39px;padding:8px 12px;font:600 12px system-ui;cursor:pointer;touch-action:manipulation}
+#minivr-gyro-diagnostic button:disabled{opacity:.55;cursor:wait}
+@media(max-width:767px){#minivr-gyro-diagnostic{bottom:calc(env(safe-area-inset-bottom,0px) + 116px);font-size:12px;padding:12px}#minivr-gyro-diagnostic button{flex:1}}
+
 /* Compact touch-friendly tour navigation, below the panorama center and above controls. */
 #minivr-mobile-tour-nav{display:none}
 @media(max-width:767px){
