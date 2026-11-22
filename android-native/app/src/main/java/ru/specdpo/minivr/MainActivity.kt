@@ -19,7 +19,6 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -35,16 +34,14 @@ class MainActivity : Activity(), SensorEventListener {
     private lateinit var overlay: HotspotOverlay
     private lateinit var sensors: SensorManager
     private lateinit var topBar: LinearLayout
-    private lateinit var bottomBar: HorizontalScrollView
+    private lateinit var bottomBar: LinearLayout
     private lateinit var title: TextView
     private lateinit var notice: TextView
-    private lateinit var vrButton: Button
-    private lateinit var gyroButton: Button
-    private lateinit var audioButton: Button
-    private lateinit var musicButton: Button
-    private lateinit var depthButton: Button
-    private lateinit var effectsButton: Button
+    private lateinit var previousButton: Button
+    private lateinit var nextButton: Button
+    private lateinit var scenesButton: Button
     private lateinit var exitVr: Button
+    private val menus by lazy { NativeMenuDialogs(this) }
     private val renderer = PanoramaRenderer()
     private val ui = Handler(Looper.getMainLooper())
     private val api by lazy { MiniVrApi(BuildConfig.API_BASE, File(filesDir, "minivr-media")) }
@@ -55,6 +52,8 @@ class MainActivity : Activity(), SensorEventListener {
     private var tour: TourEntry? = null
     private var index = -1
     private var current: SceneEntry? = null
+    private var selectedMaterialId: Int? = null
+    private var selectedMaterialIsTour = false
     private var tileStreamer: NativeTileStreamer? = null
     private var gyro = false
     private var gyroSensor: Sensor? = null
@@ -63,6 +62,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var lastTouchX = 0f
     private var lastTouchY = 0f
     private var guidedIndex = -1
+    private var narrationPaused = false
     private var autoplay = false
     private val nextScene = Runnable { if (autoplay) moveScene(1) }
 
@@ -70,12 +70,12 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun button(label: String, action: () -> Unit): Button = Button(this).apply {
         text = label
-        textSize = 13f
+        textSize = 15f
         isAllCaps = false
-        minWidth = dp(46)
-        minHeight = dp(48)
+        minWidth = dp(52)
+        minHeight = dp(56)
         setTextColor(Color.WHITE)
-        setBackgroundColor(0xFF153C4E.toInt())
+        setBackgroundColor(0xFF15516A.toInt())
         setPadding(dp(10), 0, dp(10), 0)
         setOnClickListener { action() }
     }
@@ -123,62 +123,52 @@ class MainActivity : Activity(), SensorEventListener {
             setBackgroundColor(0xCC071622.toInt())
         }
         val topRow = LinearLayout(this)
-        topRow.addView(button("☰ Каталог") { openCatalog() })
+        topRow.addView(button("☰ Материалы") { openCatalog() })
         title = TextView(this).apply {
             text = "MiniVR Native"
             setTextColor(Color.WHITE)
-            textSize = 16f
+            textSize = 17f
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), 0, 0, 0)
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
-        topRow.addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
+        topRow.addView(title, LinearLayout.LayoutParams(0, dp(56), 1f))
         topBar.addView(topRow)
-        notice = TextView(this).apply { textSize = 12f; setTextColor(0xFFB1DFEA.toInt()) }
+        notice = TextView(this).apply {
+            textSize = 13f
+            setTextColor(0xFFB1DFEA.toInt())
+            setPadding(dp(5), dp(3), dp(5), dp(5))
+        }
         topBar.addView(notice)
         root.addView(topBar, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
 
-        val buttons = LinearLayout(this).apply {
+        bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(5), dp(5), dp(5), dp(5))
-            setBackgroundColor(0xCC071622.toInt())
+            setPadding(dp(5), dp(7), dp(5), dp(7))
+            setBackgroundColor(0xE6071622.toInt())
         }
-        buttons.addView(button("‹") { moveScene(-1) })
-        buttons.addView(button("Сцены") { openScenes() })
-        buttons.addView(button("›") { moveScene(1) })
-        buttons.addView(button("ⓘ Описание") { showDescription() })
-        buttons.addView(button("🎙 Точки") { openGuidedPoints() })
-        audioButton = button("♪ Звук") { val paused = audio.togglePause(); audioButton.text = if (paused) "▶ Звук" else "♪ Звук" }
-        buttons.addView(audioButton)
-        buttons.addView(button("♫ ‹") { music.skip(-1)?.let { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() } })
-        musicButton = button("♫ ▶") {
-            if (!music.hasTracks()) Toast.makeText(this, "Музыкальный плейлист пуст", Toast.LENGTH_SHORT).show()
-            else musicButton.text = if (music.toggle()) "♫ ⏸" else "♫ ▶"
+        fun addPrimary(button: Button, weight: Float = 1f) {
+            bottomBar.addView(button, LinearLayout.LayoutParams(0, dp(62), weight).apply {
+                leftMargin = dp(3)
+                rightMargin = dp(3)
+            })
         }
-        buttons.addView(musicButton)
-        buttons.addView(button("♫ ›") { music.skip(1)?.let { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() } })
-        gyroButton = button("GYRO") { setGyro(!gyro) }
-        buttons.addView(gyroButton)
-        depthButton = button("3D ✓") {
-            renderer.depthEnabled = !renderer.depthEnabled
-            depthButton.text = if (renderer.depthEnabled) "3D ✓" else "3D ×"
+        previousButton = button("◀ Назад") { moveScene(-1) }
+        scenesButton = button("▦ Сцены") { openScenes() }
+        nextButton = button("Далее ▶") { moveScene(1) }
+        addPrimary(previousButton)
+        addPrimary(scenesButton, 1.25f)
+        addPrimary(nextButton)
+        addPrimary(button("⚙ Меню") { openControls() })
+        for (i in 0 until bottomBar.childCount) {
+            (bottomBar.getChildAt(i) as Button).apply {
+                textSize = 12.5f
+                setPadding(dp(3), 0, dp(3), 0)
+                setSingleLine(true)
+            }
         }
-        buttons.addView(depthButton)
-        effectsButton = button("FX ✓") {
-            renderer.effectsEnabled = !renderer.effectsEnabled
-            effectsButton.text = if (renderer.effectsEnabled) "FX ✓" else "FX ×"
-        }
-        buttons.addView(effectsButton)
-        vrButton = button("▣ SBS") { setCardboard(!renderer.cardboard) }
-        buttons.addView(vrButton)
-        buttons.addView(button("−") { renderer.fieldOfView = (renderer.fieldOfView + 8).coerceAtMost(100f) })
-        buttons.addView(button("+") { renderer.fieldOfView = (renderer.fieldOfView - 8).coerceAtLeast(35f) })
-        buttons.addView(button("⟳") { resetView() })
-        bottomBar = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(buttons)
-        }
+        updateNavigationButtons()
         root.addView(bottomBar, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
         exitVr = button("✕ Закрыть VR") { setCardboard(false) }.apply { visibility = View.GONE }
         root.addView(exitVr, FrameLayout.LayoutParams(-2, dp(50), Gravity.TOP or Gravity.RIGHT).apply {
@@ -220,12 +210,18 @@ class MainActivity : Activity(), SensorEventListener {
             Toast.makeText(this, "Нет опубликованных материалов", Toast.LENGTH_LONG).show()
             return
         }
-        val labels = catalog.map { if (it.isTour) "🗺  ${it.title}" else "◉  ${it.title}" }
-        AlertDialog.Builder(this).setTitle("MiniVR · Каталог")
-            .setItems(labels.toTypedArray()) { _, i ->
-                val item = catalog[i]
-                if (item.isTour) openTour(item.id) else openPanorama(item.id)
-            }.setNegativeButton("Закрыть", null).show()
+        val entries = catalog.map { item ->
+            NativeMenuDialogs.Item(
+                item.id, item.title,
+                if (item.isTour) "Виртуальная экскурсия" else "Панорама 360° / изображение",
+                if (item.isTour) "▦" else "◉",
+                if (item.isTour) "tour" else "panorama",
+                selectedMaterialId == item.id && selectedMaterialIsTour == item.isTour
+            )
+        }
+        menus.showCatalog(entries) { item ->
+            if (item.group == "tour") openTour(item.id) else openPanorama(item.id)
+        }
     }
 
     private fun openPanorama(id: Int) {
@@ -239,6 +235,8 @@ class MainActivity : Activity(), SensorEventListener {
                     if (token != generation.get()) return@runOnUiThread
                     tour = null
                     index = -1
+                    selectedMaterialId = id
+                    selectedMaterialIsTour = false
                     displayScene(scene, token)
                 }
             } catch (e: Exception) { showLoadError(token, e) }
@@ -256,6 +254,8 @@ class MainActivity : Activity(), SensorEventListener {
                 runOnUiThread {
                     if (token != generation.get()) return@runOnUiThread
                     tour = loaded
+                    selectedMaterialId = id
+                    selectedMaterialIsTour = true
                     val start = loaded.scenes.indexOfFirst { it.id == loaded.startSceneId }
                     index = if (start < 0) 0 else start
                     displayScene(loaded.scenes[index], token)
@@ -277,12 +277,7 @@ class MainActivity : Activity(), SensorEventListener {
         renderer.fieldOfView = 75f
         renderer.motionX = 0f
         renderer.motionY = 0f
-        val depthAvailable = scene.projection == "360" && scene.stereo == "mono" &&
-            scene.effects.optBoolean("parallaxEnabled") &&
-            scene.effects.optString("parallaxDepth").let { it.isNotBlank() && it != "null" }
-        depthButton.isEnabled = depthAvailable
-        depthButton.alpha = if (depthAvailable) 1f else .5f
-        depthButton.text = if (!depthAvailable) "3D —" else if (renderer.depthEnabled) "3D ✓" else "3D ×"
+        updateNavigationButtons()
         baseline = null
         title.text = scene.title
         notifyUser("Загрузка изображения…")
@@ -317,9 +312,9 @@ class MainActivity : Activity(), SensorEventListener {
                     val stops = tour?.hotspots?.filter { it.sceneId == scene.id } ?: emptyList()
                     overlay.hotspots = stops
                     audio.enterScene(scene.audio)
+                    narrationPaused = false
                     val trackId = scene.effects.optInt("musicTrackId", 0)
                     music.selectTrack(trackId)
-                    musicButton.text = if (music.isPlayingRequested()) "♫ ⏸" else "♫ ▶"
                     val quality = if (tiles != null) "тайлы" else "изображение"
                     val gpu = if (renderer.advancedSupported) "" else "GPU-совместимость · "
                     val depth = if (scene.effects.optBoolean("parallaxEnabled") &&
@@ -366,6 +361,93 @@ class MainActivity : Activity(), SensorEventListener {
         return "Сцена ${index + 1} из ${t.scenes.size}"
     }
 
+    private fun updateNavigationButtons() {
+        if (!::previousButton.isInitialized) return
+        val size = tour?.scenes?.size ?: 0
+        previousButton.isEnabled = size > 0 && index > 0
+        nextButton.isEnabled = size > 0 && index < size - 1
+        scenesButton.isEnabled = size > 0
+        previousButton.alpha = if (previousButton.isEnabled) 1f else .4f
+        nextButton.alpha = if (nextButton.isEnabled) 1f else .4f
+        scenesButton.alpha = if (scenesButton.isEnabled) 1f else .4f
+        scenesButton.text = if (size > 0) "▦ ${index + 1}/$size" else "▦ Сцены"
+    }
+
+    private fun depthAvailable(): Boolean {
+        val scene = current ?: return false
+        return scene.projection == "360" && scene.stereo == "mono" &&
+            scene.effects.optBoolean("parallaxEnabled") &&
+            scene.effects.optString("parallaxDepth").let { it.isNotBlank() && it != "null" }
+    }
+
+    private fun openControls() {
+        fun option(title: String, detail: String, icon: String, section: String,
+                   enabled: () -> Boolean = { true }, active: () -> Boolean = { false },
+                   close: Boolean = false, tap: () -> Unit) = NativeMenuDialogs.Control(
+            title, detail, icon, section, enabled, active, close, tap)
+
+        menus.showControls(listOf(
+            option("Гироскоп", "Обзор поворотом телефона", "◉", "Просмотр",
+                enabled = { sensors.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR) != null },
+                active = { gyro }) { setGyro(!gyro) },
+            option("3D-параллакс", "Объём по карте глубины", "3D", "Просмотр",
+                enabled = { depthAvailable() }, active = { renderer.depthEnabled }) {
+                renderer.depthEnabled = !renderer.depthEnabled
+            },
+            option("Графические эффекты", "Вода, частицы, освещение", "FX", "Просмотр",
+                active = { renderer.effectsEnabled }) {
+                renderer.effectsEnabled = !renderer.effectsEnabled
+            },
+            option("Режим VR / SBS", "Два изображения для гарнитуры", "▣", "Просмотр",
+                active = { renderer.cardboard }, close = true) {
+                setCardboard(!renderer.cardboard)
+            },
+            option("Приблизить", "Уменьшить угол обзора", "+", "Просмотр") {
+                renderer.fieldOfView = (renderer.fieldOfView - 8).coerceAtLeast(35f)
+            },
+            option("Отдалить", "Увеличить угол обзора", "−", "Просмотр") {
+                renderer.fieldOfView = (renderer.fieldOfView + 8).coerceAtMost(100f)
+            },
+            option("Вернуть направление", "Сбросить поворот камеры", "⟳", "Просмотр") {
+                resetView()
+            },
+            option("Аудиогид", "Приостановить или продолжить речь", "🎙", "Звук",
+                enabled = { current != null }, active = { !narrationPaused }) {
+                narrationPaused = audio.togglePause()
+            },
+            option("Музыка", "Воспроизведение / пауза", "♫", "Звук",
+                enabled = { music.hasTracks() }, active = { music.isPlayingRequested() }) {
+                music.toggle()
+            },
+            option("Предыдущий трек", "Переключить музыку назад", "◀", "Звук",
+                enabled = { music.hasTracks() }) {
+                music.skip(-1)?.let { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() }
+            },
+            option("Следующий трек", "Переключить музыку вперёд", "▶", "Звук",
+                enabled = { music.hasTracks() }) {
+                music.skip(1)?.let { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() }
+            },
+            option("Список сцен", "Открыть маршрут экскурсии", "▦", "Экскурсия",
+                enabled = { tour != null }, close = true) {
+                openScenes()
+            },
+            option("Точки рассказа", "Выбрать комментарий и прослушать", "◎", "Экскурсия",
+                enabled = { (current?.guidedPoints?.length() ?: 0) > 0 }, close = true) {
+                openGuidedPoints()
+            },
+            option("Описание", "Информация о панораме", "ⓘ", "Экскурсия",
+                enabled = { current != null }, close = true) {
+                showDescription()
+            },
+            option("Автомаршрут", "Автоматическая смена сцен", "↻", "Экскурсия",
+                enabled = { tour != null }, active = { autoplay }) {
+                autoplay = !autoplay
+                ui.removeCallbacks(nextScene)
+                if (autoplay) current?.let { scheduleNext(it) }
+            }
+        ))
+    }
+
     private fun scheduleNext(scene: SceneEntry) {
         val seconds = (scene.durationSeconds ?: scene.effects.optInt("tourDuration", 30))
         if (seconds > 0 && tour != null && index < (tour?.scenes?.lastIndex ?: 0))
@@ -383,15 +465,22 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun openScenes() {
         val t = tour ?: return
-        AlertDialog.Builder(this).setTitle(t.title)
-            .setItems(t.scenes.mapIndexed { i, s -> "${i + 1}. ${s.title}" }.toTypedArray()) { _, selected ->
-                index = selected
-                displayScene(t.scenes[index])
-            }.setNeutralButton(if (autoplay) "⏸ Автомаршрут" else "▶ Автомаршрут") { _, _ ->
+        val items = t.scenes.mapIndexed { i, scene ->
+            NativeMenuDialogs.Item(i, scene.title,
+                "Сцена ${i + 1} из ${t.scenes.size}",
+                (i + 1).toString(), selected = i == index)
+        }
+        menus.showList("Сцены экскурсии", t.title, items,
+            footerText = if (autoplay) "⏸ Отключить автомаршрут" else "▶ Включить автомаршрут",
+            onFooter = {
                 autoplay = !autoplay
                 ui.removeCallbacks(nextScene)
                 if (autoplay) current?.let { scheduleNext(it) }
-            }.setNegativeButton("Закрыть", null).show()
+                if (autoplay) "⏸ Отключить автомаршрут" else "▶ Включить автомаршрут"
+            }) { selected ->
+                index = selected.id
+                displayScene(t.scenes[index])
+            }
     }
 
     private fun onHotspot(h: HotspotEntry) {
@@ -430,12 +519,16 @@ class MainActivity : Activity(), SensorEventListener {
             Toast.makeText(this, "В этой сцене нет точек рассказа", Toast.LENGTH_SHORT).show()
             return
         }
-        val labels = (0 until points.length()).map { i ->
-            "${i + 1}. ${points.getJSONObject(i).optString("title", "Точка рассказа")}"
+        val items = (0 until points.length()).map { i ->
+            val point = points.getJSONObject(i)
+            NativeMenuDialogs.Item(i,
+                point.optString("title", "Точка рассказа"),
+                "Аудиоточка ${i + 1} из ${points.length()}",
+                (i + 1).toString(), selected = i == guidedIndex)
         }
-        AlertDialog.Builder(this).setTitle("Точки рассказа")
-            .setItems(labels.toTypedArray()) { _, i -> showGuidedPoint(i) }
-            .setNegativeButton("Закрыть", null).show()
+        menus.showList("Точки рассказа", current?.title.orEmpty(), items) { selected ->
+            showGuidedPoint(selected.id)
+        }
     }
 
     private fun showDescription() {
@@ -472,7 +565,6 @@ class MainActivity : Activity(), SensorEventListener {
         renderer.cardboard = active
         requestedOrientation = if (active) ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        vrButton.text = if (active) "✕ SBS" else "▣ SBS"
         topBar.visibility = if (active) View.GONE else View.VISIBLE
         bottomBar.visibility = if (active) View.GONE else View.VISIBLE
         exitVr.visibility = if (active) View.VISIBLE else View.GONE
@@ -493,7 +585,6 @@ class MainActivity : Activity(), SensorEventListener {
                 sensors.registerListener(this, gyroSensor, SensorManager.SENSOR_DELAY_GAME)
             }
         }
-        gyroButton.text = if (gyro) "◉ GYRO" else "GYRO"
     }
 
     private fun wrap(angle: Float): Float = ((angle + 540f) % 360f) - 180f
@@ -521,9 +612,9 @@ class MainActivity : Activity(), SensorEventListener {
         ui.removeCallbacks(nextScene)
         sensors.unregisterListener(this)
         audio.pause()
+        narrationPaused = true
         music.pause()
         tileStreamer?.setPaused(true)
-        musicButton.text = "♫ ▶"
         surface.onPause()
         super.onPause()
     }
@@ -545,7 +636,7 @@ class MainActivity : Activity(), SensorEventListener {
     @Deprecated("Use system Back navigation")
     override fun onBackPressed() {
         if (renderer.cardboard) setCardboard(false)
-        else if (tour != null) { tour = null; openCatalog() }
+        else if (tour != null) { tour = null; index = -1; updateNavigationButtons(); openCatalog() }
         else super.onBackPressed()
     }
 }
