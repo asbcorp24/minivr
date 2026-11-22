@@ -7,6 +7,7 @@ import {makeDepthRadiusField,canUseTiledDepth} from '/assets/depth-tile-geometry
 import {createScenePreloader,fetchPreparedScene} from '/assets/scene-preloader.js';
 import {createDesktop3DWindow} from '/assets/desktop-3d-window.js';
 import {createMobileMotionParallax} from '/assets/mobile-motion-parallax.js';
+import {requestGyroSample,validGyroSample,GYRO_SAMPLE_TIMEOUT_MS} from '/assets/gyro-sensor.js';
 import {canTranslateDepthCamera,depthOffsetInWorld} from '/assets/depth-motion.js';
 import {shouldSwitchSceneInPlace} from '/assets/tour-navigation.js';
 import {viewerTargetWithEmbed} from '/assets/embed-navigation.js';
@@ -1158,38 +1159,95 @@ mobileMotionButton.onclick=async()=>{
 };
 syncMobileMotionButton();
 let gyroPending=false;
+let gyroAbort=null;
+const gyroNotice=document.createElement('section');
+gyroNotice.id='minivr-gyro-diagnostic';
+gyroNotice.hidden=true;
+gyroNotice.setAttribute('role','status');
+gyroNotice.setAttribute('aria-live','polite');
+const gyroMessage=document.createElement('p');
+const gyroActions=document.createElement('div');
+const gyroRetry=document.createElement('button');
+gyroRetry.type='button';gyroRetry.textContent='↻ Повторить попытку';gyroRetry.hidden=true;
+const gyroDismiss=document.createElement('button');
+gyroDismiss.type='button';gyroDismiss.textContent='Закрыть';
+gyroActions.append(gyroRetry,gyroDismiss);gyroNotice.append(gyroMessage,gyroActions);
+document.body.appendChild(gyroNotice);
+
+function showGyroStatus(message,{error=false,retry=false}={}){
+ gyroNotice.hidden=false;
+ gyroNotice.dataset.state=error?'error':'info';
+ gyroNotice.setAttribute('role',error?'alert':'status');
+ gyroMessage.textContent=message;
+ gyroRetry.hidden=!retry;
+ gyroRetry.disabled=gyroPending;
+}
+function stopGyroObservation(){
+ window.removeEventListener('deviceorientation',observeGyro);
+ window.removeEventListener('deviceorientationabsolute',observeGyro);
+}
+function observeGyro(event){
+ if(!validGyroSample(event))return;
+ // DeviceOrientationControls listens to `deviceorientation` only. Some Android
+ // browsers emit only `deviceorientationabsolute`, so forward that sample too.
+ if(event.type==='deviceorientationabsolute')deviceOrientation.deviceOrientation=event;
+}
 function setGyroActive(active){
+ stopGyroObservation();
  orientation=active;
- if(active)deviceOrientation.connect();
+ if(active){
+  deviceOrientation.connect();
+  window.addEventListener('deviceorientation',observeGyro);
+  window.addEventListener('deviceorientationabsolute',observeGyro);
+ }
  else deviceOrientation.disconnect();
  gyroButton.setAttribute('aria-pressed',String(active));
  gyroButton.textContent=active?'GYRO ✓':'GYRO';
  syncMobileMotionButton();
 }
 gyroButton.setAttribute('aria-pressed','false');
-gyroButton.onclick=async()=>{
- if(gyroPending)return;
- if(orientation){setGyroActive(false);return;}
- if(!window.isSecureContext||typeof window.DeviceOrientationEvent==='undefined'){
-  console.warn('GYRO requires a secure context and a device orientation sensor.');
-  gyroButton.title='Гироскоп недоступен на этом устройстве или без HTTPS';
-  return;
+function gyroFailureMessage(result){
+ switch(result.status){
+  case 'insecure':return 'GYRO работает только на защищённом сайте (HTTPS). Откройте адрес через https:// и повторите.';
+  case 'unsupported':return 'Браузер планшета не предоставляет датчик ориентации. Проверьте наличие датчиков или откройте сайт в Chrome/Safari.';
+  case 'denied':return 'Доступ к движению и ориентации запрещён. Разрешите датчики в настройках браузера, затем нажмите «Повторить попытку».';
+  case 'permission-error':return 'Браузер не смог запросить разрешение на датчики. Проверьте настройки сайта и повторите нажатием кнопки.';
+  case 'invalid-data':return 'События ориентации приходят, но углы alpha/beta/gamma пустые. Браузер или система блокирует данные датчика.';
+  default:return 'За '+(GYRO_SAMPLE_TIMEOUT_MS/1000)+' секунд данные датчика не поступили. Поверните планшет, проверьте разрешения и повторите.';
  }
+}
+async function startGyro(){
+ if(gyroPending)return;
+ if(orientation){setGyroActive(false);gyroNotice.hidden=true;return;}
+ if(getViewerMode()!==ViewerMode.DESKTOP)return;
  gyroPending=true;
+ gyroAbort=new AbortController();
+ gyroButton.disabled=true;
+ gyroButton.textContent='GYRO…';
+ showGyroStatus('Проверяем датчики ориентации (до '+(GYRO_SAMPLE_TIMEOUT_MS/1000)+' секунд). Плавно поверните планшет.');
  try{
-  if(typeof DeviceOrientationEvent.requestPermission==='function'&&(await DeviceOrientationEvent.requestPermission())!=='granted')return;
-  const received=await new Promise(resolve=>{
-   let finished=false;
-   const done=valid=>{if(finished)return;finished=true;clearTimeout(timeout);window.removeEventListener('deviceorientation',onSample);resolve(valid)};
-   const onSample=e=>{if(Number.isFinite(e.alpha)&&Number.isFinite(e.beta)&&Number.isFinite(e.gamma))done(true)};
-   window.addEventListener('deviceorientation',onSample);
-   const timeout=setTimeout(()=>done(false),1200);
-  });
-  if(received)setGyroActive(true);
-  else{gyroButton.title='Данные гироскопа не поступают';console.warn('GYRO: no orientation samples received')}
- }catch(error){console.warn('GYRO permission or sensor unavailable',error)}
- finally{gyroPending=false}
-};
+  const result=await requestGyroSample(window,{signal:gyroAbort.signal});
+  if(result.status==='cancelled'||getViewerMode()!==ViewerMode.DESKTOP)return;
+  if(result.status==='ready'){
+   setGyroActive(true);
+   observeGyro(result.event);
+   gyroButton.title='GYRO включён. Нажмите ещё раз для выключения.';
+   showGyroStatus('GYRO включён. Теперь поворачивайте планшет, чтобы осматривать панораму.');
+  }else{
+   const message=gyroFailureMessage(result);
+   gyroButton.title=message;
+   showGyroStatus(message,{error:true,retry:true});
+  }
+ }finally{
+  gyroPending=false;gyroAbort=null;gyroButton.disabled=false;
+  gyroRetry.disabled=false;
+  gyroButton.textContent=orientation&&getViewerMode()===ViewerMode.DESKTOP?'GYRO ✓':'GYRO';
+ }
+}
+gyroButton.onclick=startGyro;
+gyroRetry.onclick=startGyro;
+gyroDismiss.onclick=()=>{gyroNotice.hidden=true;};
+window.addEventListener('pagehide',()=>{gyroAbort?.abort();stopGyroObservation();});
 document.querySelector('#full').onclick=()=>document.documentElement.requestFullscreen?.();
 const vrControl=document.querySelector('#vr');vrControl.textContent='ENTER VR';let xrSession=null;
 async function startImmersiveVR(){
@@ -1434,6 +1492,7 @@ async function restoreCardboardAfterNavigation(){
  await toggleCardboard();
 }
 async function toggleCardboard(){
+ gyroAbort?.abort();stopGyroObservation();gyroNotice.hidden=true;
  if(renderer.xr.isPresenting)return;
  if(legacyCardboard&&legacyVRDisplay){try{await legacyVREffect.exitPresent()}catch{}legacyCardboard=false;cardboard=false;syncCardboardCalibrationUI();hud.visible=false;cardboardMenu.visible=false;cardboardReticle.visible=false;cardboardMenuPlaced=false;document.body.classList.remove('cardboard');document.querySelector('#controls').style.display='';document.querySelector('#top').style.display='';resize();return}
  try{
@@ -1467,7 +1526,7 @@ cardboardReticle.visible=false;
 function placeCardboardMenu(){camera.updateMatrixWorld(true);const p=new THREE.Vector3(),q=new THREE.Quaternion(),dir=new THREE.Vector3(0,0,-1);camera.getWorldPosition(p);camera.getWorldQuaternion(q);dir.applyQuaternion(q);cardboardMenu.position.copy(p).add(dir.multiplyScalar(2.2));cardboardMenu.quaternion.copy(q);cardboardMenu.visible=true;cardboardMenuPlaced=true}
 function updateCardboardGaze(){if(getViewerMode()!==ViewerMode.CARDBOARD){cardboardReticle.visible=false;return}if(!cardboardMenuPlaced)placeCardboardMenu();cardboardReticle.visible=true;camera.updateMatrixWorld(true);const origin=new THREE.Vector3(),direction=new THREE.Vector3();camera.getWorldPosition(origin);camera.getWorldDirection(direction);raycaster.set(origin,direction);const hit=raycaster.intersectObjects(cardboardTargets,false)[0]?.object||null;if(hit!==cardboardFocus){if(cardboardFocus){cardboardFocus.scale.setScalar(1);cardboardFocus.material.opacity=.82}cardboardFocus=hit;cardboardFocusStart=performance.now()}let p=0;if(hit){p=Math.max(0,Math.min(1,(performance.now()-cardboardFocusStart)/800));hit.scale.setScalar(1-.25*p);hit.material.opacity=.35+.47*(1-p);if(p>=1){cardboardFocusStart=performance.now()+999999;hit.userData.cardboardAction?.()}}cbReticleBase.material.color.setHex(hit?0x00d8ff:0xffffff);cbReticleFuse.geometry.dispose();cbReticleFuse.geometry=new THREE.RingGeometry(.014,.017,48,1,Math.PI/2,Math.max(.001,Math.PI*2*p))}
 function updateGaze(){if(getViewerMode()!==ViewerMode.WEBXR)return;const xrCam=renderer.xr.getCamera(camera);const origin=new THREE.Vector3(),direction=new THREE.Vector3(0,0,-1);xrCam.getWorldPosition(origin);xrCam.getWorldDirection(direction);raycaster.set(origin,direction);const hit=raycaster.intersectObjects(pickables(),false)[0]?.object||null;const previous=gazeTarget;if(hit!==previous){if(previous&&hotspotObjects.includes(previous)&&!previous.userData.portal){previous.material.map.dispose();previous.material.map=markerTexture(previous.userData,false);previous.scale.setScalar(previous.userData.baseScale)}if(previous?.material?.color&&previous.userData?.interactive)previous.material.color.setHex(previous.userData.baseColor||0x2a2a2a);if(hit&&hotspotObjects.includes(hit)&&!hit.userData.portal){hit.material.map.dispose();hit.material.map=markerTexture(hit.userData,true);hit.scale.setScalar(hit.userData.baseScale*1.25)}gazeTarget=hit;gazeStart=performance.now();document.body.classList.remove('gazing')}if(hit){document.body.classList.add('gazing');const elapsed=performance.now()-gazeStart,progress=Math.min(1,elapsed/1200);document.documentElement.style.setProperty('--gaze',progress);updateGazeCursor(hit,progress);if(hit.material?.color&&hit.userData?.interactive)hit.material.color.setHex(hit.userData.hoverColor||0x444444);if(elapsed>1200){gazeStart=performance.now()+999999;activate(hit)}}else{document.body.classList.remove('gazing');document.documentElement.style.setProperty('--gaze',0);updateGazeCursor(null,0)}}
-renderer.xr.addEventListener('sessionstart',()=>{camera.layers.enable(0);cardboard=false;cardboardDebug.visible=false;orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();document.body.classList.remove('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';hud.visible=true;xrDebug.visible=false;document.body.classList.add('xr-presenting')});
+renderer.xr.addEventListener('sessionstart',()=>{gyroAbort?.abort();stopGyroObservation();gyroButton.textContent='GYRO';gyroButton.setAttribute('aria-pressed','false');gyroNotice.hidden=true;camera.layers.enable(0);cardboard=false;cardboardDebug.visible=false;orientation=false;deviceOrientation.enabled=false;deviceOrientation.disconnect();document.body.classList.remove('cardboard');document.querySelector('#controls').style.display='none';document.querySelector('#top').style.display='none';hud.visible=true;xrDebug.visible=false;document.body.classList.add('xr-presenting')});
 function syncXREyes(){
  if(!renderer.xr.isPresenting)return;
  const xrCam=renderer.xr.getCamera(camera);
