@@ -3,6 +3,7 @@ import {createMoonlight} from '/assets/panorama-moonlight.js';
 import {createAtmosphere} from '/assets/panorama-atmosphere.js';
 import {createPanoramaEffects} from '/assets/panorama-effects.js';
 import {createTiledPanorama} from '/assets/tiled-panorama.js';
+import {seamBlurAmount,installPanoramaSeamShader} from '/assets/panorama-seam-blur.js';
 import {makeDepthRadiusField,canUseTiledDepth} from '/assets/depth-tile-geometry.js';
 import {createScenePreloader,fetchPreparedScene} from '/assets/scene-preloader.js';
 import {createDesktop3DWindow} from '/assets/desktop-3d-window.js';
@@ -362,6 +363,16 @@ function eyeTexture(source,eye){
  else if(stereoMode==='tb'){t.repeat.set(1,.5);t.offset.set(0,eye==='left'?.5:0)}
  return t;
 }
+function installSeamBlur(material,eye=null){
+ if(projection!=='360')return;
+ const strength=seamBlurAmount(effectSettings.seamBlurStrength);
+ if(!strength)return;
+ const bounds=stereoMode==='sbs'
+  ?new THREE.Vector2(eye==='right'?.5:0,eye==='right'?1:.5)
+  :new THREE.Vector2(0,1);
+ const width=material.map?.image?.width||0;
+ installPanoramaSeamShader(material,strength,bounds,width?0.5/width:0);
+}
 let parallaxDepthPixels=null;
 
 let manualFoliageMaskImage=null;
@@ -484,6 +495,7 @@ function geometry(aspect=16/9){
 function sourceAspect(source){const im=source.image;if(!im?.width||!im?.height)return 16/9;let w=im.width,h=im.height;if(stereoMode==='sbs')w/=2;else if(stereoMode==='tb')h/=2;return w/h}
 function makeEye(source,eye){
  const g=geometry(sourceAspect(source));if(effectSettings.mirrorHorizontal){const uv=g.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}const m=new THREE.MeshBasicMaterial({map:eyeTexture(source,eye),side:projection==='flat'?THREE.FrontSide:THREE.BackSide});
+ installSeamBlur(m,eye);
  const mesh=new THREE.Mesh(g,m);
  if(projection==='flat'){mesh.position.set(3.2,0,0);mesh.rotation.y=-Math.PI/2;}
  else if(projection==='180')mesh.rotation.y=Math.PI/2;
@@ -532,7 +544,9 @@ function makeDepthBackground(source){
   texture.wrapS=THREE.RepeatWrapping;
   const geo=new THREE.SphereGeometry(80,96,48);
   if(effectSettings.mirrorHorizontal){const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
-  const mesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,depthWrite:false}));
+  const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,depthWrite:false});
+  installSeamBlur(material);
+  const mesh=new THREE.Mesh(geo,material);
   mesh.layers.set(0);mesh.renderOrder=-10;
   return mesh;
  }catch(err){console.warn('Depth background fill unavailable',err);return null;}
@@ -874,6 +888,7 @@ function makeHybridDepthGroups(source){
   const material=new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide,transparent:true,depthWrite:false,alphaTest:desktopReliefEnabled()?.055:.015});
   installMicroMotion(material,band,count);
   installWaterMotion(material);
+  installSeamBlur(material);
   const mesh=new THREE.Mesh(geo,material);mesh.layers.set(0);mesh.renderOrder=band;
   scene.add(mesh);hybridMeshes.push(mesh);
  }
@@ -891,10 +906,15 @@ function installPanorama(source){
    // Keep the original at the far radius to cover disocclusions between bands.
    const geo=new THREE.SphereGeometry(80,96,48);
    if(effectSettings.mirrorHorizontal){const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
-   const backdrop=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:source,side:THREE.BackSide,depthWrite:false}));
+   const backdropMaterial=new THREE.MeshBasicMaterial({map:source,side:THREE.BackSide,depthWrite:false});
+   installSeamBlur(backdropMaterial);
+   const backdrop=new THREE.Mesh(geo,backdropMaterial);
    backdrop.layers.set(0);backdrop.renderOrder=-20;scene.add(backdrop);leftMesh=rightMesh=backdrop;
   }else{
-  const g=geometry(sourceAspect(source));if(effectSettings.mirrorHorizontal){const uv=g.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}const mesh=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:source,side:projection==='flat'?THREE.FrontSide:THREE.BackSide}));
+  const g=geometry(sourceAspect(source));if(effectSettings.mirrorHorizontal){const uv=g.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));uv.needsUpdate=true;}
+  const material=new THREE.MeshBasicMaterial({map:source,side:projection==='flat'?THREE.FrontSide:THREE.BackSide});
+  installSeamBlur(material);
+  const mesh=new THREE.Mesh(g,material);
   if(projection==='flat'){mesh.position.set(3.2,0,0);mesh.rotation.y=-Math.PI/2;}else if(projection==='180')mesh.rotation.y=Math.PI/2;
   mesh.layers.set(0);scene.add(mesh);leftMesh=rightMesh=mesh;
   }
@@ -944,7 +964,8 @@ async function loadInitialPanorama(){
  if(projection==='360'&&stereoMode==='mono'&&root.dataset.tiles&&(!parallaxDepthPixels||canUseTiledDepth(effectSettings))){
   try{
    const tiles=await createTiledPanorama({url:root.dataset.tiles,scene,camera,renderer,mirror:!!effectSettings.mirrorHorizontal,
-    depth:tiledDepthConfig(effectSettings,parallaxDepthPixels),foliage:tiledFoliageConfig(effectSettings,manualFoliageMaskImage)});
+    depth:tiledDepthConfig(effectSettings,parallaxDepthPixels),foliage:tiledFoliageConfig(effectSettings,manualFoliageMaskImage),
+    seamBlur:seamBlurAmount(effectSettings.seamBlurStrength)});
    if(epoch!==panoramaLoadEpoch){tiles.dispose();return;}
    tiledPanorama=tiles;
    document.body.classList.remove('scene-loading');queueNeighborPreload();return;
@@ -1410,7 +1431,7 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
   try{
    nextTiles=await createTiledPanorama({url:next.dataset.tiles,scene,camera,renderer,mirror:!!nextSettings.mirrorHorizontal,
     manifest:prepared?.manifest,baseTiles:prepared?.baseTiles,depth:tiledDepthConfig(nextSettings,nextDepth),
-    foliage:tiledFoliageConfig(nextSettings,nextFoliage)});
+    foliage:tiledFoliageConfig(nextSettings,nextFoliage),seamBlur:seamBlurAmount(nextSettings.seamBlurStrength)});
    if(nextTiles.group)nextTiles.group.visible=false;
   }catch(error){console.warn('Tour scene tiles unavailable, using image',error)}
  }

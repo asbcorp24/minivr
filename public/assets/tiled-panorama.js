@@ -1,14 +1,16 @@
 import * as THREE from '/assets/vendor/three/three.module.js';
 import {sampleDepthRadius} from '/assets/depth-tile-geometry.js';
 import {makeTileFoliageMask} from '/assets/tile-foliage-mask.js';
+import {seamBlurAmount,blendSeamTilePixels} from '/assets/panorama-seam-blur.js';
 /* Independent tiled panorama layer. Never modifies Cardboard renderer or eye cameras. */
-export async function createTiledPanorama({url,scene,camera,renderer,mirror=false,manifest:cachedManifest=null,baseTiles=null,depth=null,foliage=null}){
+export async function createTiledPanorama({url,scene,camera,renderer,mirror=false,manifest:cachedManifest=null,baseTiles=null,depth=null,foliage=null,seamBlur=0}){
  const response=cachedManifest?null:await fetch(url,{credentials:'same-origin'});
  if(response&&!response.ok)throw Error('Tiles manifest HTTP '+response.status);
  const manifest=cachedManifest||await response.json();if(manifest.projection!=='360'||!Array.isArray(manifest.levels)||!manifest.levels.length)throw Error('Invalid tile manifest');
  const base=url.slice(0,url.lastIndexOf('/')+1),group=new THREE.Group();scene.add(group);
  const loader=new THREE.TextureLoader(),tiles=new Map(),pending=new Set(),maxConcurrent=8;
  let disposed=false;
+ const seamStrength=seamBlurAmount(seamBlur);
  // The manual 512x256 mask is shared across all LODs; automatic masks are
  // created from each decoded JPEG tile, so the full panorama is never decoded.
  const wind=foliage?.enabled?{
@@ -135,6 +137,28 @@ uniform vec4 foliageTileUv;\n`+shader.fragmentShader;
   item.windMask?.dispose();
   item.texture.dispose();
  }
+ function blendLoadedSeam(level,y){
+  if(!seamStrength)return;
+  const left=tiles.get(level.level+':0:'+y);
+  const right=tiles.get(level.level+':'+(level.cols-1)+':'+y);
+  if(!left||!right)return;
+  try{
+   const a=left.seamSource||left.texture.image,b=right.seamSource||right.texture.image;
+   if(!a?.width||!b?.width||a.height!==b.height)return;
+   const prepare=image=>{
+    const canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;
+    const context=canvas.getContext('2d',{willReadFrequently:true});
+    context.drawImage(image,0,0,canvas.width,canvas.height);
+    return {canvas,context,frame:context.getImageData(0,0,canvas.width,canvas.height)};
+   };
+   const first=prepare(a),last=left===right?first:prepare(b);
+   const radius=blendSeamTilePixels(first.frame.data,a.width,last.frame.data,b.width,a.height,level.width,seamStrength);
+   if(!radius)return;
+   first.context.putImageData(first.frame,0,0);
+   left.texture.image=first.canvas;left.texture.needsUpdate=true;
+   if(left!==right){last.context.putImageData(last.frame,0,0);right.texture.image=last.canvas;right.texture.needsUpdate=true;}
+  }catch(error){console.warn('MiniVR seam blur unavailable for tile',error)}
+ }
  function load(level,x,y){
   const key=level.level+':'+x+':'+y;if(disposed||tiles.has(key)||pending.has(key)||pending.size>=maxConcurrent)return;
   pending.add(key);
@@ -169,7 +193,9 @@ uniform vec4 foliageTileUv;\n`+shader.fragmentShader;
     const mesh=new THREE.Mesh(geometry(level,x,y),material);mesh.renderOrder=level.level;meshes.push(mesh);
    }
    for(const mesh of meshes){mesh.frustumCulled=false;group.add(mesh);}
-   tiles.set(key,{meshes,texture,windMask:windMask===manualWindMask?null:windMask,level:level.level,last:performance.now()});
+   tiles.set(key,{meshes,texture,seamSource:seamStrength&&[0,level.cols-1].includes(x)?texture.image:null,
+    windMask:windMask===manualWindMask?null:windMask,level:level.level,last:performance.now()});
+   if(seamStrength&&(x===0||x===level.cols-1))blendLoadedSeam(level,y);
   },undefined,()=>{finish();pending.delete(key)});
  }
  const low=manifest.levels[0];
