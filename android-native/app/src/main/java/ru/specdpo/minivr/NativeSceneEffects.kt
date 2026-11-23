@@ -15,6 +15,7 @@ data class NativeSceneEffects(
     val depthNonlinear: Float = 0f,
     val depthAuto: Float = 0f,
     val depthAutoSpeed: Float = .6f,
+    val seamBlur: Float = 0f,
     val waterStrength: Float = 0f,
     val waterSpeed: Float = 1f,
     val waterYaw: Float = 0f,
@@ -84,6 +85,7 @@ data class NativeSceneEffects(
                 depthAuto = if (settings.optBoolean("parallaxAuto"))
                     amount("parallaxAutoAmplitude", 35.0) else 0f,
                 depthAutoSpeed = velocity("parallaxAutoSpeed", 0.6),
+                seamBlur = amount("seamBlurStrength"),
                 waterStrength = if (waterEnabled) amount("parallaxWaterStrength", 45.0) else 0f,
                 waterSpeed = velocity("parallaxWaterSpeed"),
                 waterYaw = settings.optDouble("waterYaw", 0.0).toFloat(),

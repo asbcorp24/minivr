@@ -16,6 +16,8 @@ object NativePanoramaShader {
         uniform int sourceStereo;
         uniform int eye;
         uniform int mirrorImage;
+        uniform float seamBlur;
+        uniform float seamTexel;
         const float PI = 3.14159265358979323846;
         void main() {
             float cy = cos(yaw), sy = sin(yaw), cp = cos(pitch), sp = sin(pitch);
@@ -42,7 +44,20 @@ object NativePanoramaShader {
             if (mirrorImage == 1) uv.x = 1.0 - uv.x;
             if (sourceStereo == 1) uv.x = uv.x * 0.5 + float(eye) * 0.5;
             if (sourceStereo == 2) uv.y = uv.y * 0.5 + float(eye) * 0.5;
-            gl_FragColor = texture2D(panorama, uv);
+            vec4 color = texture2D(panorama, uv);
+            if (projection == 0 && seamBlur > 0.0) {
+                float beginU = sourceStereo == 1 ? float(eye) * 0.5 : 0.0;
+                float endU = beginU + (sourceStereo == 1 ? 0.5 : 1.0);
+                float edge = min(uv.x - beginU, endU - uv.x);
+                float radius = seamBlur * 0.015 * (endU - beginU);
+                if (edge < radius) {
+                    vec4 first = texture2D(panorama, vec2(beginU + seamTexel, uv.y));
+                    vec4 last = texture2D(panorama, vec2(endU - seamTexel, uv.y));
+                    color = mix(color, (first + last) * 0.5,
+                                1.0 - smoothstep(0.0, radius, max(0.0, edge)));
+                }
+            }
+            gl_FragColor = color;
         }
     """.trimIndent()
 
@@ -75,6 +90,8 @@ object NativePanoramaShader {
         uniform int sourceStereo;
         uniform int eye;
         uniform int mirrorImage;
+        uniform float seamBlur;
+        uniform float seamTexel;
         uniform int hasDepth;
         uniform int hasAtlas;
         uniform int hasWaterMask;
@@ -119,6 +136,20 @@ object NativePanoramaShader {
                 }
             }
             return color;
+        }
+
+        vec4 seamPanoramaPixel(vec2 uv) {
+            vec4 color = panoramaPixel(uv);
+            if (projection != 0 || seamBlur <= 0.0) return color;
+            float u = fract(uv.x + 2.0);
+            float distanceToEdge = min(u, 1.0 - u);
+            float radius = seamBlur * 0.015;
+            if (distanceToEdge >= radius) return color;
+            float pixel = seamTexel * (sourceStereo == 1 ? 2.0 : 1.0);
+            vec4 first = panoramaPixel(vec2(pixel, uv.y));
+            vec4 last = panoramaPixel(vec2(1.0 - pixel, uv.y));
+            return mix(color, (first + last) * 0.5,
+                       1.0 - smoothstep(0.0, radius, distanceToEdge));
         }
 
         void main() {
@@ -213,7 +244,7 @@ object NativePanoramaShader {
                 }
             }
 
-            vec3 color = panoramaPixel(uv).rgb;
+            vec3 color = seamPanoramaPixel(uv).rgb;
             if (projection == 0) {
                 float fog = atmosphereParams.x;
                 if (fog > 0.0) {

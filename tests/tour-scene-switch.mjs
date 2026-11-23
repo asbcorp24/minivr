@@ -32,6 +32,7 @@ const context={
  }}},
  fetchParallaxDepth:async()=>null,
  canUseTiledDepth:settings=>settings.parallaxEnabled===true&&settings.parallaxOcclusionFill===false,
+ seamBlurAmount:value=>Math.max(0,Math.min(100,Number(value)||0)),
  tiledDepthConfig:(_settings,pixels)=>pixels?{pixels,bands:3}:null,
  fetchManualFoliageMask:async()=>null,
  fetchManualWaterMask:async()=>null,
@@ -114,8 +115,8 @@ nextDataset.tiles='/tiles/depth/manifest.json';
 nextDataset.effects=JSON.stringify({parallaxEnabled:true,parallaxOcclusionFill:false});
 const depthPixels=new Uint8ClampedArray(256*128*4);
 context.fetchParallaxDepth=async()=>depthPixels;
-let receivedDepth=null,receivedFoliage=null,disposedTileCount=0;
-context.createTiledPanorama=async options=>{receivedDepth=options.depth;receivedFoliage=options.foliage;return {update(){},dispose(){disposedTileCount++},group:{visible:true}}};
+let receivedDepth=null,receivedFoliage=null,receivedSeamBlur=null,disposedTileCount=0;
+context.createTiledPanorama=async options=>{receivedDepth=options.depth;receivedFoliage=options.foliage;receivedSeamBlur=options.seamBlur;return {update(){},dispose(){disposedTileCount++},group:{visible:true}}};
 context.loadSceneTexture=async()=>{throw Error('Depth tiled scene must not load the original image')};
 await context.switchSceneInPlace('/viewer.php?id=5&tour=7&scene=45');
 assert.equal(receivedDepth.pixels,depthPixels);
@@ -126,10 +127,11 @@ assert.equal(receivedFoliage.enabled,true,'Missing old wind setting retains the 
 // Next scene gets its own manual mask and disposes the previous tiled scene.
 const nextManualMask={width:512,height:256};
 context.fetchManualFoliageMask=async()=>nextManualMask;
-nextDataset.effects=JSON.stringify({parallaxEnabled:true,parallaxOcclusionFill:false,parallaxMicroMotion:true,parallaxMicroMotionSpeed:2});
+nextDataset.effects=JSON.stringify({parallaxEnabled:true,parallaxOcclusionFill:false,parallaxMicroMotion:true,parallaxMicroMotionSpeed:2,seamBlurStrength:64});
 await context.switchSceneInPlace('/viewer.php?id=5&tour=7&scene=47');
 assert.equal(receivedFoliage.manualMask,nextManualMask);
 assert.equal(receivedFoliage.speed,2);
+assert.equal(receivedSeamBlur,64,'Each tour scene gets its own seam blur setting');
 assert.equal(disposedTileCount,1,'Previous tiled scene was disposed exactly once');
 
 // A scene requiring the original occlusion fill must stay on the legacy path.

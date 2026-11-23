@@ -70,6 +70,7 @@ class PanoramaRenderer : GLSurfaceView.Renderer {
     private var hasAtlas = false
     private var depthTexelX = 1f / 256f
     private var depthTexelY = 1f / 128f
+    private var sourceImageWidth = 1
     private var atlasInfo = TileAtlasInfo(0f, 0f, 1f, 1f)
     private val uniformCache = mutableMapOf<String, Int>()
     private var width = 1
@@ -208,6 +209,7 @@ class PanoramaRenderer : GLSurfaceView.Renderer {
     override fun onDrawFrame(gl: GL10?) {
         takeImage()?.let { image ->
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+            sourceImageWidth = image.bitmap.width.coerceAtLeast(1)
             GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, image.bitmap, 0)
             image.bitmap.recycle()
             format = image.format
@@ -268,6 +270,8 @@ class PanoramaRenderer : GLSurfaceView.Renderer {
         GLES20.glUniform4f(location("atlasCoords"), atlasInfo.originU, atlasInfo.originV,
             atlasInfo.scaleU, atlasInfo.scaleV)
         val fx = sceneEffects
+        GLES20.glUniform1f(location("seamBlur"), fx.seamBlur)
+        GLES20.glUniform1f(location("seamTexel"), 0.5f / sourceImageWidth)
         val clock = (SystemClock.uptimeMillis() % 3_600_000L) / 1000f
         GLES20.glUniform1f(location("clockTime"), clock)
         val autoX = if (fx.depthAuto > 0f) kotlin.math.sin(clock * fx.depthAutoSpeed) * fx.depthAuto * .25f else 0f

@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const file=name=>readFileSync(new URL(`../android-native/app/src/main/java/ru/specdpo/minivr/${name}`,import.meta.url),'utf8');
+const effects=file('NativeSceneEffects.kt');
+const renderer=file('PanoramaRenderer.kt');
+const shader=file('NativePanoramaShader.kt');
+assert.match(effects,/val seamBlur: Float = 0f/,'Old scenes preserve unmodified pixels');
+assert.match(effects,/seamBlur = amount\("seamBlurStrength"\)/,'Admin blur setting reaches Android');
+assert.match(renderer,/glUniform1f\(location\("seamBlur"\), fx.seamBlur\)/);
+assert.match(renderer,/glUniform1f\(location\("seamTexel"\), 0\.5f \/ sourceImageWidth\)/);
+assert.equal((shader.match(/uniform float seamBlur;/g)||[]).length,2,'Both GLES paths accept the setting');
+assert.match(shader,/vec4 seamPanoramaPixel\(vec2 uv\)/,'Advanced shader supports depth and tiled atlas compositing');
+assert.match(shader,/vec3 color = seamPanoramaPixel\(uv\)\.rgb/);
+assert.match(shader,/projection != 0 \|\| seamBlur <= 0\.0/,'Non-360 projections do not blur');
+assert.match(shader,/sourceStereo == 1 \? float\(eye\) \* 0\.5/,'Fallback keeps each SBS eye separate');
+console.log('native-seam-blur: both GLES shader paths and settings wiring verified');

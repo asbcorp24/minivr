@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {makeDepthRadiusField,sampleDepthRadius} from '../public/assets/depth-tile-geometry.js';
 import {makeTileFoliageMask} from '../public/assets/tile-foliage-mask.js';
+import {seamBlurAmount,blendSeamTilePixels} from '../public/assets/panorama-seam-blur.js';
 
 const source=readFileSync(new URL('../public/assets/tiled-panorama.js',import.meta.url),'utf8')
  .replace(/^import .*;\s*/gm,'').replace('export async function createTiledPanorama','async function createTiledPanorama');
@@ -56,7 +57,7 @@ const document={createElement(tag){
  });
  return canvas;
 }};
-const context={THREE,sampleDepthRadius,makeTileFoliageMask,document,performance:{now:()=>1000},
+const context={THREE,sampleDepthRadius,makeTileFoliageMask,seamBlurAmount,blendSeamTilePixels,document,performance:{now:()=>1000},
  fetch:async url=>{calls.push(url);return {ok:true,json:async()=>manifest}},
  URL:{createObjectURL:()=> 'blob:cached-tile',revokeObjectURL:url=>revoked.push(url)}
 };
@@ -76,6 +77,23 @@ assert.equal(revoked.length,2,'Blob URLs are released after decode');
 assert.equal(panorama.group.children.length,2);
 panorama.dispose();
 assert.equal(scene.children.length,0);
+
+const blurred=await context.createTiledPanorama({url:'/tiles/seam/manifest.json',scene,camera,renderer:{},manifest,seamBlur:80});
+blurred.update();
+const seamLeft=blurred.group.children[0].material.map.image;
+const seamRight=blurred.group.children[1].material.map.image;
+assert.ok(seamLeft.maskPixels&&seamRight.maskPixels,'Edge tiles are blended after the opposite tile arrives');
+for(let y=0;y<32;y++)for(let channel=0;channel<4;channel++){
+ assert.equal(seamLeft.maskPixels[(y*32)*4+channel],seamRight.maskPixels[(y*32+31)*4+channel],
+  '0° and 360° samples of a tile level must have identical edge colors');
+}
+assert.ok(blurred.group.children[0].material.map.needsUpdate,'GPU texture is refreshed after seamless correction');
+blurred.dispose();
+const singleManifest={projection:'360',tileSize:512,levels:[{level:0,width:512,height:512,cols:1,rows:1}]};
+const single=await context.createTiledPanorama({url:'/tiles/single/manifest.json',scene,camera,renderer:{},manifest:singleManifest,seamBlur:100});
+single.update();
+assert.ok(single.group.children[0].material.map.image.maskPixels,'A panorama with one tile still wraps the seam');
+single.dispose();
 
 loaded.length=0;
 const normal=await context.createTiledPanorama({url:'/tiles/test/manifest.json',scene,camera,renderer:{}});
