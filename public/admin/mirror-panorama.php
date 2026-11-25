@@ -56,6 +56,8 @@ try {
     if(!$im->writeImage($newPath)){ $im->clear();throw new RuntimeException('Не удалось сохранить отражённую панораму.');}
     $im->clear();
     $newUrl='/uploads/'.$newName;
+    // Track newly generated depth files so failed transactions can clean them up.
+    $createdDepth=[];
     try {
         if(!panoramaCreateThumbnails($newUrl)) throw new RuntimeException('Не удалось создать миниатюры отражённого изображения.');
         $tileDir=__DIR__.'/../tiles/'.pathinfo($newName,PATHINFO_FILENAME);
