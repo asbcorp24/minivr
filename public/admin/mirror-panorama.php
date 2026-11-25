@@ -15,7 +15,13 @@ function mirrorPngDataUri(mixed $value): mixed {
     try {$im->readImageBlob($bytes);$im->flopImage();$im->setImageFormat('png');return 'data:image/png;base64,'.base64_encode($im->getImageBlob());}
     finally {$im->clear();}
 }
-function mirrorDepthAsset(mixed $url, int $id, array &$created): mixed {\n    if(!is_string($url)||!preg_match('~^/uploads/depth/p'.preg_quote((string)$id,'~').'-[a-f0-9]{16}\\.png$~D',$url)) return $url;\n    $path=__DIR__.'/..'.$url;if(!is_file($path)||is_link($path)) return $url;\n    $dir=dirname($path);$new='p'.$id.'-'.bin2hex(random_bytes(8)).'.png';$im=new Imagick($path);try{$im->flopImage();$im->setImageFormat('png');if(!$im->writeImage($dir.'/'.$new))throw new RuntimeException('Не удалось отразить карту глубины.');}finally{$im->clear();}\n    $created[]=$dir.'/'.$new;return '/uploads/depth/'.$new;\n}\nfunction mirrorEffectCoordinates(array &$e, int $id, array &$created): void {
+function mirrorDepthAsset(mixed $url, int $id, array &$created): mixed {
+    if(!is_string($url)||!preg_match('~^/uploads/depth/p'.preg_quote((string)$id,'~').'-[a-f0-9]{16}\\.png$~D',$url)) return $url;
+    $path=__DIR__.'/..'.$url;if(!is_file($path)||is_link($path)) return $url;
+    $dir=dirname($path);$new='p'.$id.'-'.bin2hex(random_bytes(8)).'.png';$im=new Imagick($path);try{$im->flopImage();$im->setImageFormat('png');if(!$im->writeImage($dir.'/'.$new))throw new RuntimeException('Не удалось отразить карту глубины.');}finally{$im->clear();}
+    $created[]=$dir.'/'.$new;return '/uploads/depth/'.$new;
+}
+function mirrorEffectCoordinates(array &$e, int $id, array &$created): void {
     foreach (['sunYaw','moonYaw','waterYaw','riverDirection','waterfallDirection'] as $key) if (isset($e[$key])&&is_numeric($e[$key])) $e[$key]=-(float)$e[$key];
     foreach (['waterPolygon','lamps'] as $key) if (isset($e[$key])&&is_array($e[$key])) foreach($e[$key] as &$p) if(is_array($p)&&isset($p[0])&&is_numeric($p[0])) $p[0]=-(float)$p[0];
     unset($p);
@@ -23,7 +29,8 @@ function mirrorDepthAsset(mixed $url, int $id, array &$created): mixed {\n    if
     unset($points,$p);
     if(isset($e['flowArrows'])&&is_array($e['flowArrows'])) foreach($e['flowArrows'] as &$arrows) if(is_array($arrows)) foreach($arrows as &$a) if(is_array($a)&&count($a)>=4){$a[0]=-(float)$a[0];$a[2]=-(float)$a[2];}
     unset($arrows,$a);
-    foreach(['parallaxWaterMask','parallaxFoliageMask'] as $key) if(isset($e[$key])) $e[$key]=mirrorPngDataUri($e[$key]);\n    foreach(['parallaxDepth','parallaxDepthOriginal'] as $key) if(isset($e[$key])) $e[$key]=mirrorDepthAsset($e[$key],$id,$created);
+    foreach(['parallaxWaterMask','parallaxFoliageMask'] as $key) if(isset($e[$key])) $e[$key]=mirrorPngDataUri($e[$key]);
+    foreach(['parallaxDepth','parallaxDepthOriginal'] as $key) if(isset($e[$key])) $e[$key]=mirrorDepthAsset($e[$key],$id,$created);
     $e['mirrorHorizontal']=false;
 }
 try {
@@ -38,7 +45,16 @@ try {
     $url=(string)$p['image'];$name=basename($url);
     if(!preg_match('~^[a-f0-9]{20}\.(?:jpg|jpeg|png|webp)$~D',$name))throw new RuntimeException('Файл не является управляемой загрузкой MiniVR.');
     $source=UPLOAD_DIR.'/'.$name;if(!is_file($source)||is_link($source))throw new RuntimeException('Исходный файл не найден.');
-    $im=new Imagick($source);$im->setIteratorIndex(0);\n    if(($p['stereo']??'mono')==='sbs') {\n        $w=$im->getImageWidth();$h=$im->getImageHeight();if($w%2!==0)throw new RuntimeException('Ширина SBS-изображения должна делиться на два.');\n        $left=clone $im;$right=clone $im;$left->cropImage((int)($w/2),$h,0,0);$right->cropImage((int)($w/2),$h,(int)($w/2),0);$left->flopImage();$right->flopImage();\n        $combined=new Imagick();$combined->newImage($w,$h,new ImagickPixel('black'));$combined->setImageFormat('webp');$combined->compositeImage($left,Imagick::COMPOSITE_OVER,0,0);$combined->compositeImage($right,Imagick::COMPOSITE_OVER,(int)($w/2),0);$im->clear();$left->clear();$right->clear();$im=$combined;\n    } else { $im->flopImage(); }\n    $newName=bin2hex(random_bytes(10)).'.webp';$newPath=UPLOAD_DIR.'/'.$newName;\n    $im->setImageFormat('webp');$im->setImageCompressionQuality(92);\n    if(!$im->writeImage($newPath)){ $im->clear();throw new RuntimeException('Не удалось сохранить отражённую панораму.');}\n    $im->clear();
+    $im=new Imagick($source);$im->setIteratorIndex(0);
+    if(($p['stereo']??'mono')==='sbs') {
+        $w=$im->getImageWidth();$h=$im->getImageHeight();if($w%2!==0)throw new RuntimeException('Ширина SBS-изображения должна делиться на два.');
+        $left=clone $im;$right=clone $im;$left->cropImage((int)($w/2),$h,0,0);$right->cropImage((int)($w/2),$h,(int)($w/2),0);$left->flopImage();$right->flopImage();
+        $combined=new Imagick();$combined->newImage($w,$h,new ImagickPixel('black'));$combined->setImageFormat('webp');$combined->compositeImage($left,Imagick::COMPOSITE_OVER,0,0);$combined->compositeImage($right,Imagick::COMPOSITE_OVER,(int)($w/2),0);$im->clear();$left->clear();$right->clear();$im=$combined;
+    } else { $im->flopImage(); }
+    $newName=bin2hex(random_bytes(10)).'.webp';$newPath=UPLOAD_DIR.'/'.$newName;
+    $im->setImageFormat('webp');$im->setImageCompressionQuality(92);
+    if(!$im->writeImage($newPath)){ $im->clear();throw new RuntimeException('Не удалось сохранить отражённую панораму.');}
+    $im->clear();
     $newUrl='/uploads/'.$newName;
     try {
         if(!panoramaCreateThumbnails($newUrl)) throw new RuntimeException('Не удалось создать миниатюры отражённого изображения.');
