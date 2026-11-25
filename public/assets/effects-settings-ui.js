@@ -22,6 +22,7 @@ function refresh(){
  }
  const particles=select('particles')!=='none';
  for(const n of ['density','speed','wind','opacity'])show(n,particles);
+ for(const n of ['fireworksKind','fireworksPalette','fireworksSize','fireworksAltitude','fireworksYaw','fireworksSpread','fireworksTrail','fireworksConcurrent','fireworksInterval'])show(n,select('particles')==='fireworks');
  show('moonPath',checked('moon'));
  const waterActive=checked('moon')&&checked('moonPath'),moonActive=checked('moon'),sunActive=checked('sunRays');
  const tool=mode?.value||'water';
