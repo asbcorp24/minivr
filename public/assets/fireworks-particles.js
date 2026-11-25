@@ -9,7 +9,7 @@ export function createFireworks(scene,settings){
  const speed=clamp(number(settings.speed,1),.1,4);
  const opacity=clamp(number(settings.opacity,80)/100,.1,1);
  const size=clamp(number(settings.fireworksSize,100)/100,.3,2);
- const altitude=clamp(number(settings.fireworksAltitude,22),8,55)*Math.PI/180;
+ const height=clamp(number(settings.fireworksHeight,2.5),-10,30);
  const launchDistance=clamp(number(settings.fireworksDistance,45),5,250);
  const yaw=number(settings.fireworksYaw,0)*Math.PI/180;
  const spread=clamp(number(settings.fireworksSpread,180),10,360)*Math.PI/180;
