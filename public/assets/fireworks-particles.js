@@ -76,5 +76,5 @@ export function createFireworks(scene,settings){
   for(let k=0;k<=tails;k++)write(rocketBase+k,launchOrigin,velocity,new THREE.Color('#fff1ba'),clock,rise,k*.045,0,.01,0,0);
   for(const attr of Object.values(geo.attributes))attr.needsUpdate=true;
  }
- return {update(time,camera){if(camera){camera.updateMatrixWorld();points.position.copy(camera.getWorldPosition(new THREE.Vector3()));points.quaternion.copy(camera.getWorldQuaternion(new THREE.Quaternion()));}if(last===null)last=time;clock+=clamp((time-last)/1000,0,.1)*speed;last=time;mat.uniforms.uTime.value=clock;if(clock>=next){launch();next=clock+interval*random(.65,1.35);}},dispose(){scene.remove(points);geo.dispose();mat.dispose();}};
+ return {update(time,camera){if(camera){camera.updateMatrixWorld();camera.getWorldPosition(points.position);camera.getWorldQuaternion(points.quaternion);}if(last===null)last=time;clock+=clamp((time-last)/1000,0,.1)*speed;last=time;mat.uniforms.uTime.value=clock;if(clock>=next){launch();next=clock+interval*random(.65,1.35);}},dispose(){scene.remove(points);geo.dispose();mat.dispose();}};
 }
