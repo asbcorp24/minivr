@@ -38,11 +38,7 @@ try {
     $url=(string)$p['image'];$name=basename($url);
     if(!preg_match('~^[a-f0-9]{20}\.(?:jpg|jpeg|png|webp)$~D',$name))throw new RuntimeException('Файл не является управляемой загрузкой MiniVR.');
     $source=UPLOAD_DIR.'/'.$name;if(!is_file($source)||is_link($source))throw new RuntimeException('Исходный файл не найден.');
-    $im=new Imagick($source);$im->setIteratorIndex(0);$im->flopImage();
-    $newName=bin2hex(random_bytes(10)).'.webp';$newPath=UPLOAD_DIR.'/'.$newName;
-    $im->setImageFormat('webp');$im->setImageCompressionQuality(92);
-    if(!$im->writeImage($newPath)){ $im->clear();throw new RuntimeException('Не удалось сохранить отражённую панораму.');}
-    $im->clear();
+    $im=new Imagick($source);$im->setIteratorIndex(0);\n    if(($p['stereo']??'mono')==='sbs') {\n        $w=$im->getImageWidth();$h=$im->getImageHeight();if($w%2!==0)throw new RuntimeException('Ширина SBS-изображения должна делиться на два.');\n        $left=clone $im;$right=clone $im;$left->cropImage((int)($w/2),$h,0,0);$right->cropImage((int)($w/2),$h,(int)($w/2),0);$left->flopImage();$right->flopImage();\n        $combined=new Imagick();$combined->newImage($w,$h,new ImagickPixel('black'));$combined->setImageFormat('webp');$combined->compositeImage($left,Imagick::COMPOSITE_OVER,0,0);$combined->compositeImage($right,Imagick::COMPOSITE_OVER,(int)($w/2),0);$im->clear();$left->clear();$right->clear();$im=$combined;\n    } else { $im->flopImage(); }\n    $newName=bin2hex(random_bytes(10)).'.webp';$newPath=UPLOAD_DIR.'/'.$newName;\n    $im->setImageFormat('webp');$im->setImageCompressionQuality(92);\n    if(!$im->writeImage($newPath)){ $im->clear();throw new RuntimeException('Не удалось сохранить отражённую панораму.');}\n    $im->clear();
     $newUrl='/uploads/'.$newName;
     try {
         if(!panoramaCreateThumbnails($newUrl)) throw new RuntimeException('Не удалось создать миниатюры отражённого изображения.');
