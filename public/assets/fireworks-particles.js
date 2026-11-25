@@ -9,7 +9,7 @@ export function createFireworks(scene,settings){
  const speed=clamp(number(settings.speed,1),.1,4);
  const opacity=clamp(number(settings.opacity,80)/100,.1,1);
  const size=clamp(number(settings.fireworksSize,100)/100,.3,2);
- const altitude=clamp(number(settings.fireworksAltitude,35),15,75)*Math.PI/180;
+ const altitude=clamp(number(settings.fireworksAltitude,22),8,55)*Math.PI/180;
  const yaw=number(settings.fireworksYaw,0)*Math.PI/180;
  const spread=clamp(number(settings.fireworksSpread,180),10,360)*Math.PI/180;
  const trail=clamp(number(settings.fireworksTrail,65)/100,0,1);
@@ -32,7 +32,7 @@ export function createFireworks(scene,settings){
  vec4 mv=modelViewMatrix*vec4(p,1.0);gl_Position=projectionMatrix*mv;
  float fade=pow(max(0.0,1.0-age/max(life,.01)),.65);
  float blink=mix(1.0,.25+.75*pow(abs(sin(age*28.0+aStyle.w)),3.0),aStyle.z);
- vAlpha=particleVisible*fade*blink;vColor=aColor;gl_PointSize=clamp(uRatio*(aTiming.z>0.0?65.0:105.0)/max(1.0,-mv.z),1.0,12.0);
+ vAlpha=particleVisible*fade*blink;vColor=aColor;gl_PointSize=clamp(uRatio*(aTiming.z>0.0?260.0:560.0)/max(1.0,-mv.z),2.0,18.0);
  if(particleVisible<.5||mv.z>=0.0)gl_Position=vec4(2.0,2.0,2.0,1.0);}`,
  fragmentShader:`varying vec3 vColor;varying float vAlpha;uniform float uOpacity;void main(){float r=length(gl_PointCoord*2.0-1.0);float a=(1.0-smoothstep(.05,1.0,r))*.65+(1.0-smoothstep(.0,.3,r))*.65;gl_FragColor=vec4(vColor,vAlpha*a*uOpacity);}`,
  transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending});
@@ -76,5 +76,5 @@ export function createFireworks(scene,settings){
   for(let k=0;k<=tails;k++)write(rocketBase+k,launchOrigin,velocity,new THREE.Color('#fff1ba'),clock,rise,k*.045,0,.01,0,0);
   for(const attr of Object.values(geo.attributes))attr.needsUpdate=true;
  }
- return {update(time){if(last===null)last=time;clock+=clamp((time-last)/1000,0,.1)*speed;last=time;mat.uniforms.uTime.value=clock;if(clock>=next){launch();next=clock+interval*random(.65,1.35);}},dispose(){scene.remove(points);geo.dispose();mat.dispose();}};
+ return {update(time,camera){if(camera){camera.updateMatrixWorld();points.position.copy(camera.getWorldPosition(new THREE.Vector3()));points.quaternion.copy(camera.getWorldQuaternion(new THREE.Quaternion()));}if(last===null)last=time;clock+=clamp((time-last)/1000,0,.1)*speed;last=time;mat.uniforms.uTime.value=clock;if(clock>=next){launch();next=clock+interval*random(.65,1.35);}},dispose(){scene.remove(points);geo.dispose();mat.dispose();}};
 }
