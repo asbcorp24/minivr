@@ -15,7 +15,7 @@ function mirrorPngDataUri(mixed $value): mixed {
     try {$im->readImageBlob($bytes);$im->flopImage();$im->setImageFormat('png');return 'data:image/png;base64,'.base64_encode($im->getImageBlob());}
     finally {$im->clear();}
 }
-function mirrorEffectCoordinates(array &$e): void {
+function mirrorDepthAsset(mixed $url, int $id, array &$created): mixed {\n    if(!is_string($url)||!preg_match('~^/uploads/depth/p'.preg_quote((string)$id,'~').'-[a-f0-9]{16}\\.png$~D',$url)) return $url;\n    $path=__DIR__.'/..'.$url;if(!is_file($path)||is_link($path)) return $url;\n    $dir=dirname($path);$new='p'.$id.'-'.bin2hex(random_bytes(8)).'.png';$im=new Imagick($path);try{$im->flopImage();$im->setImageFormat('png');if(!$im->writeImage($dir.'/'.$new))throw new RuntimeException('Не удалось отразить карту глубины.');}finally{$im->clear();}\n    $created[]=$dir.'/'.$new;return '/uploads/depth/'.$new;\n}\nfunction mirrorEffectCoordinates(array &$e, int $id, array &$created): void {
     foreach (['sunYaw','moonYaw','waterYaw','riverDirection','waterfallDirection'] as $key) if (isset($e[$key])&&is_numeric($e[$key])) $e[$key]=-(float)$e[$key];
     foreach (['waterPolygon','lamps'] as $key) if (isset($e[$key])&&is_array($e[$key])) foreach($e[$key] as &$p) if(is_array($p)&&isset($p[0])&&is_numeric($p[0])) $p[0]=-(float)$p[0];
     unset($p);
@@ -23,7 +23,7 @@ function mirrorEffectCoordinates(array &$e): void {
     unset($points,$p);
     if(isset($e['flowArrows'])&&is_array($e['flowArrows'])) foreach($e['flowArrows'] as &$arrows) if(is_array($arrows)) foreach($arrows as &$a) if(is_array($a)&&count($a)>=4){$a[0]=-(float)$a[0];$a[2]=-(float)$a[2];}
     unset($arrows,$a);
-    foreach(['parallaxWaterMask','parallaxFoliageMask'] as $key) if(isset($e[$key])) $e[$key]=mirrorPngDataUri($e[$key]);
+    foreach(['parallaxWaterMask','parallaxFoliageMask'] as $key) if(isset($e[$key])) $e[$key]=mirrorPngDataUri($e[$key]);\n    foreach(['parallaxDepth','parallaxDepthOriginal'] as $key) if(isset($e[$key])) $e[$key]=mirrorDepthAsset($e[$key],$id,$created);
     $e['mirrorHorizontal']=false;
 }
 try {
@@ -51,7 +51,7 @@ try {
             // Tiling is optional: the full-resolution image remains usable.
         }
         $effects=json_decode((string)($p['effects']??'{}'),true);if(!is_array($effects))$effects=[];
-        mirrorEffectCoordinates($effects);
+        mirrorEffectCoordinates($effects,$id,$createdDepth);
         $db->beginTransaction();
         $up=$db->prepare('UPDATE panoramas SET image=?,preview=?,effects=? WHERE id=?');
         $preview=panoramaThumbnailUrl($newUrl,'card');
@@ -72,7 +72,7 @@ try {
         $db->commit();
     } catch(Throwable $e) {
         if($db->inTransaction())$db->rollBack();
-        @unlink($newPath);panoramaRemoveThumbnails($newUrl);
+        @unlink($newPath);foreach($createdDepth as $depthFile)@unlink($depthFile);panoramaRemoveThumbnails($newUrl);
         panoramaRemoveTileTree(__DIR__.'/../tiles/'.pathinfo($newName,PATHINFO_FILENAME));
         throw $e;
     }
