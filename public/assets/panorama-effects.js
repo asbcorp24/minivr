@@ -1,5 +1,7 @@
 import * as THREE from '/assets/vendor/three/three.module.js';
+import {createFireworks} from './fireworks-particles.js';
 export function createPanoramaEffects(scene,settings){
+ if(settings?.particles==='fireworks')return createFireworks(scene,settings);
  let type=['rain','snow','leaves','insects','dust','birds','bubbles'].includes(settings?.particles)?settings.particles:'none';
  const density=Math.max(0,Math.min(100,Number(settings?.density)||0));
  const speed=Math.max(.1,Math.min(4,Number(settings?.speed)||1));
