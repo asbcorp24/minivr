@@ -18,7 +18,7 @@ export function createFireworks(scene,settings){
  const kind=fireworksKinds.includes(settings.fireworksKind)?settings.fireworksKind:'mixed';
  const palettes={mixed:['#ff435d','#ffcb55','#55aaff','#72ff9c','#e789ff','#fff2c0'],gold:['#ffb83e','#fff0a3','#ffda70'],cool:['#63baff','#c38cff','#85ffdf'],warm:['#ff4555','#ff923e','#ffdc70']};
  const palette=palettes[settings.fireworksPalette]||palettes.mixed;
- const sparks=mobile?80:150, tails=mobile?3:5, slots=maxBursts*2, perSlot=sparks*(tails+1), count=slots*perSlot;
+ const sparks=mobile?80:150, tails=mobile?3:5, slots=maxBursts*2, perSlot=(sparks+1)*(tails+1), count=slots*perSlot;
  const arrays={position:new Float32Array(count*3),aVelocity:new Float32Array(count*3),aColor:new Float32Array(count*3),aTiming:new Float32Array(count*4),aStyle:new Float32Array(count*4)};
  const geo=new THREE.BufferGeometry();
  for(const [key,array] of Object.entries(arrays)){const attr=new THREE.BufferAttribute(array,key==='aTiming'||key==='aStyle'?4:3);attr.setUsage(THREE.DynamicDrawUsage);geo.setAttribute(key,attr);}
@@ -32,7 +32,7 @@ export function createFireworks(scene,settings){
  vec4 mv=modelViewMatrix*vec4(p,1.0);gl_Position=projectionMatrix*mv;
  float fade=pow(max(0.0,1.0-age/max(life,.01)),.65);
  float blink=mix(1.0,.25+.75*pow(abs(sin(age*28.0+aStyle.w)),3.0),aStyle.z);
- vAlpha=active*fade*blink;vColor=aColor;gl_PointSize=clamp(aStyle.w*0.0+uRatio*(aTiming.z>0.0?65.0:105.0)/max(1.0,-mv.z),1.0,12.0);
+ vAlpha=active*fade*blink;vColor=aColor;gl_PointSize=clamp(uRatio*(aTiming.z>0.0?65.0:105.0)/max(1.0,-mv.z),1.0,12.0);
  if(active<.5||mv.z>=0.0)gl_Position=vec4(2.0,2.0,2.0,1.0);}`,
  fragmentShader:`varying vec3 vColor;varying float vAlpha;uniform float uOpacity;void main(){float r=length(gl_PointCoord*2.0-1.0);float a=(1.0-smoothstep(.05,1.0,r))*.65+(1.0-smoothstep(.0,.3,r))*.65;gl_FragColor=vec4(vColor,vAlpha*a*uOpacity);}`,
  transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending});
@@ -40,6 +40,7 @@ export function createFireworks(scene,settings){
  const expiry=new Float64Array(slots);let last=null,clock=0,next=0,previous=-1;
  const random=(a,b)=>a+Math.random()*(b-a);
  function launch(){
+  if(expiry.filter(t=>t>clock).length>=maxBursts)return;
   const slot=expiry.findIndex(t=>t<=clock);if(slot<0)return;
   let index=fireworksKinds.indexOf(kind);if(index<0){index=(previous+1+Math.floor(Math.random()*(fireworksKinds.length-1)))%fireworksKinds.length;previous=index;}
   const style=fireworksKinds[index],angle=yaw+random(-spread/2,spread/2),elev=clamp(altitude+random(-.12,.12),.15,1.4),distance=random(65,85);
@@ -70,7 +71,7 @@ export function createFireworks(scene,settings){
    for(let k=0;k<=tails;k++){if(k>0&&k/tails>trail)continue;write(base+j*(tails+1)+k,center,vel,col,clock+rise+delay,duration, k*.055,gravity,drag,blink,random(0,6.28));}
   }
   // A separate rising rocket and its luminous trail, ending at the burst.
-  const rocketBase=base+(sparks-1)*(tails+1);
+  const rocketBase=base+sparks*(tails+1);
   const launchOrigin=[center[0],-3,center[2]],velocity=[0,(center[1]+3)/rise,0];
   for(let k=0;k<=tails;k++)write(rocketBase+k,launchOrigin,velocity,new THREE.Color('#fff1ba'),clock,rise,k*.045,0,.01,0,0);
   for(const attr of Object.values(geo.attributes))attr.needsUpdate=true;
