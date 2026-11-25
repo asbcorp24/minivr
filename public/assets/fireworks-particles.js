@@ -26,14 +26,14 @@ export function createFireworks(scene,settings){
  uniforms:{uTime:{value:0},uOpacity:{value:opacity},uRatio:{value:Math.min(devicePixelRatio||1,2)},uWind:{value:clamp(number(settings.wind,0),-8,8)*.15}},
  vertexShader:`attribute vec3 aVelocity;attribute vec3 aColor;attribute vec4 aTiming;attribute vec4 aStyle;
  uniform float uTime,uRatio,uWind;varying vec3 vColor;varying float vAlpha;
- void main(){float t=uTime-aTiming.x-aTiming.z;float life=aTiming.y;float active=step(0.0,t)*(1.0-step(life,t))*aTiming.w;
+ void main(){float t=uTime-aTiming.x-aTiming.z;float life=aTiming.y;float particleVisible=step(0.0,t)*(1.0-step(life,t))*aTiming.w;
  float age=max(t,0.0);float drag=max(.01,aStyle.y);float travel=(1.0-exp(-drag*age))/drag;
  vec3 p=position+aVelocity*travel+vec3(uWind*age*age,-aStyle.x*age*age*.5,0.0);
  vec4 mv=modelViewMatrix*vec4(p,1.0);gl_Position=projectionMatrix*mv;
  float fade=pow(max(0.0,1.0-age/max(life,.01)),.65);
  float blink=mix(1.0,.25+.75*pow(abs(sin(age*28.0+aStyle.w)),3.0),aStyle.z);
- vAlpha=active*fade*blink;vColor=aColor;gl_PointSize=clamp(uRatio*(aTiming.z>0.0?65.0:105.0)/max(1.0,-mv.z),1.0,12.0);
- if(active<.5||mv.z>=0.0)gl_Position=vec4(2.0,2.0,2.0,1.0);}`,
+ vAlpha=particleVisible*fade*blink;vColor=aColor;gl_PointSize=clamp(uRatio*(aTiming.z>0.0?65.0:105.0)/max(1.0,-mv.z),1.0,12.0);
+ if(particleVisible<.5||mv.z>=0.0)gl_Position=vec4(2.0,2.0,2.0,1.0);}`,
  fragmentShader:`varying vec3 vColor;varying float vAlpha;uniform float uOpacity;void main(){float r=length(gl_PointCoord*2.0-1.0);float a=(1.0-smoothstep(.05,1.0,r))*.65+(1.0-smoothstep(.0,.3,r))*.65;gl_FragColor=vec4(vColor,vAlpha*a*uOpacity);}`,
  transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending});
  const points=new THREE.Points(geo,mat);points.frustumCulled=false;points.layers.enableAll();points.renderOrder=31;scene.add(points);
