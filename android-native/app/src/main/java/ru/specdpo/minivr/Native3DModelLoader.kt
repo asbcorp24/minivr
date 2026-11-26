@@ -9,12 +9,14 @@ data class NativeMesh(
     val positions: FloatArray, val normals: FloatArray, val indices: IntArray,
     val baseColor: FloatArray = floatArrayOf(.78f,.84f,.92f,1f),
     val metallic: Float = 0f, val roughness: Float = .55f
-)
+) {
+    val vertexCount: Int get() = positions.size / 3
+}
 
 /** Minimal native decoder for binary STL and GLB 2.0 triangle meshes. */
 object Native3DModelLoader {
     fun load(bytes: ByteArray, name: String): NativeMesh =
-        when(name.substringAfterLast('.', "").lowercase()) {
+        when(name.substringAfterLast('.').lowercase()) {
             "stl" -> loadStl(bytes)
             "glb" -> loadGlb(bytes)
             else -> error("Поддерживаются GLB и STL")
