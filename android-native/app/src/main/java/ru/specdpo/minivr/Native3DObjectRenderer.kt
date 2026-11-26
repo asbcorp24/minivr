@@ -12,7 +12,7 @@ class Native3DObjectRenderer {
     data class Model(val mesh:NativeMesh,val settings:org.json.JSONObject)
     @Volatile private var models:List<Model> = emptyList()
     fun setModels(value:List<Model>) { models=value; if(value.isEmpty())mesh=null }
-    @Volatile var mesh: NativeMesh? = null
+    @Volatile private var mesh: NativeMesh? = null
     @Volatile var wireframe = false
     @Volatile var bloom = false
     @Volatile var bloomStrength = 1.2f
