@@ -690,6 +690,8 @@ class MainActivity : Activity(), SensorEventListener {
     }
     override fun onResume() {
         super.onResume()
+        music.resume()
+        updateMusicButton()
         surface.onResume()
         tileStreamer?.setPaused(false)
         if (gyro) setGyro(true)
