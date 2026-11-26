@@ -30,7 +30,9 @@ window.addEventListener('minivr:scene-music',e=>{
  const trackId=Number(e.detail?.trackId||0);
  const i=tracks.findIndex(t=>Number(t.id)===trackId);
  if(i>=0){if(i!==index)load(i,true,0);else{audio.currentTime=0;audio.play().catch(()=>{})}}
- else{audio.pause();wantsPlay=false;toggle.textContent='▶'}
+ // A scene without its own soundtrack inherits the current global playlist.
+ // Only an explicit positive track id may switch the background music.
+ else if(trackId>0){audio.pause();wantsPlay=false;toggle.textContent='▶'}
 });
 if(state.playing){const retry=()=>{if(wantsPlay&&audio.paused)audio.play().catch(()=>{});document.removeEventListener('pointerdown',retry)};document.addEventListener('pointerdown',retry,{once:true})}
 })();
