@@ -1,6 +1,6 @@
 import * as THREE from '/assets/vendor/three/three.module.js';
 
-function parseSTL(buffer){
+export function parseSTL(buffer){
  const view=new DataView(buffer),isBinary=buffer.byteLength>=84&&84+view.getUint32(80,true)*50===buffer.byteLength;
  const positions=[];
  if(isBinary){const n=view.getUint32(80,true);let o=84;for(let i=0;i<n;i++){o+=12;for(let j=0;j<3;j++){positions.push(view.getFloat32(o,true),view.getFloat32(o+4,true),view.getFloat32(o+8,true));o+=12;}o+=2;}}
@@ -8,7 +8,7 @@ function parseSTL(buffer){
  if(!positions.length||positions.length%9)throw new Error('Некорректный STL');
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.computeVertexNormals();g.computeBoundingSphere();return g;
 }
-function parseGLB(buffer){
+export function parseGLB(buffer){
  const v=new DataView(buffer);if(v.getUint32(0,true)!==0x46546c67)throw new Error('Не GLB');let offset=12,json=null,bin=null;
  while(offset+8<=buffer.byteLength){const len=v.getUint32(offset,true),type=v.getUint32(offset+4,true);offset+=8;const chunk=buffer.slice(offset,offset+len);if(type===0x4e4f534a)json=JSON.parse(new TextDecoder().decode(chunk).replace(/\0+$/,' ').trim());else if(type===0x004e4942)bin=chunk;offset+=len;}
  if(!json||!bin)throw new Error('GLB без JSON/BIN');
@@ -19,7 +19,7 @@ function parseGLB(buffer){
  for(const node of json.nodes||[]){if(node.mesh===undefined)continue;const meshDef=json.meshes[node.mesh];for(const prim of meshDef.primitives||[]){if(prim.attributes?.POSITION===undefined)continue;const g=new THREE.BufferGeometry();const pos=accessor(prim.attributes.POSITION);g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(pos),3));if(prim.attributes.NORMAL!==undefined)g.setAttribute('normal',new THREE.BufferAttribute(new Float32Array(accessor(prim.attributes.NORMAL)),3));else g.computeVertexNormals();if(prim.attributes.TEXCOORD_0!==undefined)g.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(accessor(prim.attributes.TEXCOORD_0)),2));if(prim.indices!==undefined){const a=json.accessors[prim.indices],idx=accessor(prim.indices);g.setIndex(new THREE.BufferAttribute(new (component[a.componentType])(idx),1));}g.computeBoundingSphere();const mat=materials[prim.material]||new THREE.MeshStandardMaterial({color:0xb8c6df,metalness:.1,roughness:.7,side:THREE.DoubleSide});const mesh=new THREE.Mesh(g,mat);if(node.translation)mesh.position.fromArray(node.translation);if(node.rotation)mesh.quaternion.fromArray(node.rotation);if(node.scale)mesh.scale.fromArray(node.scale);root.add(mesh);}}
  if(!root.children.length)throw new Error('В GLB не найдены поддерживаемые mesh-примитивы');return root;
 }
-function styleModel(root,style){
+export function styleModel(root,style){
  root.traverse(o=>{if(!o.isMesh)return;const old=o.material;const color=old.color?.clone()||new THREE.Color(0x9bdcff);let m;
  if(style==='wire')m=new THREE.MeshBasicMaterial({color,wireframe:true,transparent:true,opacity:.9});
  else if(style==='hologram')m=new THREE.MeshPhongMaterial({color:0x54dfff,emissive:0x087ba0,emissiveIntensity:1.2,transparent:true,opacity:.72,wireframe:false,side:THREE.DoubleSide});
