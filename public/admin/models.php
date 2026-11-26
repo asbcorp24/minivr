@@ -13,6 +13,10 @@ $files=[
  'quantize_config.json'=>['url'=>"https://huggingface.co/Xenova/slimsam-77-uniform/resolve/$revision/quantize_config.json",'min'=>100,'max'=>100000],
  'onnx/vision_encoder_quantized.onnx'=>['url'=>"https://huggingface.co/Xenova/slimsam-77-uniform/resolve/$revision/onnx/vision_encoder_quantized.onnx",'min'=>1000000,'max'=>30000000],
  'onnx/prompt_encoder_mask_decoder_quantized.onnx'=>['url'=>"https://huggingface.co/Xenova/slimsam-77-uniform/resolve/$revision/onnx/prompt_encoder_mask_decoder_quantized.onnx",'min'=>1000000,'max'=>20000000],
+ // Transformers.js 3.7.6 resolves the q8 ONNX variant using the canonical
+ // component filenames. Store the quantized payloads under those exact names.
+ 'onnx/vision_encoder.onnx'=>['url'=>"https://huggingface.co/Xenova/slimsam-77-uniform/resolve/$revision/onnx/vision_encoder_quantized.onnx",'min'=>1000000,'max'=>30000000],
+ 'onnx/prompt_encoder_mask_decoder.onnx'=>['url'=>"https://huggingface.co/Xenova/slimsam-77-uniform/resolve/$revision/onnx/prompt_encoder_mask_decoder_quantized.onnx",'min'=>1000000,'max'=>20000000],
 ];
 function modelDownload(string $url,string $target,int $min,int $max):void {
  $dir=dirname($target);if(!is_dir($dir)&&!mkdir($dir,0755,true))throw new RuntimeException('Не удалось создать каталог модели');
