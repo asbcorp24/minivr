@@ -335,7 +335,7 @@ if (panel) {
         env.allowLocalModels = true;
         env.allowRemoteModels = false;
         env.useBrowserCache = true;
-        const loadOptions = { device: 'webgpu' };
+        const loadOptions = { device: 'webgpu', dtype: 'q8' };
         try {
           const [model, processor] = await Promise.all([
             SamModel.from_pretrained('slimsam-77-uniform', loadOptions),
@@ -346,7 +346,7 @@ if (panel) {
           console.warn('MiniVR SAM WebGPU unavailable; fallback to WASM', gpuError);
           aiStatus.textContent = 'WebGPU недоступен — загружаю SlimSAM через CPU/WASM…';
           const [model, processor] = await Promise.all([
-            SamModel.from_pretrained('slimsam-77-uniform', { device: 'wasm' }),
+            SamModel.from_pretrained('slimsam-77-uniform', { device: 'wasm', dtype: 'q8' }),
             AutoProcessor.from_pretrained('slimsam-77-uniform')
           ]);
           const { RawImage } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm');
