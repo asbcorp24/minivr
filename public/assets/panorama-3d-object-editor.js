@@ -30,7 +30,7 @@ document.querySelectorAll('.object-stage').forEach(async stage=>{
  try{
   const response=await fetch(stage.dataset.modelUrl,{credentials:'same-origin'});if(!response.ok)throw new Error('HTTP '+response.status);
   const buffer=await response.arrayBuffer();model=(stage.dataset.modelFormat||'glb')==='stl'?new THREE.Mesh(parseSTL(buffer),new THREE.MeshStandardMaterial({color:0x9bc8df,metalness:.25,roughness:.5})):parseGLB(buffer);
-  styleModel(model,stage.dataset.modelStyle||'original',fields.display?.value||stage.dataset.modelDisplay||'solid');const bounds=new THREE.Box3().setFromObject(model);const size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());boxSize=Math.max(size.x,size.y,size.z)||1;model.position.sub(center);group.add(model);
+  styleModel(model,fields.style?.value||stage.dataset.modelStyle||'original',fields.display?.value||stage.dataset.modelDisplay||'solid',fields.bloom?.checked?(Number(fields.bloomStrength?.value)||1.2):0);const bounds=new THREE.Box3().setFromObject(model);const size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());boxSize=Math.max(size.x,size.y,size.z)||1;model.position.sub(center);group.add(model);
   const wire=new THREE.Box3Helper(new THREE.Box3(new THREE.Vector3(-boxSize/2,-boxSize/2,-boxSize/2),new THREE.Vector3(boxSize/2,boxSize/2,boxSize/2)),0x4ecdf2);wire.visible=false;group.add(wire);
   apply();sync();if(status)status.textContent='Модель загружена. Голубая точка — камера; сетка — ориентир сцены.';
  }catch(e){if(status)status.textContent='Не удалось показать модель: '+e.message;console.warn('3D object editor preview',e);}
@@ -38,8 +38,8 @@ document.querySelectorAll('.object-stage').forEach(async stage=>{
  raf=requestAnimationFrame(render);
  for(const [k,el] of Object.entries(controls)){el.addEventListener('input',()=>{write(k,Number(el.value));apply();});}
  fields.display?.addEventListener('change',()=>{if(model){styleModel(model,fields.style?.value||stage.dataset.modelStyle||'original',fields.display.value);}});
- fields.style?.addEventListener('change',()=>{if(model){styleModel(model,fields.style.value,fields.display?.value||'solid');}});
- fields.bloomStrength?.addEventListener('input',()=>{});
+ fields.style?.addEventListener('change',()=>{if(model){styleModel(model,fields.style.value,fields.display?.value||'solid',fields.bloom?.checked?(Number(fields.bloomStrength?.value)||1.2):0);}});
+ fields.bloomStrength?.addEventListener('input',()=>{if(model)styleModel(model,fields.style?.value||'original',fields.display?.value||'solid',fields.bloom?.checked?(Number(fields.bloomStrength.value)||1.2):0);});fields.bloom?.addEventListener('change',()=>{if(model)styleModel(model,fields.style?.value||'original',fields.display?.value||'solid',fields.bloom.checked?(Number(fields.bloomStrength?.value)||1.2):0);});
 
  for(const k of ['x','y','distance','scale','rotX','rotY','rotZ'])fields[k]?.addEventListener('input',()=>{sync();apply();});
  const point=e=>{const rect=canvas.getBoundingClientRect();return {x:e.clientX-rect.left,y:e.clientY-rect.top,rect};};
