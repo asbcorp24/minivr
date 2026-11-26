@@ -20,6 +20,8 @@ class Native3DObjectRenderer {
     @Volatile var yaw = 0f
     @Volatile var pitch = 0f
     @Volatile var scale = 1f
+    @Volatile var offsetX = 0f
+    @Volatile var offsetY = 0f
     private var program=0
     private var vertexBuffer:FloatBuffer?=null
     private var normalBuffer:FloatBuffer?=null
@@ -77,10 +79,15 @@ class Native3DObjectRenderer {
         loaded=m
     }
 
-    fun draw(width:Int,height:Int,viewYaw:Float,viewPitch:Float) {
+    fun draw(width:Int,height:Int,viewYaw:Float,viewPitch:Float,stereo:Boolean=false) {
         val active=models
-        if(active.isNotEmpty()) { for(entry in active) { val v=entry.settings; mesh=entry.mesh; wireframe=v.optString("display","solid")=="wireframe" || v.optString("style")=="wire"; bloom=v.optBoolean("bloom",false); bloomStrength=v.optDouble("bloomStrength",1.2).toFloat(); distance=v.optDouble("distance",24.0).toFloat(); yaw=v.optDouble("rotY",0.0).toFloat(); pitch=v.optDouble("rotX",0.0).toFloat(); scale=v.optDouble("scale",1.0).toFloat(); drawCurrent(width,height,viewYaw,viewPitch) }; return }
-        drawCurrent(width,height,viewYaw,viewPitch)
+        if(active.isNotEmpty()) { for(entry in active) { val v=entry.settings; mesh=entry.mesh; offsetX=v.optDouble("x",0.0).toFloat(); offsetY=v.optDouble("y",0.0).toFloat(); wireframe=v.optString("display","solid")=="wireframe" || v.optString("style")=="wire"; bloom=v.optBoolean("bloom",false); bloomStrength=v.optDouble("bloomStrength",1.2).toFloat(); distance=v.optDouble("distance",24.0).toFloat(); yaw=v.optDouble("rotY",0.0).toFloat(); pitch=v.optDouble("rotX",0.0).toFloat(); scale=v.optDouble("scale",1.0).toFloat(); drawEyes(width,height,viewYaw,viewPitch,stereo) }; return }
+        drawEyes(width,height,viewYaw,viewPitch,stereo)
+    }
+
+    private fun drawEyes(width:Int,height:Int,viewYaw:Float,viewPitch:Float,stereo:Boolean) {
+        val eyes=if(stereo)2 else 1
+        for(eye in 0 until eyes){val left=eye*width/eyes;val right=(eye+1)*width/eyes;GLES20.glViewport(left,0,right-left,height);drawCurrent(right-left,height,viewYaw+(if(eyes==2)if(eye==0)-1.5f else 1.5f else 0f),viewPitch)}
     }
 
     private fun drawCurrent(width:Int,height:Int,viewYaw:Float,viewPitch:Float) {
@@ -88,7 +95,7 @@ class Native3DObjectRenderer {
         if(loaded!==m)upload(m)
         val oldViewport=IntArray(4);GLES20.glGetIntegerv(GLES20.GL_VIEWPORT,oldViewport,0)
         Matrix.setIdentityM(model,0)
-        Matrix.translateM(model,0,0f,0f,-distance.coerceIn(1.2f,30f))
+        Matrix.translateM(model,0,offsetX,offsetY,-distance.coerceIn(1.2f,250f))
         Matrix.rotateM(model,0,yaw,0f,1f,0f);Matrix.rotateM(model,0,pitch,1f,0f,0f);Matrix.scaleM(model,0,scale.coerceIn(.05f,8f),scale.coerceIn(.05f,8f),scale.coerceIn(.05f,8f))
         Matrix.setIdentityM(view,0)
         Matrix.rotateM(view,0,-viewPitch,1f,0f,0f);Matrix.rotateM(view,0,-viewYaw,0f,1f,0f)
