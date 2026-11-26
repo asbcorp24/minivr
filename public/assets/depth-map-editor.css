@@ -210,3 +210,27 @@ body.depth-editor-fullscreen-open { overflow: hidden !important; }
   [data-depth-editor]:is(:fullscreen, .depth-editor-expanded) .depth-editor-actions { gap: 4px; }
   [data-depth-editor]:is(:fullscreen, .depth-editor-expanded) .depth-editor-actions button { padding: 7px 9px; }
 }
+
+[data-depth-editor] [data-ai-select],
+[data-depth-editor] [data-ai-apply],
+[data-depth-editor] [data-ai-cancel] {
+  border: 1px solid #37cde4;
+  border-radius: 8px;
+  padding: 8px 11px;
+  color: #effcff;
+  background: #0c5267;
+  cursor: pointer;
+}
+[data-depth-editor] [data-ai-apply] { background: #17623f; border-color: #55d69b; }
+[data-depth-editor] [data-ai-cancel] { background: #293d4b; border-color: #587487; }
+[data-depth-editor] [data-ai-select]:disabled,
+[data-depth-editor] [data-ai-apply]:disabled,
+[data-depth-editor] [data-ai-cancel]:disabled { opacity: .45; cursor: not-allowed; }
+[data-depth-editor] [data-ai-status] {
+  flex: 1 1 100%;
+  min-width: 0;
+  color: #a9dbe8;
+  font-size: 12px;
+  line-height: 1.45;
+}
+[data-depth-editor] .depth-editor-photo canvas.depth-ai-selecting { cursor: crosshair; }
