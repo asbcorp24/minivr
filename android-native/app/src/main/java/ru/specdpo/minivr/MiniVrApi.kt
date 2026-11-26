@@ -20,6 +20,8 @@ data class CatalogEntry(
 )
 data class MusicTrack(val id: Int, val title: String, val artist: String, val path: String)
 
+data class Panorama3DObject(val id:Int,val name:String,val url:String,val format:String,val settings:JSONObject)
+
 data class SceneEntry(
     val id: Int,
     val panoramaId: Int,
@@ -35,7 +37,8 @@ data class SceneEntry(
     val lat: Double?,
     val lng: Double?,
     val tilesManifest: String?,
-    val preview: String? = null
+    val preview: String? = null,
+    val objects: List<Panorama3DObject> = emptyList()
 )
 
 data class TileLevel(val number: Int, val width: Int, val height: Int, val columns: Int, val rows: Int)
@@ -156,7 +159,8 @@ class MiniVrApi(baseUrl: String, private val imageCache: File) {
         if (row.isNull("geo_lat")) null else row.optDouble("geo_lat"),
         if (row.isNull("geo_lng")) null else row.optDouble("geo_lng"),
         row.audioUrl("tiles_manifest"),
-        row.audioUrl("preview")
+        row.audioUrl("preview"),
+        parseObjects(row.optJSONArray("objects"))
     )
 
     fun panorama(id: Int): SceneEntry {
@@ -166,8 +170,38 @@ class MiniVrApi(baseUrl: String, private val imageCache: File) {
             row.getString("image"), row.optString("projection", "360"),
             row.optString("stereo", "mono"), row.optJSONObject("effects") ?: JSONObject(),
             null, null, JSONArray(), null, null, row.audioUrl("tiles_manifest"),
-            row.audioUrl("preview")
+            row.audioUrl("preview"), parseObjects(row.optJSONArray("objects"))
         )
+    }
+
+    private fun parseObjects(array: JSONArray?): List<Panorama3DObject> {
+        if (array == null) return emptyList()
+        return (0 until array.length()).mapNotNull { i ->
+            val row=array.optJSONObject(i) ?: return@mapNotNull null
+            val path=row.optString("url").takeIf { it.isNotBlank() && it!="null" } ?: return@mapNotNull null
+            Panorama3DObject(row.optInt("id"),row.optString("name","3D object"),
+                path,row.optString("format","glb"),row.optJSONObject("settings") ?: JSONObject())
+        }
+    }
+
+    /** Downloads published model files to app cache; playback only. */
+    fun modelFile(path:String): File {
+        val resolved=url(path) ?: error("3D model URL is empty")
+        if (!imageCache.exists()) imageCache.mkdirs()
+        val extension=path.substringAfterLast('.').substringBefore('?').lowercase()
+        val target=File(imageCache,"model-${digest(resolved)}.$extension")
+        if(target.exists() && target.length()>0)return target
+        val request=connection(path)
+        try {
+            check(request.responseCode==200) { "3D model HTTP ${request.responseCode}" }
+            val temp=File.createTempFile("minivr-model-",".part",imageCache)
+            try {
+                request.inputStream.use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
+                check(temp.length() in 1..(50L*1024*1024)) { "3D model size is invalid" }
+                if(!temp.renameTo(target)){target.delete();check(temp.renameTo(target))}
+            } finally { temp.delete() }
+        } finally { request.disconnect() }
+        return target
     }
 
     fun tileManifest(path: String): TileManifest {

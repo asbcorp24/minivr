@@ -21,6 +21,18 @@ function tilesManifest(?string $image,string $projection,string $stereo):?string
  $relative='/tiles/'.$name.'/manifest.json';
  return is_file(__DIR__.'/..'.$relative)?$relative:null;
 }
+function sceneObjects(PDO $db,int $panoramaId):array {
+ $exists=$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='panorama_3d_objects'")->fetchColumn();
+ if(!$exists)return [];
+ $q=$db->prepare('SELECT id,name,file_url,format,settings,sort_order FROM panorama_3d_objects WHERE panorama_id=? ORDER BY sort_order,id');
+ $q->execute([$panoramaId]);$items=[];
+ foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row){
+  $settings=json_decode($row['settings']??'{}',true)?:[];
+  if(($settings['visible']??true)===false)continue;
+  $items[]=['id'=>(int)$row['id'],'name'=>$row['name'],'url'=>publicUrl($row['file_url']),'format'=>strtolower($row['format']),'settings'=>$settings,'sort_order'=>(int)$row['sort_order']];
+ }
+ return $items;
+}
 if($action==='catalog'){
  $panoramas=$db->query('SELECT id,title,description,image,preview,projection,stereo FROM panoramas WHERE published=1 ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
  $tours=$db->query('SELECT id,title,description,cover FROM tours WHERE published=1 ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
@@ -41,6 +53,7 @@ if($action==='panorama'&&$id){
  $p['image']=publicUrl($p['image']);$p['preview']=publicUrl($p['preview']);
  $p['tiles_manifest']=tilesManifest($p['image'],(string)$p['projection'],(string)$p['stereo']);
  $p['effects']=json_decode($p['effects']??'{}',true)?:[];
+ $p['objects']=sceneObjects($db,(int)$p['id']);
  output(['version'=>1,'panorama'=>$p]);
 }
 if($action==='tour'&&$id){
@@ -57,6 +70,7 @@ if($action==='tour'&&$id){
   $s['scene_audio']=publicUrl($s['scene_audio']);
   $s['guided_points']=json_decode($s['guided_points']??'[]',true)?:[];
   $s['effects']=json_decode($s['effects']??'{}',true)?:[];
+  $s['objects']=sceneObjects($db,(int)$s['panorama_id']);
  }unset($s);
  $q=$db->prepare('SELECT h.*,target.panorama_id target_panorama_id FROM hotspots h JOIN tour_scenes s ON s.id=h.scene_id JOIN panoramas p ON p.id=s.panorama_id LEFT JOIN tour_scenes target ON target.id=h.target_scene_id WHERE s.tour_id=? AND p.published=1 ORDER BY h.id');
  $q->execute([$id]);
