@@ -374,7 +374,7 @@ class PanoramaRenderer : GLSurfaceView.Renderer {
             GLES20.glDisable(GLES20.GL_BLEND)
         }
         if (effectsEnabled) particles.draw(fx, clock, width, height, yaw, pitch, fieldOfView, eyes)
-        native3DObjects.draw(width, height, yaw, pitch)
+        native3DObjects.draw(width, height, yaw, pitch, cardboard)
         // Spring-like translation only while the user is turning or tilting.
         motionX *= .97f
         motionY *= .97f
