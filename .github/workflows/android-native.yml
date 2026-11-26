@@ -1,5 +1,6 @@
 name: MiniVR Native Android
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'android-native/**'
