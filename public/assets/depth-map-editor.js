@@ -320,57 +320,127 @@ if (panel) {
       const rect = canvas.getBoundingClientRect();
       return { x: (e.clientX - rect.left) * W / rect.width, y: (e.clientY - rect.top) * H / rect.height };
     };
+    const aiStats = { device: null, loadMs: 0, lastInferenceMs: 0 };
+    let aiRuntimeModule = null;
+    function aiSetStatus(message) {
+      if (aiStatus) aiStatus.textContent = message;
+    }
+    async function canUseWebGPU() {
+      if (!('gpu' in navigator) || !navigator.gpu?.requestAdapter) return false;
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) return false;
+        // A successful device request is a stronger signal than the presence of navigator.gpu.
+        const device = await adapter.requestDevice();
+        device.destroy?.();
+        return true;
+      } catch (error) {
+        console.info('MiniVR: WebGPU adapter unavailable; using WASM.', error);
+        return false;
+      }
+    }
+    function configureWasm(env) {
+      const wasm = env?.backends?.onnx?.wasm;
+      if (!wasm) return 1;
+      wasm.simd = true;
+      // SharedArrayBuffer and cross-origin isolation are required for threaded WASM.
+      const canThread = window.crossOriginIsolated === true &&
+        typeof SharedArrayBuffer !== 'undefined';
+      const cores = Math.max(1, Number(navigator.hardwareConcurrency) || 1);
+      const threads = canThread ? Math.max(1, Math.min(4, cores - 1 || 1)) : 1;
+      wasm.numThreads = threads;
+      return threads;
+    }
     async function ensureAiModel() {
       if (aiPipeline) return aiPipeline;
       if (aiLoading) throw Error('Модель уже загружается, подождите');
       aiLoading = true;
+      const loadStarted = performance.now();
       try {
-        aiStatus.textContent = 'Загружаю SlimSAM и процессор (первый запуск может занять несколько минут)…';
+        aiSetStatus('Проверяю доступность GPU и загружаю SlimSAM…');
         const response = await fetch('/models/slimsam-77-uniform/minivr-manifest.json', { cache: 'no-store' });
         if (!response.ok) throw Error('Модель не установлена на сервере. Откройте админку → Нейросети и скачайте SlimSAM.');
         const manifest = await response.json();
-        if (manifest?.status?.ready !== true) throw Error('Файлы модели на сервере неполные. В админке откройте «Нейросети» и нажмите «Проверить / восстановить файлы».');
-        const { SamModel, AutoProcessor, env } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm');
+        if (manifest?.status?.ready !== true) throw Error('Файлы модели на сервере неполные. В админке откройте «Нейросети» и восстановите SlimSAM.');
+        aiRuntimeModule = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm');
+        const { SamModel, AutoProcessor, RawImage, env } = aiRuntimeModule;
         env.localModelPath = '/models/';
         env.allowLocalModels = true;
         env.allowRemoteModels = false;
         env.useBrowserCache = true;
-        const loadOptions = { device: 'webgpu', dtype: 'q8' };
-        try {
-          const [model, processor] = await Promise.all([
-            SamModel.from_pretrained('slimsam-77-uniform', loadOptions),
-            AutoProcessor.from_pretrained('slimsam-77-uniform')
-          ]);
-          aiPipeline = { model, processor, RawImage: (await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm')).RawImage, device: 'webgpu' };
-        } catch (gpuError) {
-          console.warn('MiniVR SAM WebGPU unavailable; fallback to WASM', gpuError);
-          aiStatus.textContent = 'WebGPU недоступен — загружаю SlimSAM через CPU/WASM…';
+
+        const useGpu = await canUseWebGPU();
+        if (useGpu) {
+          try {
+            aiSetStatus('GPU доступен. Загружаю SlimSAM на WebGPU…');
+            const [model, processor] = await Promise.all([
+              SamModel.from_pretrained('slimsam-77-uniform', { device: 'webgpu', dtype: 'q8' }),
+              AutoProcessor.from_pretrained('slimsam-77-uniform')
+            ]);
+            aiPipeline = { model, processor, RawImage, device: 'webgpu' };
+          } catch (gpuError) {
+            console.warn('MiniVR: WebGPU model initialization failed; switching to WASM.', gpuError);
+          }
+        }
+
+        if (!aiPipeline) {
+          const threads = configureWasm(env);
+          aiSetStatus(threads > 1
+            ? 'GPU недоступен. Запускаю WASM с ' + threads + ' потоками…'
+            : 'GPU недоступен. Запускаю совместимый WASM в одном потоке…');
           const [model, processor] = await Promise.all([
             SamModel.from_pretrained('slimsam-77-uniform', { device: 'wasm', dtype: 'q8' }),
             AutoProcessor.from_pretrained('slimsam-77-uniform')
           ]);
-          const { RawImage } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm');
-          aiPipeline = { model, processor, RawImage, device: 'wasm' };
+          aiPipeline = { model, processor, RawImage, device: 'wasm', threads };
         }
+        aiStats.device = aiPipeline.device;
+        aiStats.loadMs = performance.now() - loadStarted;
         return aiPipeline;
-      } finally { aiLoading = false; }
+      } finally {
+        aiLoading = false;
+      }
     }
+    function disposeTensorTree(value, seen = new Set()) {
+      if (!value || typeof value !== 'object' || seen.has(value)) return;
+      seen.add(value);
+      if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return;
+      if (typeof value.dispose === 'function') {
+        try { value.dispose(); } catch (_) {}
+        return;
+      }
+      if (Array.isArray(value)) {
+        for (const item of value) disposeTensorTree(item, seen);
+        return;
+      }
+      for (const item of Object.values(value)) disposeTensorTree(item, seen);
+    }
+    function releaseAiModel() {
+      if (!aiPipeline) return;
+      try { aiPipeline.model?.dispose?.(); } catch (error) { console.debug('MiniVR model cleanup:', error); }
+      aiPipeline = null;
+      aiRuntimeModule = null;
+    }
+    window.addEventListener('pagehide', releaseAiModel, { once: true });
+
     async function selectObjectAt(point) {
-      if (saving || !working || aiLoading) return;
+      if (saving || !working || aiLoading || !aiSelecting) return;
       aiSelecting = true;
       canvas.classList.add('depth-ai-selecting');
       aiButton.disabled = true;
       aiApply.disabled = true;
       aiCancel.disabled = true;
+      let inputs = null, outputs = null, masks = null;
+      const inferenceStarted = performance.now();
       try {
-        const { model, processor, RawImage, device } = await ensureAiModel();
-        aiStatus.textContent = 'SlimSAM анализирует точку и строит маски объекта…';
+        const { model, processor, RawImage, device, threads } = await ensureAiModel();
+        aiSetStatus('SlimSAM анализирует точку на ' + (device === 'webgpu' ? 'GPU' : 'CPU/WASM') + '…');
         const source = await RawImage.fromURL(photo.src);
         const sourceX = Math.max(0, Math.min(source.width - 1, Math.round(point.x / W * source.width)));
         const sourceY = Math.max(0, Math.min(source.height - 1, Math.round(point.y / H * source.height)));
-        const inputs = await processor(source, { input_points: [[[sourceX, sourceY]]] });
-        const outputs = await model(inputs);
-        const masks = await processor.post_process_masks(
+        inputs = await processor(source, { input_points: [[[sourceX, sourceY]]] });
+        outputs = await model(inputs);
+        masks = await processor.post_process_masks(
           outputs.pred_masks, inputs.original_sizes, inputs.reshaped_input_sizes
         );
         const maskTensor = masks?.[0];
@@ -379,7 +449,7 @@ if (panel) {
         const maskHeight = dims[dims.length - 2] || 0;
         const maskWidth = dims[dims.length - 1] || 0;
         if (!maskTensor?.data || !maskCount || !maskWidth || !maskHeight) {
-          throw Error('SlimSAM не вернула маски. Проверьте файлы модели и формат входного изображения.');
+          throw Error('SlimSAM не вернула маски. Проверьте файлы модели и формат изображения.');
         }
         const scores = outputs.iou_scores?.data || [];
         let bestIndex = 0, bestScore = -Infinity;
@@ -390,19 +460,25 @@ if (panel) {
         }
         const pickedData = maskTensor.data.slice(bestIndex * planeSize, (bestIndex + 1) * planeSize);
         aiMask = maskToEditorPixels(pickedData, maskWidth, maskHeight, W, H);
-        // SAM returns a candidate mask for the prompted point. Guard against an empty mask.
         if (!aiMask.some(value => value >= 128)) {
           aiMask = null;
           throw Error('В выбранной точке объект не распознан. Попробуйте щёлкнуть ближе к центру предмета.');
         }
+        aiStats.lastInferenceMs = performance.now() - inferenceStarted;
+        const duration = (aiStats.lastInferenceMs / 1000).toFixed(2);
+        const runtime = device === 'webgpu' ? 'GPU / WebGPU' : 'CPU / WASM' + (threads > 1 ? ' · ' + threads + ' потока' : '');
+        const loadTime = (aiStats.loadMs / 1000).toFixed(1);
         aiApply.disabled = false;
-        aiStatus.textContent = 'Объект выделен (SlimSAM / ' + device.toUpperCase() + '). Жёлтая область — маска. Добавьте её в выбранный слой или отмените.';
+        aiSetStatus('Объект выделен · ' + runtime + ' · расчёт ' + duration + ' с · загрузка модели ' + loadTime + ' с. Жёлтая область — маска. Добавьте её в слой или отмените.');
         scheduleDraw();
       } catch (error) {
         aiMask = null;
-        aiStatus.textContent = 'Ошибка ИИ-выделения: ' + (error?.message || error);
+        aiSetStatus('Ошибка ИИ-выделения: ' + (error?.message || error));
         console.error('MiniVR AI object selection', error);
       } finally {
+        disposeTensorTree(masks);
+        disposeTensorTree(outputs);
+        disposeTensorTree(inputs);
         aiSelecting = false;
         canvas.classList.remove('depth-ai-selecting');
         aiButton.disabled = false;
