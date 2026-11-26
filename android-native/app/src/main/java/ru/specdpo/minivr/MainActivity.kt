@@ -295,6 +295,7 @@ class MainActivity : Activity(), SensorEventListener {
         tileStreamer = null
         audio.stop()
         current = scene
+        renderer.native3DObjects.setModels(emptyList())
         guidedIndex = -1
         overlay.hotspots = emptyList()
         renderer.yaw = 0f
@@ -329,6 +330,14 @@ class MainActivity : Activity(), SensorEventListener {
                     scene.effects.optBoolean("mirrorHorizontal", false), aspect
                 )
                 renderer.offerImage(bitmap, spec, NativeSceneEffects.from(scene.effects))
+                val nativeModels = scene.objects.mapNotNull { item ->
+                    runCatching {
+                        val file = api.modelFile(item.url)
+                        val mesh = Native3DModelLoader.load(file.readBytes(), item.format)
+                        Native3DObjectRenderer.Model(mesh, item.settings)
+                    }.onFailure { android.util.Log.w("MiniVR", "3D object skipped: ${item.name}", it) }.getOrNull()
+                }
+                if (token == generation.get()) renderer.native3DObjects.setModels(nativeModels)
                 loadDepthAndMasks(scene, token)
                 runOnUiThread {
                     if (token != generation.get()) { tiles?.stop(); return@runOnUiThread }
