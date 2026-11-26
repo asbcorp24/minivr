@@ -46,7 +46,7 @@ object Native3DModelLoader {
             require(len>=0 && b.position().toLong()+len<=total)
             val chunk=ByteArray(len);b.get(chunk)
             when(type) {
-                0x4E4F534A -> json=JSONObject(chunk.toString(Charsets.UTF_8).trimEnd(' ','\\u0000'))
+                0x4E4F534A -> json=JSONObject(chunk.toString(Charsets.UTF_8).trimEnd(' ', 0.toChar()))
                 0x004E4942 -> bin=chunk
             }
         }
