@@ -1,3 +1,4 @@
+import {createPanorama3DObjects} from '/assets/panorama-3d-objects.js';
 import {createEnvironment} from '/assets/panorama-environment.js';
 import {createMoonlight} from '/assets/panorama-moonlight.js';
 import {createAtmosphere} from '/assets/panorama-atmosphere.js';
@@ -36,6 +37,7 @@ if(immersiveLaunch){
 let effectSettings={};try{effectSettings=JSON.parse(root.dataset.effects||'{}')}catch(e){}
 effectSettings.timeOfDay=false;effectSettings.dayCycle=false;
 let effectSystem=null,atmosphereSystem=null,moonSystem=null,environmentSystem=null,lastEffectTime=0;
+let panoramaObjectSystem=null;let panoramaObjectData=[];try{panoramaObjectData=JSON.parse(root.getAttribute('data-3d-objects')||'[]')}catch(e){}
 // Opt-in diagnostics: /viewer.php?id=...&effects_debug=1
 if(new URLSearchParams(location.search).has('effects_debug')){
  const diagnostic=document.createElement('pre');
@@ -319,6 +321,7 @@ if(tour&&tourData.scenes.length){
 
 const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1100);
 effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);
+createPanorama3DObjects(scene,camera,panoramaObjectData).then(system=>{panoramaObjectSystem=system;}).catch(error=>console.warn('MiniVR 3D objects unavailable',error));
 let renderer;
 try{
  renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'default',preserveDrawingBuffer:false});
@@ -1441,10 +1444,12 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  if(tiledPanorama){tiledPanorama.dispose();tiledPanorama=null;}
  projection=nextProjection;stereoMode=nextStereo;effectSettings=nextSettings;
  parallaxDepthPixels=nextDepth;manualFoliageMaskImage=nextFoliage;manualWaterMaskImage=nextWater;
- effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();
+ effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();panoramaObjectSystem?.dispose();panoramaObjectSystem=null;
  // Each effect module owns its animation state; fresh instances start with
  // the next panorama's settings. Legacy day-cycle globals no longer exist.
  effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);
+ let nextObjects=[];try{nextObjects=JSON.parse(next.getAttribute('data-3d-objects')||'[]')}catch{}
+ panoramaObjectSystem=await createPanorama3DObjects(scene,camera,nextObjects);
  if(nextTiles){
   clearPanoramaMeshes();tiledPanorama=nextTiles;if(nextTiles.group)nextTiles.group.visible=true;
   if(getViewerMode()===ViewerMode.DESKTOP)camera.layers.set(0);
@@ -1460,7 +1465,7 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  hotspotData=nextHotspots;
  hotspotData.forEach(hotspotSprite);
  closePanels();menuPage=Math.max(0,Math.floor(Math.max(0,tourData.current)/6));buildMenu();
- root.dataset.image=image;root.dataset.tiles=next.dataset.tiles||'';root.dataset.effects=next.dataset.effects||'{}';
+ root.dataset.image=image;root.dataset.tiles=next.dataset.tiles||'';root.dataset.effects=next.dataset.effects||'{}';root.setAttribute('data-3d-objects',next.getAttribute('data-3d-objects')||'[]');
  root.dataset.projection=projection;root.dataset.stereo=stereoMode;
  root.dataset.scene=next.dataset.scene;root.dataset.musicTrack=next.dataset.musicTrack||'0';
  document.title=doc.title;
@@ -1599,12 +1604,13 @@ renderer.domElement.addEventListener('pointermove',event=>{
 });
 renderer.domElement.addEventListener('pointerleave',()=>depthPointer.set(0,0));
 guidedSetup();
+window.addEventListener('pagehide',()=>panoramaObjectSystem?.dispose(),{once:true});
 renderer.setAnimationLoop((time)=>{
  if(guidedTarget&&getViewerMode()===ViewerMode.DESKTOP&&!orientation){const delta=((guidedTarget.yaw-lon+540)%360)-180;lon+=delta*.045;lat+=(guidedTarget.pitch-lat)*.045;if(Math.abs(delta)<.12&&Math.abs(guidedTarget.pitch-lat)<.12)guidedTarget=null;}
  // GPU-side micro-motion for the nearest depth groups; no CPU texture updates.
  for(const entry of microMotionMaterials)entry.phase.value=time*.001*entry.speed;
  tiledPanorama?.update(time);
- effectSystem?.update(time,camera);atmosphereSystem?.update(time,camera);moonSystem?.update(time,camera);environmentSystem?.update(time,camera);
+ effectSystem?.update(time,camera);atmosphereSystem?.update(time,camera);moonSystem?.update(time,camera);environmentSystem?.update(time,camera);panoramaObjectSystem?.update(time);
  if(getViewerMode()===ViewerMode.DESKTOP&&!down&&!orientation&&effectSettings.rotation){
   const dt=lastEffectTime?Math.min(.05,(time-lastEffectTime)/1000):0;
   lon+=dt*Math.max(0,Math.min(10,Number(effectSettings.rotationSpeed)||1));

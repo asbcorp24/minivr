@@ -18,9 +18,11 @@ if($embedded){
     header('Cache-Control: private, no-store');
     header('Referrer-Policy: no-referrer');
 }
+$db=db();$db->exec("CREATE TABLE IF NOT EXISTS panorama_3d_objects(id INTEGER PRIMARY KEY AUTOINCREMENT,panorama_id INTEGER NOT NULL,name TEXT NOT NULL,file_url TEXT NOT NULL,format TEXT NOT NULL,settings TEXT NOT NULL DEFAULT '{}',sort_order INTEGER NOT NULL DEFAULT 0,created_at TEXT DEFAULT CURRENT_TIMESTAMP)");
 $q=db()->prepare("SELECT * FROM panoramas WHERE id=?");$q->execute([$id]);$p=$q->fetch();
 if(!$p){http_response_code(404);exit('Asset not found');}
 $hotspots=[];$tourScenes=[];$currentIndex=-1;
+$objectQuery=$db->prepare('SELECT id,name,file_url,format,settings FROM panorama_3d_objects WHERE panorama_id=? ORDER BY sort_order,id');$objectQuery->execute([$id]);$panoramaObjects=array_map(static function($o){$settings=json_decode($o['settings']??'{}',true)?:[];return array_merge($settings,['id'=>(int)$o['id'],'name'=>$o['name'],'url'=>$o['file_url'],'format'=>$o['format']]);},$objectQuery->fetchAll());
 try{db()->exec('ALTER TABLE tour_scenes ADD COLUMN duration_seconds INTEGER DEFAULT NULL');}catch(Throwable $ignored){}
 if($tour&&$sceneId){
     $q=db()->prepare("SELECT h.*,ts.panorama_id target_panorama_id FROM hotspots h LEFT JOIN tour_scenes ts ON ts.id=h.target_scene_id WHERE h.scene_id=?");
@@ -50,7 +52,7 @@ if($tour&&$sceneId){
 <link rel="stylesheet" href="/assets/viewer.css?v=<?=filemtime(__DIR__.'/assets/viewer.css')?>">
 </head><body class="scene-loading<?=$embedded?' embedded':''?>">
 <div id="loader"><div class="loader-ring"></div><b>MINI VR</b><span>LOADING IMMERSIVE SCENE</span></div>
-<div id="viewer" data-back="<?=htmlspecialchars($tour?'/tour.php?id='.$tour:'/',ENT_QUOTES,'UTF-8')?>" data-embed-token="<?=htmlspecialchars($embedToken,ENT_QUOTES,'UTF-8')?>" data-effects="<?=htmlspecialchars($p['effects']??'{}',ENT_QUOTES,'UTF-8')?>" data-image="<?=htmlspecialchars($p['image'],ENT_QUOTES,'UTF-8')?>" data-tiles="<?=($p['projection']??'360')==='360'&&($p['stereo']??'mono')==='mono'&&is_file(__DIR__.'/tiles/'.pathinfo((string)$p['image'],PATHINFO_FILENAME).'/manifest.json')?htmlspecialchars('/tiles/'.pathinfo((string)$p['image'],PATHINFO_FILENAME).'/manifest.json',ENT_QUOTES,'UTF-8'):''?>" data-title="<?=htmlspecialchars($p['title'],ENT_QUOTES,'UTF-8')?>" data-projection="<?=htmlspecialchars($p['projection']??'360',ENT_QUOTES,'UTF-8')?>" data-stereo="<?=htmlspecialchars($p['stereo']??'mono',ENT_QUOTES,'UTF-8')?>" data-tour="<?=$tour?>" data-scene="<?=$sceneId?>" data-music-track="<?=(int)(json_decode($p['effects']??'{}',true)['musicTrackId']??0)?>"></div>
+<div id="viewer" data-back="<?=htmlspecialchars($tour?'/tour.php?id='.$tour:'/',ENT_QUOTES,'UTF-8')?>" data-embed-token="<?=htmlspecialchars($embedToken,ENT_QUOTES,'UTF-8')?>" data-effects="<?=htmlspecialchars($p['effects']??'{}',ENT_QUOTES,'UTF-8')?>" data-3d-objects="<?=htmlspecialchars(json_encode($panoramaObjects,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),ENT_QUOTES,'UTF-8')?>" data-image="<?=htmlspecialchars($p['image'],ENT_QUOTES,'UTF-8')?>" data-tiles="<?=($p['projection']??'360')==='360'&&($p['stereo']??'mono')==='mono'&&is_file(__DIR__.'/tiles/'.pathinfo((string)$p['image'],PATHINFO_FILENAME).'/manifest.json')?htmlspecialchars('/tiles/'.pathinfo((string)$p['image'],PATHINFO_FILENAME).'/manifest.json',ENT_QUOTES,'UTF-8'):''?>" data-title="<?=htmlspecialchars($p['title'],ENT_QUOTES,'UTF-8')?>" data-projection="<?=htmlspecialchars($p['projection']??'360',ENT_QUOTES,'UTF-8')?>" data-stereo="<?=htmlspecialchars($p['stereo']??'mono',ENT_QUOTES,'UTF-8')?>" data-tour="<?=$tour?>" data-scene="<?=$sceneId?>" data-music-track="<?=(int)(json_decode($p['effects']??'{}',true)['musicTrackId']??0)?>"></div>
 <script id="tour-data" type="application/json"><?=json_encode(['scenes'=>$tourScenes,'current'=>$currentIndex,'title'=>$p['title'],'description'=>$p['description']],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_HEX_TAG)?></script>
 <script id="hotspots-data" type="application/json"><?=json_encode($hotspots,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_HEX_TAG)?></script>
 <div id="top">
