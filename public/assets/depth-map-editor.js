@@ -430,7 +430,7 @@ if (panel) {
       aiButton.disabled = true;
       aiApply.disabled = true;
       aiCancel.disabled = true;
-      let inputs = null, outputs = null;
+      let inputs = null, outputs = null, masks = null;
       const inferenceStarted = performance.now();
       try {
         const { model, processor, RawImage, device, threads } = await ensureAiModel();
@@ -440,7 +440,7 @@ if (panel) {
         const sourceY = Math.max(0, Math.min(source.height - 1, Math.round(point.y / H * source.height)));
         inputs = await processor(source, { input_points: [[[sourceX, sourceY]]] });
         outputs = await model(inputs);
-        const masks = await processor.post_process_masks(
+        masks = await processor.post_process_masks(
           outputs.pred_masks, inputs.original_sizes, inputs.reshaped_input_sizes
         );
         const maskTensor = masks?.[0];
@@ -467,14 +467,16 @@ if (panel) {
         aiStats.lastInferenceMs = performance.now() - inferenceStarted;
         const duration = (aiStats.lastInferenceMs / 1000).toFixed(2);
         const runtime = device === 'webgpu' ? 'GPU / WebGPU' : 'CPU / WASM' + (threads > 1 ? ' · ' + threads + ' потока' : '');
+        const loadTime = (aiStats.loadMs / 1000).toFixed(1);
         aiApply.disabled = false;
-        aiSetStatus('Объект выделен · ' + runtime + ' · ' + duration + ' с. Жёлтая область — маска. Добавьте её в слой или отмените.');
+        aiSetStatus('Объект выделен · ' + runtime + ' · расчёт ' + duration + ' с · загрузка модели ' + loadTime + ' с. Жёлтая область — маска. Добавьте её в слой или отмените.');
         scheduleDraw();
       } catch (error) {
         aiMask = null;
         aiSetStatus('Ошибка ИИ-выделения: ' + (error?.message || error));
         console.error('MiniVR AI object selection', error);
       } finally {
+        disposeTensorTree(masks);
         disposeTensorTree(outputs);
         disposeTensorTree(inputs);
         aiSelecting = false;
