@@ -39,6 +39,7 @@ class MainActivity : Activity(), SensorEventListener {
     private lateinit var previousButton: Button
     private lateinit var nextButton: Button
     private lateinit var scenesButton: Button
+    private lateinit var musicButton: Button
     private lateinit var exitVr: Button
     private val thumbnails by lazy { NativeThumbnailLoader(this, api) }
     private val menus by lazy { NativeMenuDialogs(this, thumbnails) }
@@ -140,6 +141,18 @@ class MainActivity : Activity(), SensorEventListener {
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
         topRow.addView(title, LinearLayout.LayoutParams(0, dp(55), 1f))
+        musicButton = button("♫ Музыка") {
+            if (!music.hasTracks()) {
+                Toast.makeText(this, "В каталоге нет музыкальных треков", Toast.LENGTH_SHORT).show()
+            } else {
+                music.toggle()
+                updateMusicButton()
+            }
+        }.apply {
+            textSize = 10.5f
+            setPadding(dp(7), 0, dp(7), 0)
+        }
+        topRow.addView(musicButton, LinearLayout.LayoutParams(-2, dp(46)))
         topRow.addView(button("☰ МАТЕРИАЛЫ") { openCatalog() }.apply {
             textSize = 10.5f
             setPadding(dp(7), 0, dp(7), 0)
@@ -201,6 +214,16 @@ class MainActivity : Activity(), SensorEventListener {
         openCatalog()
     }
 
+    private fun updateMusicButton() {
+        if (!::musicButton.isInitialized) return
+        musicButton.text = if (music.isPlayingRequested()) "♫ Пауза" else "♫ Музыка"
+        musicButton.isEnabled = music.hasTracks()
+        musicButton.alpha = if (music.hasTracks()) 1f else .45f
+        musicButton.contentDescription = if (music.isPlayingRequested())
+            "Приостановить музыку: " + music.currentTitle()
+        else "Включить музыку: " + music.currentTitle()
+    }
+
     private fun notifyUser(message: String) {
         notice.text = message
     }
@@ -214,6 +237,7 @@ class MainActivity : Activity(), SensorEventListener {
                 runOnUiThread {
                     catalog = entries
                     music.setTracks(tracks)
+                    updateMusicButton()
                     notifyUser("${entries.size} материалов и экскурсий")
                     showCatalogDialog()
                 }
@@ -348,7 +372,8 @@ class MainActivity : Activity(), SensorEventListener {
                     audio.enterScene(scene.audio)
                     narrationPaused = false
                     val trackId = scene.effects.optInt("musicTrackId", 0)
-                    music.selectTrack(trackId)
+                    if (trackId > 0) music.selectTrack(trackId)
+                    updateMusicButton()
                     val quality = if (tiles != null) "тайлы" else "изображение"
                     val gpu = when {
                         !renderer.advancedSupported -> "GPU Basic · "
