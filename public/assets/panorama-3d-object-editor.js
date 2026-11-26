@@ -10,6 +10,7 @@ document.querySelectorAll('.object-stage').forEach(async stage=>{
  const fields={};form.querySelectorAll('input[name]').forEach(el=>fields[el.name]=el);
  const initial={};for(const k of ['x','y','distance','scale','rotX','rotY','rotZ'])initial[k]=Number(fields[k]?.value??({distance:24,scale:1}[k]??0));
  const scene=new THREE.Scene();scene.background=new THREE.Color(0x07131e);
+ const envCanvas=document.createElement('canvas');envCanvas.width=1024;envCanvas.height=512;const envCtx=envCanvas.getContext('2d');const envGrad=envCtx.createLinearGradient(0,0,0,512);envGrad.addColorStop(0,'#c6d6e8');envGrad.addColorStop(.38,'#52677e');envGrad.addColorStop(.58,'#111c2a');envGrad.addColorStop(1,'#8297aa');envCtx.fillStyle=envGrad;envCtx.fillRect(0,0,1024,512);for(const [x,y,w,h] of [[100,75,180,28],[390,45,120,42],[690,90,210,24],[260,300,240,18],[760,340,150,24]]){envCtx.fillStyle='#ffffff';envCtx.shadowColor='#ffffff';envCtx.shadowBlur=28;envCtx.fillRect(x,y,w,h);envCtx.shadowBlur=0;}const envTexture=new THREE.CanvasTexture(envCanvas);envTexture.mapping=THREE.EquirectangularReflectionMapping;envTexture.colorSpace=THREE.SRGBColorSpace;scene.environment=envTexture;
  const camera=new THREE.PerspectiveCamera(48,1,.1,1000);camera.position.set(0,0,0);camera.lookAt(0,0,-30);
  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false});renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.7));renderer.outputColorSpace=THREE.SRGBColorSpace;
  scene.add(new THREE.HemisphereLight(0xc9eaff,0x172033,2.1));
@@ -44,6 +45,6 @@ document.querySelectorAll('.object-stage').forEach(async stage=>{
  stage.parentElement.querySelector('[data-center-model]')?.addEventListener('click',()=>{write('x',0);write('y',0);apply();});
  stage.parentElement.querySelector('[data-reset-view]')?.addEventListener('click',()=>{for(const [k,v] of Object.entries(initial))write(k,v);apply();});
  const observer=new ResizeObserver(resize);observer.observe(stage);
- window.addEventListener('pagehide',()=>{disposed=true;cancelAnimationFrame(raf);observer.disconnect();scene.traverse(o=>{o.geometry?.dispose?.();if(o.material){for(const m of (Array.isArray(o.material)?o.material:[o.material]))m.dispose?.();}});renderer.dispose();},{once:true});
+ window.addEventListener('pagehide',()=>{disposed=true;cancelAnimationFrame(raf);observer.disconnect();envTexture.dispose();scene.traverse(o=>{o.geometry?.dispose?.();if(o.material){for(const m of (Array.isArray(o.material)?o.material:[o.material]))m.dispose?.();}});renderer.dispose();},{once:true});
  canvas.style.cursor='grab';
 });
