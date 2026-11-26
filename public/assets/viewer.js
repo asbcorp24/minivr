@@ -37,7 +37,7 @@ if(immersiveLaunch){
 let effectSettings={};try{effectSettings=JSON.parse(root.dataset.effects||'{}')}catch(e){}
 effectSettings.timeOfDay=false;effectSettings.dayCycle=false;
 let effectSystem=null,atmosphereSystem=null,moonSystem=null,environmentSystem=null,lastEffectTime=0;
-let panoramaObjectSystem=null;let panoramaObjectData=[];try{panoramaObjectData=JSON.parse(root.dataset.threeDObjects||'[]')}catch(e){}
+let panoramaObjectSystem=null;let panoramaObjectData=[];try{panoramaObjectData=JSON.parse(root.getAttribute('data-3d-objects')||'[]')}catch(e){}
 // Opt-in diagnostics: /viewer.php?id=...&effects_debug=1
 if(new URLSearchParams(location.search).has('effects_debug')){
  const diagnostic=document.createElement('pre');
@@ -1448,7 +1448,7 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  // Each effect module owns its animation state; fresh instances start with
  // the next panorama's settings. Legacy day-cycle globals no longer exist.
  effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);
- let nextObjects=[];try{nextObjects=JSON.parse(next.dataset.threeDObjects||'[]')}catch{}
+ let nextObjects=[];try{nextObjects=JSON.parse(next.getAttribute('data-3d-objects')||'[]')}catch{}
  panoramaObjectSystem=await createPanorama3DObjects(scene,camera,nextObjects);
  if(nextTiles){
   clearPanoramaMeshes();tiledPanorama=nextTiles;if(nextTiles.group)nextTiles.group.visible=true;
@@ -1465,7 +1465,7 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  hotspotData=nextHotspots;
  hotspotData.forEach(hotspotSprite);
  closePanels();menuPage=Math.max(0,Math.floor(Math.max(0,tourData.current)/6));buildMenu();
- root.dataset.image=image;root.dataset.tiles=next.dataset.tiles||'';root.dataset.effects=next.dataset.effects||'{}';root.dataset.threeDObjects=next.dataset.threeDObjects||'[]';
+ root.dataset.image=image;root.dataset.tiles=next.dataset.tiles||'';root.dataset.effects=next.dataset.effects||'{}';root.setAttribute('data-3d-objects',next.getAttribute('data-3d-objects')||'[]');
  root.dataset.projection=projection;root.dataset.stereo=stereoMode;
  root.dataset.scene=next.dataset.scene;root.dataset.musicTrack=next.dataset.musicTrack||'0';
  document.title=doc.title;
