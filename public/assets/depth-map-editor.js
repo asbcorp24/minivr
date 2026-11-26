@@ -404,7 +404,8 @@ if (panel) {
       updateLayerList(); scheduleDraw();
     });
     aiCancel?.addEventListener('click', () => {
-      aiMask = null; aiApply.disabled = true; aiCancel.disabled = true;
+      aiMask = null; aiSelecting = false; canvas.classList.remove('depth-ai-selecting');
+      aiApply.disabled = true; aiCancel.disabled = true;
       aiStatus.textContent = 'Выделение отменено.';
       scheduleDraw();
     });
@@ -412,6 +413,7 @@ if (panel) {
     canvas.addEventListener('pointerdown', e => {
       if (!working || saving || (e.button !== 0 && e.button !== 1)) return;
       e.preventDefault();
+      if (aiSelecting) { selectObjectAt(position(e)); return; }
       if (tool.value === 'pan' || spaceDown || e.button === 1) {
         panning = true;
         panStart = { x: e.clientX, y: e.clientY, panX, panY };
@@ -419,7 +421,6 @@ if (panel) {
         canvas.setPointerCapture(e.pointerId);
         return;
       }
-      if (aiSelecting) { e.preventDefault(); selectObjectAt(position(e)); return; }
       snapshot(); painting = true; last = position(e);
       canvas.setPointerCapture(e.pointerId);
       paint(last.x, last.y); scheduleDraw();
