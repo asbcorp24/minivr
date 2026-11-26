@@ -54,7 +54,8 @@ class PanoramaRenderer : GLSurfaceView.Renderer {
     private var nextEnvironment: NativeEffectMasks? = null
     private var program = 0
     private var environmentProgram = 0
-    private val particles = NativeParticleLayer()\n    val native3DObjects = Native3DObjectRenderer()
+    private val particles = NativeParticleLayer()
+    val native3DObjects = Native3DObjectRenderer()
     private val environmentTextures = IntArray(4)
     private var hasEnvironment = false
     private val environmentLocations = mutableMapOf<String, Int>()
@@ -121,7 +122,8 @@ class PanoramaRenderer : GLSurfaceView.Renderer {
         }
     """.trimIndent()
 
-    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {\n        native3DObjects.onSurfaceCreated()
+    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+        native3DObjects.onSurfaceCreated()
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glDisable(GLES20.GL_DEPTH_TEST)
         fun compile(type: Int, source: String): Int {
@@ -371,7 +373,8 @@ class PanoramaRenderer : GLSurfaceView.Renderer {
             }
             GLES20.glDisable(GLES20.GL_BLEND)
         }
-        if (effectsEnabled) particles.draw(fx, clock, width, height, yaw, pitch, fieldOfView, eyes)\n        native3DObjects.draw(width, height, yaw, pitch)
+        if (effectsEnabled) particles.draw(fx, clock, width, height, yaw, pitch, fieldOfView, eyes)
+        native3DObjects.draw(width, height, yaw, pitch)
         // Spring-like translation only while the user is turning or tilting.
         motionX *= .97f
         motionY *= .97f
