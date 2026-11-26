@@ -326,13 +326,20 @@ if (panel) {
       aiLoading = true;
       try {
         aiStatus.textContent = 'Загружаю модель выделения объектов (первый запуск может занять несколько минут)…';
+        const response = await fetch('/models/slimsam-77-uniform/minivr-manifest.json', { cache: 'no-store' });
+        if (!response.ok) throw Error('Модель не установлена на сервере. Откройте админку → Нейросети и скачайте SlimSAM.');
+        const manifest = await response.json();
+        if (manifest?.status?.ready !== true) throw Error('Файлы модели на сервере неполные. В админке откройте «Нейросети» и нажмите «Проверить / восстановить файлы».');
         const { pipeline, env } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm');
-        env.allowLocalModels = false;
-        aiPipeline = await pipeline('mask-generation', 'Xenova/slimsam-77-uniform', { device: 'webgpu' })
+        env.localModelPath = '/models/';
+        env.allowLocalModels = true;
+        env.allowRemoteModels = false;
+        env.useBrowserCache = true;
+        aiPipeline = await pipeline('mask-generation', 'slimsam-77-uniform', { device: 'webgpu' })
           .catch(async error => {
             console.warn('MiniVR SAM WebGPU unavailable; fallback to WASM', error);
-            aiStatus.textContent = 'WebGPU недоступен — загружаю модель для CPU/WASM…';
-            return pipeline('mask-generation', 'Xenova/slimsam-77-uniform', { device: 'wasm' });
+            aiStatus.textContent = 'WebGPU недоступен — запускаю локальную модель через CPU/WASM…';
+            return pipeline('mask-generation', 'slimsam-77-uniform', { device: 'wasm' });
           });
         return aiPipeline;
       } finally { aiLoading = false; }
