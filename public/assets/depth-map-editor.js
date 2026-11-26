@@ -326,10 +326,15 @@ if (panel) {
       aiLoading = true;
       try {
         aiStatus.textContent = 'Загружаю модель выделения объектов (первый запуск может занять несколько минут)…';
-        const response = await fetch('/models/slimsam-77-uniform/minivr-manifest.json', { cache: 'no-store' });
-        if (!response.ok) throw Error('Модель не установлена на сервере. Откройте админку → Нейросети и скачайте SlimSAM.');
-        const manifest = await response.json();
-        if (manifest?.status?.ready !== true) throw Error('Файлы модели на сервере неполные. В админке откройте «Нейросети» и нажмите «Проверить / восстановить файлы».');
+        const response = await fetch('/api/models.php?id=slimsam-77-uniform', { cache: 'no-store' });
+        if (!response.ok) {
+          if (response.status === 409) throw Error('Модель SlimSAM не установлена или повреждена. Откройте админку → Нейросети и восстановите её.');
+          throw Error('Не удалось получить модель из общего хранилища MiniVR.');
+        }
+        const modelInfo = await response.json();
+        if (modelInfo?.ready !== true || modelInfo?.model_path !== '/models/slimsam-77-uniform/') {
+          throw Error('SlimSAM не готова в общем хранилище моделей MiniVR.');
+        }
         const { pipeline, env } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm');
         env.localModelPath = '/models/';
         env.allowLocalModels = true;
