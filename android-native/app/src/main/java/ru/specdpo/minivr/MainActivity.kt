@@ -238,7 +238,7 @@ class MainActivity : Activity(), SensorEventListener {
                     catalog = entries
                     music.setTracks(tracks)
                     updateMusicButton()
-                    notifyUser("${entries.size} материалов и экскурсий")
+                    notifyUser("${entries.size} материалов · ${tracks.size} музыкальных треков")
                     showCatalogDialog()
                 }
             } catch (error: Exception) {
