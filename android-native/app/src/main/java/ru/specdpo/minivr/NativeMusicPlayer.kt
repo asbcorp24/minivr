@@ -11,6 +11,7 @@ class NativeMusicPlayer(private val resolve: (String?) -> String?) {
     private var ready = false
     private var wantsPlay = false
     private var ducked = false
+    private var resumeWhenForeground = false
 
     fun setTracks(items: List<MusicTrack>) {
         tracks = items
@@ -41,6 +42,7 @@ class NativeMusicPlayer(private val resolve: (String?) -> String?) {
 
     fun toggle(): Boolean {
         if (tracks.isEmpty()) return false
+        resumeWhenForeground = false
         if (index !in tracks.indices) load(0, true)
         else {
             wantsPlay = !wantsPlay
@@ -84,9 +86,16 @@ class NativeMusicPlayer(private val resolve: (String?) -> String?) {
         } catch (_: Exception) { stop() }
     }
 
+    /** Pause output while the activity is backgrounded, remembering user intent. */
     fun pause() {
-        wantsPlay = false
+        resumeWhenForeground = wantsPlay
         if (ready) runCatching { player?.pause() }
+    }
+
+    fun resume() {
+        if (!resumeWhenForeground) return
+        resumeWhenForeground = false
+        if (wantsPlay && ready) runCatching { player?.start() }
     }
 
     fun stop() {
@@ -94,6 +103,7 @@ class NativeMusicPlayer(private val resolve: (String?) -> String?) {
         player = null
         ready = false
         wantsPlay = false
+        resumeWhenForeground = false
         runCatching { old?.release() }
     }
 }
