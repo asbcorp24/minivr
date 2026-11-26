@@ -9,6 +9,9 @@ import java.nio.ShortBuffer
 
 /** GLES2 renderer for a single native mesh layer composited over the panorama. */
 class Native3DObjectRenderer {
+    data class Model(val mesh:NativeMesh,val settings:org.json.JSONObject)
+    @Volatile private var models:List<Model> = emptyList()
+    fun setModels(value:List<Model>) { models=value; if(value.isEmpty())mesh=null }
     @Volatile var mesh: NativeMesh? = null
     @Volatile var wireframe = false
     @Volatile var bloom = false
@@ -75,6 +78,12 @@ class Native3DObjectRenderer {
     }
 
     fun draw(width:Int,height:Int,viewYaw:Float,viewPitch:Float) {
+        val active=models
+        if(active.isNotEmpty()) { for(entry in active) { val v=entry.settings; mesh=entry.mesh; wireframe=v.optString("display","solid")=="wireframe" || v.optString("style")=="wire"; bloom=v.optBoolean("bloom",false); bloomStrength=v.optDouble("bloomStrength",1.2).toFloat(); distance=v.optDouble("distance",24.0).toFloat(); yaw=v.optDouble("rotY",0.0).toFloat(); pitch=v.optDouble("rotX",0.0).toFloat(); scale=v.optDouble("scale",1.0).toFloat(); drawCurrent(width,height,viewYaw,viewPitch) }; return }
+        drawCurrent(width,height,viewYaw,viewPitch)
+    }
+
+    private fun drawCurrent(width:Int,height:Int,viewYaw:Float,viewPitch:Float) {
         val m=mesh?:return;if(program==0)return
         if(loaded!==m)upload(m)
         val oldViewport=IntArray(4);GLES20.glGetIntegerv(GLES20.GL_VIEWPORT,oldViewport,0)
