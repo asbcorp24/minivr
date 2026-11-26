@@ -325,22 +325,33 @@ if (panel) {
       if (aiLoading) throw Error('Модель уже загружается, подождите');
       aiLoading = true;
       try {
-        aiStatus.textContent = 'Загружаю модель выделения объектов (первый запуск может занять несколько минут)…';
+        aiStatus.textContent = 'Загружаю SlimSAM и процессор (первый запуск может занять несколько минут)…';
         const response = await fetch('/models/slimsam-77-uniform/minivr-manifest.json', { cache: 'no-store' });
         if (!response.ok) throw Error('Модель не установлена на сервере. Откройте админку → Нейросети и скачайте SlimSAM.');
         const manifest = await response.json();
         if (manifest?.status?.ready !== true) throw Error('Файлы модели на сервере неполные. В админке откройте «Нейросети» и нажмите «Проверить / восстановить файлы».');
-        const { pipeline, env } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm');
+        const { SamModel, AutoProcessor, env } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm');
         env.localModelPath = '/models/';
         env.allowLocalModels = true;
         env.allowRemoteModels = false;
         env.useBrowserCache = true;
-        aiPipeline = await pipeline('mask-generation', 'slimsam-77-uniform', { device: 'webgpu' })
-          .catch(async error => {
-            console.warn('MiniVR SAM WebGPU unavailable; fallback to WASM', error);
-            aiStatus.textContent = 'WebGPU недоступен — запускаю локальную модель через CPU/WASM…';
-            return pipeline('mask-generation', 'slimsam-77-uniform', { device: 'wasm' });
-          });
+        const loadOptions = { device: 'webgpu' };
+        try {
+          const [model, processor] = await Promise.all([
+            SamModel.from_pretrained('slimsam-77-uniform', loadOptions),
+            AutoProcessor.from_pretrained('slimsam-77-uniform')
+          ]);
+          aiPipeline = { model, processor, RawImage: (await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm')).RawImage, device: 'webgpu' };
+        } catch (gpuError) {
+          console.warn('MiniVR SAM WebGPU unavailable; fallback to WASM', gpuError);
+          aiStatus.textContent = 'WebGPU недоступен — загружаю SlimSAM через CPU/WASM…';
+          const [model, processor] = await Promise.all([
+            SamModel.from_pretrained('slimsam-77-uniform', { device: 'wasm' }),
+            AutoProcessor.from_pretrained('slimsam-77-uniform')
+          ]);
+          const { RawImage } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm');
+          aiPipeline = { model, processor, RawImage, device: 'wasm' };
+        }
         return aiPipeline;
       } finally { aiLoading = false; }
     }
@@ -352,28 +363,43 @@ if (panel) {
       aiApply.disabled = true;
       aiCancel.disabled = true;
       try {
-        const estimator = await ensureAiModel();
-        aiStatus.textContent = 'Нейросеть ищет объекты на панораме…';
-        const { RawImage } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm');
+        const { model, processor, RawImage, device } = await ensureAiModel();
+        aiStatus.textContent = 'SlimSAM анализирует точку и строит маски объекта…';
         const source = await RawImage.fromURL(photo.src);
-        const proposals = await estimator(source, { threshold: 0.35, mask_threshold: 0.5 });
-        const candidates = (Array.isArray(proposals) ? proposals : [proposals]).map(item => {
-          const mask = item.mask;
-          if (!mask?.data || !mask.width || !mask.height) return null;
-          return { data: mask.data, width: mask.width, height: mask.height, score: item.score || item.confidence || 0 };
-        }).filter(Boolean);
-        const picked = chooseMaskAtPoint(candidates, point.x, point.y, W, H);
-        if (!picked) {
-          aiMask = null;
-          aiStatus.textContent = 'Объект в этой точке не найден. Попробуйте щёлкнуть по центру объекта или увеличить масштаб.';
-          scheduleDraw();
-          return;
+        const sourceX = Math.max(0, Math.min(source.width - 1, Math.round(point.x / W * source.width)));
+        const sourceY = Math.max(0, Math.min(source.height - 1, Math.round(point.y / H * source.height)));
+        const inputs = await processor(source, { input_points: [[[sourceX, sourceY]]] });
+        const outputs = await model(inputs);
+        const masks = await processor.post_process_masks(
+          outputs.pred_masks, inputs.original_sizes, inputs.reshaped_input_sizes
+        );
+        const maskTensor = masks?.[0];
+        const dims = maskTensor?.dims || [];
+        const maskCount = dims.length >= 3 ? dims[dims.length - 3] : 0;
+        const maskHeight = dims[dims.length - 2] || 0;
+        const maskWidth = dims[dims.length - 1] || 0;
+        if (!maskTensor?.data || !maskCount || !maskWidth || !maskHeight) {
+          throw Error('SlimSAM не вернула маски. Проверьте файлы модели и формат входного изображения.');
         }
-        aiMask = maskToEditorPixels(picked.data, picked.width, picked.height, W, H);
+        const scores = outputs.iou_scores?.data || [];
+        let bestIndex = 0, bestScore = -Infinity;
+        const planeSize = maskWidth * maskHeight;
+        for (let i = 0; i < maskCount; i++) {
+          const score = Number(scores[i]) || 0;
+          if (score > bestScore) { bestScore = score; bestIndex = i; }
+        }
+        const pickedData = maskTensor.data.slice(bestIndex * planeSize, (bestIndex + 1) * planeSize);
+        aiMask = maskToEditorPixels(pickedData, maskWidth, maskHeight, W, H);
+        // SAM returns a candidate mask for the prompted point. Guard against an empty mask.
+        if (!aiMask.some(value => value >= 128)) {
+          aiMask = null;
+          throw Error('В выбранной точке объект не распознан. Попробуйте щёлкнуть ближе к центру предмета.');
+        }
         aiApply.disabled = false;
-        aiStatus.textContent = 'Объект выделен. Жёлтая область — предварительная маска. Нажмите «Добавить в слой» или отмените выделение.';
+        aiStatus.textContent = 'Объект выделен (SlimSAM / ' + device.toUpperCase() + '). Жёлтая область — маска. Добавьте её в выбранный слой или отмените.';
         scheduleDraw();
       } catch (error) {
+        aiMask = null;
         aiStatus.textContent = 'Ошибка ИИ-выделения: ' + (error?.message || error);
         console.error('MiniVR AI object selection', error);
       } finally {
