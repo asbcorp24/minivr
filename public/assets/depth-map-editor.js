@@ -340,6 +340,7 @@ if (panel) {
     async function selectObjectAt(point) {
       if (saving || !working || aiLoading) return;
       aiSelecting = true;
+      canvas.classList.add('depth-ai-selecting');
       aiButton.disabled = true;
       aiApply.disabled = true;
       aiCancel.disabled = true;
@@ -370,6 +371,7 @@ if (panel) {
         console.error('MiniVR AI object selection', error);
       } finally {
         aiSelecting = false;
+        canvas.classList.remove('depth-ai-selecting');
         aiButton.disabled = false;
         aiCancel.disabled = !aiMask;
       }
@@ -377,6 +379,7 @@ if (panel) {
     aiButton?.addEventListener('click', () => {
       aiMask = null;
       aiSelecting = true;
+      canvas.classList.add('depth-ai-selecting');
       aiStatus.textContent = 'Щёлкните по объекту на панораме. ИИ определит его контур.';
       aiApply.disabled = true;
       aiCancel.disabled = false;
