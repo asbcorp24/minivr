@@ -4,6 +4,7 @@ import {
   depthGroupCount, layerCoverage, rawForLayer, rawOutsideLayer,
   fittedPanoramaSize, boundedPanOffsets
 } from './depth-layer-logic.js';
+import { chooseMaskAtPoint, maskToEditorPixels } from './depth-ai-selection.js';
 
 const panel = document.querySelector('[data-depth-panel]');
 if (panel) {
@@ -37,6 +38,10 @@ if (panel) {
     const showAll = root.querySelector('[data-show-all]');
     const overlayOpacity = root.querySelector('[data-layer-opacity]');
     const hint = root.querySelector('[data-layer-hint]');
+    const aiButton = root.querySelector('[data-ai-select]');
+    const aiApply = root.querySelector('[data-ai-apply]');
+    const aiCancel = root.querySelector('[data-ai-cancel]');
+    const aiStatus = root.querySelector('[data-ai-status]');
     const buttons = {
       save: root.querySelector('[data-save]'),
       undo: root.querySelector('[data-undo]'),
@@ -51,6 +56,7 @@ if (panel) {
     let original = null, working = null, selected = 0, painting = false;
     let last = null, dirty = false, saving = false, pendingFrame = false;
     let zoom = 1, panX = 0, panY = 0, panning = false, panStart = null, spaceDown = false;
+    let aiPipeline = null, aiLoading = false, aiSelecting = false, aiMask = null;
 
     const isFullscreen = () => document.fullscreenElement === root || root.classList.contains('depth-editor-expanded');
     function positionStage() {
@@ -232,6 +238,17 @@ if (panel) {
         data[j + 2] = lut[k + 2]; data[j + 3] = lut[k + 3];
       }
       ctx.putImageData(frame, 0, 0);
+      if (aiMask) {
+        const overlay = ctx.createImageData(W, H);
+        for (let i = 0; i < aiMask.length; i++) {
+          const a = aiMask[i];
+          if (a < 24) continue;
+          const j = i * 4;
+          overlay.data[j] = 255; overlay.data[j + 1] = 220; overlay.data[j + 2] = 35;
+          overlay.data[j + 3] = Math.round(Math.min(220, a * .78));
+        }
+        ctx.putImageData(overlay, 0, 0);
+      }
       buttons.undo.disabled = saving || history.length === 0;
       buttons.redo.disabled = saving || redo.length === 0;
       buttons.save.disabled = saving || !dirty;
@@ -303,9 +320,100 @@ if (panel) {
       const rect = canvas.getBoundingClientRect();
       return { x: (e.clientX - rect.left) * W / rect.width, y: (e.clientY - rect.top) * H / rect.height };
     };
+    async function ensureAiModel() {
+      if (aiPipeline) return aiPipeline;
+      if (aiLoading) throw Error('Модель уже загружается, подождите');
+      aiLoading = true;
+      try {
+        aiStatus.textContent = 'Загружаю модель выделения объектов (первый запуск может занять несколько минут)…';
+        const { pipeline, env } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm');
+        env.allowLocalModels = false;
+        aiPipeline = await pipeline('mask-generation', 'Xenova/slimsam-77-uniform', { device: 'webgpu' })
+          .catch(async error => {
+            console.warn('MiniVR SAM WebGPU unavailable; fallback to WASM', error);
+            aiStatus.textContent = 'WebGPU недоступен — загружаю модель для CPU/WASM…';
+            return pipeline('mask-generation', 'Xenova/slimsam-77-uniform', { device: 'wasm' });
+          });
+        return aiPipeline;
+      } finally { aiLoading = false; }
+    }
+    async function selectObjectAt(point) {
+      if (saving || !working || aiLoading) return;
+      aiSelecting = true;
+      canvas.classList.add('depth-ai-selecting');
+      aiButton.disabled = true;
+      aiApply.disabled = true;
+      aiCancel.disabled = true;
+      try {
+        const estimator = await ensureAiModel();
+        aiStatus.textContent = 'Нейросеть ищет объекты на панораме…';
+        const { RawImage } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/+esm');
+        const source = await RawImage.fromURL(photo.src);
+        const proposals = await estimator(source, { threshold: 0.35, mask_threshold: 0.5 });
+        const candidates = (Array.isArray(proposals) ? proposals : [proposals]).map(item => {
+          const mask = item.mask;
+          if (!mask?.data || !mask.width || !mask.height) return null;
+          return { data: mask.data, width: mask.width, height: mask.height, score: item.score || item.confidence || 0 };
+        }).filter(Boolean);
+        const picked = chooseMaskAtPoint(candidates, point.x, point.y, W, H);
+        if (!picked) {
+          aiMask = null;
+          aiStatus.textContent = 'Объект в этой точке не найден. Попробуйте щёлкнуть по центру объекта или увеличить масштаб.';
+          scheduleDraw();
+          return;
+        }
+        aiMask = maskToEditorPixels(picked.data, picked.width, picked.height, W, H);
+        aiApply.disabled = false;
+        aiStatus.textContent = 'Объект выделен. Жёлтая область — предварительная маска. Нажмите «Добавить в слой» или отмените выделение.';
+        scheduleDraw();
+      } catch (error) {
+        aiStatus.textContent = 'Ошибка ИИ-выделения: ' + (error?.message || error);
+        console.error('MiniVR AI object selection', error);
+      } finally {
+        aiSelecting = false;
+        canvas.classList.remove('depth-ai-selecting');
+        aiButton.disabled = false;
+        aiCancel.disabled = !aiMask;
+      }
+    }
+    aiButton?.addEventListener('click', () => {
+      aiMask = null;
+      aiSelecting = true;
+      canvas.classList.add('depth-ai-selecting');
+      aiStatus.textContent = 'Щёлкните по объекту на панораме. ИИ определит его контур.';
+      aiApply.disabled = true;
+      aiCancel.disabled = false;
+      scheduleDraw();
+    });
+    aiApply?.addEventListener('click', () => {
+      if (!aiMask || !working || saving) return;
+      snapshot();
+      const pixels = working.data;
+      const target = Math.round(rawForLayer(selected, count(), nonlinear(), nonlinearStrength()) * 255);
+      for (let i = 0; i < aiMask.length; i++) {
+        const alpha = aiMask[i] / 255;
+        if (alpha < .08) continue;
+        const j = i * 4;
+        const value = Math.round(pixels[j] + (target - pixels[j]) * alpha);
+        pixels[j] = pixels[j + 1] = pixels[j + 2] = value;
+        pixels[j + 3] = 255;
+      }
+      aiMask = null; dirty = true;
+      aiApply.disabled = true; aiCancel.disabled = true;
+      aiStatus.textContent = 'Объект добавлен в слой ' + (selected + 1) + '. Проверьте края и сохраните карту.';
+      updateLayerList(); scheduleDraw();
+    });
+    aiCancel?.addEventListener('click', () => {
+      aiMask = null; aiSelecting = false; canvas.classList.remove('depth-ai-selecting');
+      aiApply.disabled = true; aiCancel.disabled = true;
+      aiStatus.textContent = 'Выделение отменено.';
+      scheduleDraw();
+    });
+
     canvas.addEventListener('pointerdown', e => {
       if (!working || saving || (e.button !== 0 && e.button !== 1)) return;
       e.preventDefault();
+      if (aiSelecting) { selectObjectAt(position(e)); return; }
       if (tool.value === 'pan' || spaceDown || e.button === 1) {
         panning = true;
         panStart = { x: e.clientX, y: e.clientY, panX, panY };
@@ -325,6 +433,7 @@ if (panel) {
         positionStage();
         return;
       }
+      if (aiSelecting) return;
       if (!painting || !last) return;
       e.preventDefault();
       const p = position(e);
