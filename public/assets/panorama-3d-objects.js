@@ -33,7 +33,7 @@ export function styleModel(root,style,display='solid',bloomStrength=0){
    o.material=m;if(old&&old!==m){for(const m0 of (Array.isArray(old)?old:[old]))m0.dispose?.();}
   }
   if(display==='wireframe'){
-   const source=o.material,wireColor=source?.color?.clone?.()||new THREE.Color(0x8feaff);
+   const source=o.material,wireColor=source?.color?.clone?.()||new THREE.Color(0x8feaff);if(bloomStrength>0)wireColor.lerp(new THREE.Color(0xffffff),Math.min(.75,Number(bloomStrength)*.25));
    o.material=new THREE.MeshBasicMaterial({color:wireColor,wireframe:true,transparent:true,opacity:.96});
    for(const m0 of (Array.isArray(source)?source:[source]))m0?.dispose?.();
   }else if(bloomStrength>0){
