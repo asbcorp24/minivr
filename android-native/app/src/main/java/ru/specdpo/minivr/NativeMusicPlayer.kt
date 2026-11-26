@@ -22,10 +22,16 @@ class NativeMusicPlayer(private val resolve: (String?) -> String?) {
     fun isPlayingRequested(): Boolean = wantsPlay
 
     fun selectTrack(id: Int) {
+        // id=0 means this scene has no override: keep the current soundtrack.
+        if (id <= 0) return
         val next = tracks.indexOfFirst { it.id == id }
-        if (next < 0) { stop(); return }
+        if (next < 0) return
+        // Do not restart the same track on every scene transition.
+        if (next == index && player != null) return
         load(next, true)
     }
+
+    fun currentTrackId(): Int? = tracks.getOrNull(index)?.id
 
     fun skip(delta: Int): String? {
         if (tracks.isEmpty()) return null
