@@ -321,7 +321,7 @@ if(tour&&tourData.scenes.length){
 
 const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1100);
 effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);
-panoramaObjectSystem=createPanorama3DObjects(scene,camera,panoramaObjectData);
+createPanorama3DObjects(scene,camera,panoramaObjectData).then(system=>{panoramaObjectSystem=system;}).catch(error=>console.warn('MiniVR 3D objects unavailable',error));
 let renderer;
 try{
  renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'default',preserveDrawingBuffer:false});
