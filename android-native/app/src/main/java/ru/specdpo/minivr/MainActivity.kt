@@ -488,14 +488,17 @@ class MainActivity : Activity(), SensorEventListener {
             option("Музыка", "Воспроизведение / пауза", "♫", "Звук",
                 enabled = { music.hasTracks() }, active = { music.isPlayingRequested() }, toggle = true) {
                 music.toggle()
+                updateMusicButton()
             },
             option("Предыдущий трек", "Переключить музыку назад", "◀", "Звук",
                 enabled = { music.hasTracks() }) {
                 music.skip(-1)?.let { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() }
+                updateMusicButton()
             },
             option("Следующий трек", "Переключить музыку вперёд", "▶", "Звук",
                 enabled = { music.hasTracks() }) {
                 music.skip(1)?.let { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() }
+                updateMusicButton()
             },
             option("Список сцен", "Открыть маршрут экскурсии", "▦", "Экскурсия",
                 enabled = { tour != null }, close = true) {
