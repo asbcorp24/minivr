@@ -1444,10 +1444,12 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  if(tiledPanorama){tiledPanorama.dispose();tiledPanorama=null;}
  projection=nextProjection;stereoMode=nextStereo;effectSettings=nextSettings;
  parallaxDepthPixels=nextDepth;manualFoliageMaskImage=nextFoliage;manualWaterMaskImage=nextWater;
- effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();
+ effectSystem?.dispose();atmosphereSystem?.dispose();moonSystem?.dispose();environmentSystem?.dispose();panoramaObjectSystem?.dispose();panoramaObjectSystem=null;
  // Each effect module owns its animation state; fresh instances start with
  // the next panorama's settings. Legacy day-cycle globals no longer exist.
  effectSystem=createPanoramaEffects(scene,effectSettings);atmosphereSystem=createAtmosphere(scene,effectSettings);moonSystem=createMoonlight(scene,effectSettings);environmentSystem=createEnvironment(scene,effectSettings);
+ let nextObjects=[];try{nextObjects=JSON.parse(next.dataset.threeDObjects||'[]')}catch{}
+ panoramaObjectSystem=await createPanorama3DObjects(scene,camera,nextObjects);
  if(nextTiles){
   clearPanoramaMeshes();tiledPanorama=nextTiles;if(nextTiles.group)nextTiles.group.visible=true;
   if(getViewerMode()===ViewerMode.DESKTOP)camera.layers.set(0);
@@ -1463,7 +1465,7 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  hotspotData=nextHotspots;
  hotspotData.forEach(hotspotSprite);
  closePanels();menuPage=Math.max(0,Math.floor(Math.max(0,tourData.current)/6));buildMenu();
- root.dataset.image=image;root.dataset.tiles=next.dataset.tiles||'';root.dataset.effects=next.dataset.effects||'{}';
+ root.dataset.image=image;root.dataset.tiles=next.dataset.tiles||'';root.dataset.effects=next.dataset.effects||'{}';root.dataset.threeDObjects=next.dataset.threeDObjects||'[]';
  root.dataset.projection=projection;root.dataset.stereo=stereoMode;
  root.dataset.scene=next.dataset.scene;root.dataset.musicTrack=next.dataset.musicTrack||'0';
  document.title=doc.title;
@@ -1602,6 +1604,7 @@ renderer.domElement.addEventListener('pointermove',event=>{
 });
 renderer.domElement.addEventListener('pointerleave',()=>depthPointer.set(0,0));
 guidedSetup();
+window.addEventListener('pagehide',()=>panoramaObjectSystem?.dispose(),{once:true});
 renderer.setAnimationLoop((time)=>{
  if(guidedTarget&&getViewerMode()===ViewerMode.DESKTOP&&!orientation){const delta=((guidedTarget.yaw-lon+540)%360)-180;lon+=delta*.045;lat+=(guidedTarget.pitch-lat)*.045;if(Math.abs(delta)<.12&&Math.abs(guidedTarget.pitch-lat)<.12)guidedTarget=null;}
  // GPU-side micro-motion for the nearest depth groups; no CPU texture updates.
