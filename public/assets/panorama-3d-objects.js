@@ -19,15 +19,29 @@ export function parseGLB(buffer){
  for(const node of json.nodes||[]){if(node.mesh===undefined)continue;const meshDef=json.meshes[node.mesh];for(const prim of meshDef.primitives||[]){if(prim.attributes?.POSITION===undefined)continue;const g=new THREE.BufferGeometry();const pos=accessor(prim.attributes.POSITION);g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(pos),3));if(prim.attributes.NORMAL!==undefined)g.setAttribute('normal',new THREE.BufferAttribute(new Float32Array(accessor(prim.attributes.NORMAL)),3));else g.computeVertexNormals();if(prim.attributes.TEXCOORD_0!==undefined)g.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(accessor(prim.attributes.TEXCOORD_0)),2));if(prim.indices!==undefined){const a=json.accessors[prim.indices],idx=accessor(prim.indices);g.setIndex(new THREE.BufferAttribute(new (component[a.componentType])(idx),1));}g.computeBoundingSphere();const mat=materials[prim.material]||new THREE.MeshStandardMaterial({color:0xb8c6df,metalness:.1,roughness:.7,side:THREE.DoubleSide});const mesh=new THREE.Mesh(g,mat);if(node.translation)mesh.position.fromArray(node.translation);if(node.rotation)mesh.quaternion.fromArray(node.rotation);if(node.scale)mesh.scale.fromArray(node.scale);root.add(mesh);}}
  if(!root.children.length)throw new Error('В GLB не найдены поддерживаемые mesh-примитивы');return root;
 }
-export function styleModel(root,style){
- if(style==='original')return;
- root.traverse(o=>{if(!o.isMesh)return;const old=o.material;const color=old.color?.clone()||new THREE.Color(0x9bdcff);let m;
- if(style==='wire')m=new THREE.MeshBasicMaterial({color,wireframe:true,transparent:true,opacity:.9});
- else if(style==='hologram')m=new THREE.MeshPhongMaterial({color:0x54dfff,emissive:0x087ba0,emissiveIntensity:1.2,transparent:true,opacity:.72,wireframe:false,side:THREE.DoubleSide});
- else if(style==='glass')m=new THREE.MeshPhysicalMaterial({color,metalness:.05,roughness:.08,transmission:.75,transparent:true,opacity:.72,thickness:.5,side:THREE.DoubleSide});
- else if(style==='glow')m=new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:1.5,metalness:.25,roughness:.35,side:THREE.DoubleSide});
- else m=new THREE.MeshStandardMaterial({color,metalness:.85,roughness:.22,side:THREE.DoubleSide});
- o.material=m;if(old!==m)old.dispose?.();
+export function styleModel(root,style,display='solid',bloomStrength=0){
+ root.traverse(o=>{
+  if(!o.isMesh)return;
+  const old=o.material,color=old?.color?.clone?.()||new THREE.Color(0x9bdcff);
+  if(style!=='original'){
+   let m;
+   if(style==='wire')m=new THREE.MeshBasicMaterial({color,wireframe:true,transparent:true,opacity:.9});
+   else if(style==='hologram')m=new THREE.MeshPhongMaterial({color:0x54dfff,emissive:0x087ba0,emissiveIntensity:1.2,transparent:true,opacity:.72,side:THREE.DoubleSide});
+   else if(style==='glass')m=new THREE.MeshPhysicalMaterial({color,metalness:.05,roughness:.08,transmission:.75,transparent:true,opacity:.72,thickness:.5,side:THREE.DoubleSide});
+   else if(style==='glow')m=new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:1.5,metalness:.25,roughness:.35,side:THREE.DoubleSide});
+   else m=new THREE.MeshStandardMaterial({color,metalness:.85,roughness:.22,side:THREE.DoubleSide});
+   o.material=m;if(old&&old!==m){for(const m0 of (Array.isArray(old)?old:[old]))m0.dispose?.();}
+  }
+  if(display==='wireframe'){
+   const source=o.material,wireColor=source?.color?.clone?.()||new THREE.Color(0x8feaff);if(bloomStrength>0)wireColor.lerp(new THREE.Color(0xffffff),Math.min(.75,Number(bloomStrength)*.25));
+   o.material=new THREE.MeshBasicMaterial({color:wireColor,wireframe:true,transparent:true,opacity:.96});
+   for(const m0 of (Array.isArray(source)?source:[source]))m0?.dispose?.();
+  }else if(bloomStrength>0){
+   for(const m0 of (Array.isArray(o.material)?o.material:[o.material])){
+    if('emissive' in m0){m0.emissive.copy(m0.color||new THREE.Color(0xffffff));m0.emissiveIntensity=Math.min(2.5,.35+Number(bloomStrength)*.55);}
+    else if(m0.color)m0.color.lerp(new THREE.Color(0xffffff),Math.min(.45,Number(bloomStrength)*.12));
+   }
+  }
  });
 }
 export async function createPanorama3DObjects(scene,camera,items=[]){
@@ -41,6 +55,6 @@ export async function createPanorama3DObjects(scene,camera,items=[]){
   if('environmentIntensity' in scene)scene.environmentIntensity=1.35;
  }
  const anchor=new THREE.Group();anchor.name='MiniVR panorama 3D objects';anchor.layers.enableAll();scene.add(anchor);const entries=[];
- for(const item of items){try{const response=await fetch(item.url,{credentials:'same-origin'});if(!response.ok)throw new Error('HTTP '+response.status);const buffer=await response.arrayBuffer();const ext=(item.format||item.url.split('.').pop()).toLowerCase();const root=ext==='stl'?new THREE.Mesh(parseSTL(buffer),new THREE.MeshStandardMaterial({color:0xb9c8dc,metalness:.25,roughness:.55})):parseGLB(buffer);styleModel(root,item.style||'standard');const holder=new THREE.Group();holder.add(root);holder.traverse(node=>node.layers.enableAll());const box=new THREE.Box3().setFromObject(root),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());root.position.sub(center);const max=Math.max(size.x,size.y,size.z)||1;const scale=THREE.MathUtils.clamp(Number(item.scale)||1,.001,100)/max;holder.scale.setScalar(scale);holder.position.set(Number(item.x)||0,Number(item.y)||0,-Math.max(1,Number(item.distance)||24));holder.rotation.set(THREE.MathUtils.degToRad(Number(item.rotX)||0),THREE.MathUtils.degToRad(Number(item.rotY)||0),THREE.MathUtils.degToRad(Number(item.rotZ)||0));holder.visible=item.visible!==false;anchor.add(holder);entries.push({holder,item});}catch(error){console.warn('MiniVR 3D object load failed',item.name,error);}}
+ for(const item of items){try{const response=await fetch(item.url,{credentials:'same-origin'});if(!response.ok)throw new Error('HTTP '+response.status);const buffer=await response.arrayBuffer();const ext=(item.format||item.url.split('.').pop()).toLowerCase();const root=ext==='stl'?new THREE.Mesh(parseSTL(buffer),new THREE.MeshStandardMaterial({color:0xb9c8dc,metalness:.25,roughness:.55})):parseGLB(buffer);styleModel(root,item.style||'original',item.display||'solid',item.bloom?Number(item.bloomStrength)||1.2:0);const holder=new THREE.Group();holder.add(root);holder.traverse(node=>node.layers.enableAll());const box=new THREE.Box3().setFromObject(root),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());root.position.sub(center);const max=Math.max(size.x,size.y,size.z)||1;const scale=THREE.MathUtils.clamp(Number(item.scale)||1,.001,100)/max;holder.scale.setScalar(scale);holder.position.set(Number(item.x)||0,Number(item.y)||0,-Math.max(1,Number(item.distance)||24));holder.rotation.set(THREE.MathUtils.degToRad(Number(item.rotX)||0),THREE.MathUtils.degToRad(Number(item.rotY)||0),THREE.MathUtils.degToRad(Number(item.rotZ)||0));holder.visible=item.visible!==false;anchor.add(holder);entries.push({holder,item});}catch(error){console.warn('MiniVR 3D object load failed',item.name,error);}}
  let last=0;return {update(time){camera.getWorldPosition(anchor.position);camera.getWorldQuaternion(anchor.quaternion);const dt=last?Math.min(.05,(time-last)/1000):0;last=time;for(const e of entries){const i=e.item;if(i.spin){e.holder.rotation.x+=dt*(Number(i.spinX)||0);e.holder.rotation.y+=dt*(Number(i.spinY)||.35);e.holder.rotation.z+=dt*(Number(i.spinZ)||0);}}},dispose(){scene.remove(anchor);if(generatedEnvironment){scene.environment=null;generatedEnvironment.dispose();}anchor.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){for(const m of (Array.isArray(o.material)?o.material:[o.material])){m.map?.dispose?.();m.dispose?.();}}});}};
 }

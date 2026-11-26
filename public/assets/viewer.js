@@ -1,3 +1,4 @@
+import {createBloomPipeline} from '/assets/panorama-bloom.js';
 import {createPanorama3DObjects} from '/assets/panorama-3d-objects.js';
 import {createEnvironment} from '/assets/panorama-environment.js';
 import {createMoonlight} from '/assets/panorama-moonlight.js';
@@ -38,6 +39,7 @@ let effectSettings={};try{effectSettings=JSON.parse(root.dataset.effects||'{}')}
 effectSettings.timeOfDay=false;effectSettings.dayCycle=false;
 let effectSystem=null,atmosphereSystem=null,moonSystem=null,environmentSystem=null,lastEffectTime=0;
 let panoramaObjectSystem=null;let panoramaObjectData=[];try{panoramaObjectData=JSON.parse(root.getAttribute('data-3d-objects')||'[]')}catch(e){}
+let bloomPipeline=null;let bloomStrength=panoramaObjectData.filter(o=>o.bloom&&o.visible!==false).reduce((m,o)=>Math.max(m,Number(o.bloomStrength)||1.2),0);
 // Opt-in diagnostics: /viewer.php?id=...&effects_debug=1
 if(new URLSearchParams(location.search).has('effects_debug')){
  const diagnostic=document.createElement('pre');
@@ -325,6 +327,7 @@ createPanorama3DObjects(scene,camera,panoramaObjectData).then(system=>{panoramaO
 let renderer;
 try{
  renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'default',preserveDrawingBuffer:false});
+ bloomPipeline=createBloomPipeline(renderer);
  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
  renderer.xr.enabled=true;
  root.appendChild(renderer.domElement);
@@ -1465,7 +1468,7 @@ async function switchSceneInPlace(url,{pushHistory=true}={}){
  hotspotData=nextHotspots;
  hotspotData.forEach(hotspotSprite);
  closePanels();menuPage=Math.max(0,Math.floor(Math.max(0,tourData.current)/6));buildMenu();
- root.dataset.image=image;root.dataset.tiles=next.dataset.tiles||'';root.dataset.effects=next.dataset.effects||'{}';root.setAttribute('data-3d-objects',next.getAttribute('data-3d-objects')||'[]');
+ root.dataset.image=image;root.dataset.tiles=next.dataset.tiles||'';root.dataset.effects=next.dataset.effects||'{}';root.setAttribute('data-3d-objects',next.getAttribute('data-3d-objects')||'[]');try{panoramaObjectData=JSON.parse(root.getAttribute('data-3d-objects')||'[]')}catch{panoramaObjectData=[]}bloomStrength=panoramaObjectData.filter(o=>o.bloom&&o.visible!==false).reduce((m,o)=>Math.max(m,Number(o.bloomStrength)||1.2),0);
  root.dataset.projection=projection;root.dataset.stereo=stereoMode;
  root.dataset.scene=next.dataset.scene;root.dataset.musicTrack=next.dataset.musicTrack||'0';
  document.title=doc.title;
@@ -1604,7 +1607,7 @@ renderer.domElement.addEventListener('pointermove',event=>{
 });
 renderer.domElement.addEventListener('pointerleave',()=>depthPointer.set(0,0));
 guidedSetup();
-window.addEventListener('pagehide',()=>panoramaObjectSystem?.dispose(),{once:true});
+window.addEventListener('pagehide',()=>{panoramaObjectSystem?.dispose();bloomPipeline?.dispose();},{once:true});
 renderer.setAnimationLoop((time)=>{
  if(guidedTarget&&getViewerMode()===ViewerMode.DESKTOP&&!orientation){const delta=((guidedTarget.yaw-lon+540)%360)-180;lon+=delta*.045;lat+=(guidedTarget.pitch-lat)*.045;if(Math.abs(delta)<.12&&Math.abs(guidedTarget.pitch-lat)<.12)guidedTarget=null;}
  // GPU-side micro-motion for the nearest depth groups; no CPU texture updates.
@@ -1688,6 +1691,6 @@ renderer.setAnimationLoop((time)=>{
  if(mode===ViewerMode.DESKTOP&&!orientation){const phi=THREE.MathUtils.degToRad(90-lat),theta=THREE.MathUtils.degToRad(lon);camera.lookAt(500*Math.sin(phi)*Math.cos(theta),500*Math.cos(phi),500*Math.sin(phi)*Math.sin(theta))}
  if(mode===ViewerMode.WEBXR){syncXREyes();updateGaze();renderer.render(scene,camera);return}
  if(mode===ViewerMode.CARDBOARD){updateCardboardGaze();if(legacyCardboard)legacyVREffect.render(scene,camera);else renderCardboard();return}
- renderer.render(scene,camera);
+ if(bloomStrength>0&&mode===ViewerMode.DESKTOP&&!orientation)bloomPipeline?.render(scene,camera,bloomStrength);else renderer.render(scene,camera);
 });
 setTimeout(()=>document.querySelector('#viewer-help')?.classList.add('hide'),4200);

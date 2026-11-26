@@ -1,3 +1,4 @@
+import {createBloomPipeline} from '/assets/panorama-bloom.js';
 import * as THREE from '/assets/vendor/three/three.module.js';
 import {parseSTL,parseGLB,styleModel} from '/assets/panorama-3d-objects.js';
 
@@ -12,7 +13,7 @@ document.querySelectorAll('.object-stage').forEach(async stage=>{
  const scene=new THREE.Scene();scene.background=new THREE.Color(0x07131e);
  const envCanvas=document.createElement('canvas');envCanvas.width=1024;envCanvas.height=512;const envCtx=envCanvas.getContext('2d');const envGrad=envCtx.createLinearGradient(0,0,0,512);envGrad.addColorStop(0,'#c6d6e8');envGrad.addColorStop(.38,'#52677e');envGrad.addColorStop(.58,'#111c2a');envGrad.addColorStop(1,'#8297aa');envCtx.fillStyle=envGrad;envCtx.fillRect(0,0,1024,512);for(const [x,y,w,h] of [[100,75,180,28],[390,45,120,42],[690,90,210,24],[260,300,240,18],[760,340,150,24]]){envCtx.fillStyle='#ffffff';envCtx.shadowColor='#ffffff';envCtx.shadowBlur=28;envCtx.fillRect(x,y,w,h);envCtx.shadowBlur=0;}const envTexture=new THREE.CanvasTexture(envCanvas);envTexture.mapping=THREE.EquirectangularReflectionMapping;envTexture.colorSpace=THREE.SRGBColorSpace;scene.environment=envTexture;
  const camera=new THREE.PerspectiveCamera(48,1,.1,1000);camera.position.set(0,0,0);camera.lookAt(0,0,-30);
- const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false});renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.7));renderer.outputColorSpace=THREE.SRGBColorSpace;
+ const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false});renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.7));renderer.outputColorSpace=THREE.SRGBColorSpace;const bloomPipeline=createBloomPipeline(renderer);
  scene.add(new THREE.HemisphereLight(0xc9eaff,0x172033,2.1));
  const key=new THREE.DirectionalLight(0xffffff,2.2);key.position.set(-5,8,7);scene.add(key);
  const fill=new THREE.PointLight(0x42bfff,35,100);fill.position.set(5,2,-12);scene.add(fill);
@@ -29,13 +30,17 @@ document.querySelectorAll('.object-stage').forEach(async stage=>{
  try{
   const response=await fetch(stage.dataset.modelUrl,{credentials:'same-origin'});if(!response.ok)throw new Error('HTTP '+response.status);
   const buffer=await response.arrayBuffer();model=(stage.dataset.modelFormat||'glb')==='stl'?new THREE.Mesh(parseSTL(buffer),new THREE.MeshStandardMaterial({color:0x9bc8df,metalness:.25,roughness:.5})):parseGLB(buffer);
-  styleModel(model,stage.dataset.modelStyle||'standard');const bounds=new THREE.Box3().setFromObject(model);const size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());boxSize=Math.max(size.x,size.y,size.z)||1;model.position.sub(center);group.add(model);
+  styleModel(model,fields.style?.value||stage.dataset.modelStyle||'original',fields.display?.value||stage.dataset.modelDisplay||'solid',fields.bloom?.checked?(Number(fields.bloomStrength?.value)||1.2):0);const bounds=new THREE.Box3().setFromObject(model);const size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());boxSize=Math.max(size.x,size.y,size.z)||1;model.position.sub(center);group.add(model);
   const wire=new THREE.Box3Helper(new THREE.Box3(new THREE.Vector3(-boxSize/2,-boxSize/2,-boxSize/2),new THREE.Vector3(boxSize/2,boxSize/2,boxSize/2)),0x4ecdf2);wire.visible=false;group.add(wire);
   apply();sync();if(status)status.textContent='Модель загружена. Голубая точка — камера; сетка — ориентир сцены.';
  }catch(e){if(status)status.textContent='Не удалось показать модель: '+e.message;console.warn('3D object editor preview',e);}
- const render=now=>{if(disposed)return;raf=requestAnimationFrame(render);const dt=last?Math.min(.05,(now-last)/1000):0;last=now;if(fields.spin?.checked)group.rotation.y+=dt*(Number(fields.spinY?.value)||.35);resize();renderer.render(scene,camera);};
+ const render=now=>{if(disposed)return;raf=requestAnimationFrame(render);const dt=last?Math.min(.05,(now-last)/1000):0;last=now;if(fields.spin?.checked)group.rotation.y+=dt*(Number(fields.spinY?.value)||.35);resize();if(fields.bloom?.checked)bloomPipeline.render(scene,camera,Number(fields.bloomStrength?.value)||1.2);else renderer.render(scene,camera);};
  raf=requestAnimationFrame(render);
  for(const [k,el] of Object.entries(controls)){el.addEventListener('input',()=>{write(k,Number(el.value));apply();});}
+ fields.display?.addEventListener('change',()=>{if(model){styleModel(model,fields.style?.value||stage.dataset.modelStyle||'original',fields.display.value);}});
+ fields.style?.addEventListener('change',()=>{if(model){styleModel(model,fields.style.value,fields.display?.value||'solid',fields.bloom?.checked?(Number(fields.bloomStrength?.value)||1.2):0);}});
+ fields.bloomStrength?.addEventListener('input',()=>{if(model)styleModel(model,fields.style?.value||'original',fields.display?.value||'solid',fields.bloom?.checked?(Number(fields.bloomStrength.value)||1.2):0);});fields.bloom?.addEventListener('change',()=>{if(model)styleModel(model,fields.style?.value||'original',fields.display?.value||'solid',fields.bloom.checked?(Number(fields.bloomStrength?.value)||1.2):0);});
+
  for(const k of ['x','y','distance','scale','rotX','rotY','rotZ'])fields[k]?.addEventListener('input',()=>{sync();apply();});
  const point=e=>{const rect=canvas.getBoundingClientRect();return {x:e.clientX-rect.left,y:e.clientY-rect.top,rect};};
  canvas.addEventListener('pointerdown',e=>{if(!model)return;const p=point(e);drag={x:p.x,y:p.y,ox:read('x'),oy:read('y')};canvas.setPointerCapture(e.pointerId);canvas.style.cursor='grabbing';});
@@ -45,6 +50,6 @@ document.querySelectorAll('.object-stage').forEach(async stage=>{
  stage.parentElement.querySelector('[data-center-model]')?.addEventListener('click',()=>{write('x',0);write('y',0);apply();});
  stage.parentElement.querySelector('[data-reset-view]')?.addEventListener('click',()=>{for(const [k,v] of Object.entries(initial))write(k,v);apply();});
  const observer=new ResizeObserver(resize);observer.observe(stage);
- window.addEventListener('pagehide',()=>{disposed=true;cancelAnimationFrame(raf);observer.disconnect();envTexture.dispose();scene.traverse(o=>{o.geometry?.dispose?.();if(o.material){for(const m of (Array.isArray(o.material)?o.material:[o.material]))m.dispose?.();}});renderer.dispose();},{once:true});
+ window.addEventListener('pagehide',()=>{disposed=true;cancelAnimationFrame(raf);observer.disconnect();bloomPipeline.dispose();envTexture.dispose();scene.traverse(o=>{o.geometry?.dispose?.();if(o.material){for(const m of (Array.isArray(o.material)?o.material:[o.material]))m.dispose?.();}});renderer.dispose();},{once:true});
  canvas.style.cursor='grab';
 });
