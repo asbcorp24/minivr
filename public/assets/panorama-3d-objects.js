@@ -20,6 +20,7 @@ export function parseGLB(buffer){
  if(!root.children.length)throw new Error('В GLB не найдены поддерживаемые mesh-примитивы');return root;
 }
 export function styleModel(root,style){
+ if(style==='original')return;
  root.traverse(o=>{if(!o.isMesh)return;const old=o.material;const color=old.color?.clone()||new THREE.Color(0x9bdcff);let m;
  if(style==='wire')m=new THREE.MeshBasicMaterial({color,wireframe:true,transparent:true,opacity:.9});
  else if(style==='hologram')m=new THREE.MeshPhongMaterial({color:0x54dfff,emissive:0x087ba0,emissiveIntensity:1.2,transparent:true,opacity:.72,wireframe:false,side:THREE.DoubleSide});
@@ -30,7 +31,16 @@ export function styleModel(root,style){
  });
 }
 export async function createPanorama3DObjects(scene,camera,items=[]){
+ // Provide a studio-like reflection environment so metallic GLB materials are visible.
+ let generatedEnvironment=null;
+ if(!scene.environment&&typeof document!=='undefined'){
+  const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=512;const ctx=canvas.getContext('2d');
+  const grad=ctx.createLinearGradient(0,0,0,512);grad.addColorStop(0,'#b8c8da');grad.addColorStop(.35,'#52677e');grad.addColorStop(.55,'#111c2a');grad.addColorStop(1,'#71869b');ctx.fillStyle=grad;ctx.fillRect(0,0,1024,512);
+  for(const [x,y,w,h] of [[100,75,180,28],[390,45,120,42],[690,90,210,24],[260,300,240,18],[760,340,150,24]]){ctx.fillStyle='rgba(255,255,255,.92)';ctx.shadowColor='#ffffff';ctx.shadowBlur=28;ctx.fillRect(x,y,w,h);ctx.shadowBlur=0;}
+  generatedEnvironment=new THREE.CanvasTexture(canvas);generatedEnvironment.mapping=THREE.EquirectangularReflectionMapping;generatedEnvironment.colorSpace=THREE.SRGBColorSpace;scene.environment=generatedEnvironment;
+  if('environmentIntensity' in scene)scene.environmentIntensity=1.35;
+ }
  const anchor=new THREE.Group();anchor.name='MiniVR panorama 3D objects';anchor.layers.enableAll();scene.add(anchor);const entries=[];
  for(const item of items){try{const response=await fetch(item.url,{credentials:'same-origin'});if(!response.ok)throw new Error('HTTP '+response.status);const buffer=await response.arrayBuffer();const ext=(item.format||item.url.split('.').pop()).toLowerCase();const root=ext==='stl'?new THREE.Mesh(parseSTL(buffer),new THREE.MeshStandardMaterial({color:0xb9c8dc,metalness:.25,roughness:.55})):parseGLB(buffer);styleModel(root,item.style||'standard');const holder=new THREE.Group();holder.add(root);holder.traverse(node=>node.layers.enableAll());const box=new THREE.Box3().setFromObject(root),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());root.position.sub(center);const max=Math.max(size.x,size.y,size.z)||1;const scale=THREE.MathUtils.clamp(Number(item.scale)||1,.001,100)/max;holder.scale.setScalar(scale);holder.position.set(Number(item.x)||0,Number(item.y)||0,-Math.max(1,Number(item.distance)||24));holder.rotation.set(THREE.MathUtils.degToRad(Number(item.rotX)||0),THREE.MathUtils.degToRad(Number(item.rotY)||0),THREE.MathUtils.degToRad(Number(item.rotZ)||0));holder.visible=item.visible!==false;anchor.add(holder);entries.push({holder,item});}catch(error){console.warn('MiniVR 3D object load failed',item.name,error);}}
- let last=0;return {update(time){camera.getWorldPosition(anchor.position);camera.getWorldQuaternion(anchor.quaternion);const dt=last?Math.min(.05,(time-last)/1000):0;last=time;for(const e of entries){const i=e.item;if(i.spin){e.holder.rotation.x+=dt*(Number(i.spinX)||0);e.holder.rotation.y+=dt*(Number(i.spinY)||.35);e.holder.rotation.z+=dt*(Number(i.spinZ)||0);}}},dispose(){scene.remove(anchor);anchor.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){for(const m of (Array.isArray(o.material)?o.material:[o.material])){m.map?.dispose?.();m.dispose?.();}}});}};
+ let last=0;return {update(time){camera.getWorldPosition(anchor.position);camera.getWorldQuaternion(anchor.quaternion);const dt=last?Math.min(.05,(time-last)/1000):0;last=time;for(const e of entries){const i=e.item;if(i.spin){e.holder.rotation.x+=dt*(Number(i.spinX)||0);e.holder.rotation.y+=dt*(Number(i.spinY)||.35);e.holder.rotation.z+=dt*(Number(i.spinZ)||0);}}},dispose(){scene.remove(anchor);if(generatedEnvironment){scene.environment=null;generatedEnvironment.dispose();}anchor.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){for(const m of (Array.isArray(o.material)?o.material:[o.material])){m.map?.dispose?.();m.dispose?.();}}});}};
 }
