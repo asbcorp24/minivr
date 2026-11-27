@@ -1116,6 +1116,26 @@ for(let i=0;i<2;i++){const ctl=renderer.xr.getController(i);const line=new THREE
 // Desktop wheel and mobile two-finger pinch zoom (perspective FOV, no texture resampling).
 const zoomMin=30,zoomMax=95,activeTouches=new Map();
 let pinchDistance=0,pinchFov=75;
+function seamSafeHalfAngle(){
+ if(effectSettings.hideSeamDuringRotation!==true||projection!=='360'||stereoMode!=='mono')return 0;
+ const canvas=renderer.domElement,width=Math.max(1,canvas.clientWidth||canvas.width||1);
+ const height=Math.max(1,canvas.clientHeight||canvas.height||1);
+ const aspect=width/height;
+ const halfFov=Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov||75)/2)*aspect);
+ return THREE.MathUtils.radToDeg(halfFov+halfFov*(15/width));
+}
+function clampYawAwayFromSeam(candidate,reference,direction=0){
+ const limit=seamSafeHalfAngle();
+ if(!limit)return candidate;
+ const wrap=a=>THREE.MathUtils.euclideanModulo(a+180,360)-180;
+ const relative=wrap(-candidate);
+ if(Math.abs(relative)>=limit)return candidate;
+ let side=Math.sign(wrap(-reference));
+ if(!side)side=direction>=0?-1:1;
+ // Keep the seam on the same side of the viewport while dragging.
+ const boundary=side>0?-limit:limit;
+ return wrap(-boundary);
+}
 const canZoom=()=>!cardboard&&!legacyCardboard&&!renderer.xr.isPresenting;
 function setZoom(fov){if(!canZoom())return;camera.fov=THREE.MathUtils.clamp(fov,zoomMin,zoomMax);camera.updateProjectionMatrix();}
 renderer.domElement.style.touchAction='none';
@@ -1131,7 +1151,7 @@ addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboa
   moved=true;
   if(getViewerMode()===ViewerMode.DESKTOP&&!orientation&&projection==='360'&&stereoMode==='mono'&&parallaxDepthPixels&&effectSettings.parallaxEnabled)stopDepthTranslationForRotation();
  }
- if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){lon=lon0+(x0-e.clientX)*.12;lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}
+ if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){const targetLon=lon0+(x0-e.clientX)*.12;lon=clampYawAwayFromSeam(targetLon,lon0,targetLon-lon0);lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}
 });
 addEventListener('pointercancel',()=>{down=false});
 addEventListener('blur',()=>{down=false});
