@@ -1116,35 +1116,78 @@ for(let i=0;i<2;i++){const ctl=renderer.xr.getController(i);const line=new THREE
 // Desktop wheel and mobile two-finger pinch zoom (perspective FOV, no texture resampling).
 const zoomMin=30,zoomMax=95,activeTouches=new Map();
 let pinchDistance=0,pinchFov=75;
-function seamSafeHalfAngle(){
- if(effectSettings.hideSeamDuringRotation!==true||projection!=='360'||stereoMode!=='mono')return 0;
- const canvas=renderer.domElement,width=Math.max(1,canvas.clientWidth||canvas.width||1);
- const height=Math.max(1,canvas.clientHeight||canvas.height||1);
- const aspect=width/height;
- const halfFov=Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov||75)/2)*aspect);
- const marginAngle=halfFov*(15/width);
- // Stop 15 CSS pixels INSIDE the visible viewport, not outside it.
- return THREE.MathUtils.radToDeg(Math.max(0,halfFov-marginAngle));
-}
 function seamDebugEnabled(){return window.MINIVR_SEAM_DEBUG===true||new URLSearchParams(window.location.search).get('debugSeam')==='1';}
 function seamDebug(event,data){if(seamDebugEnabled())console.info('[MiniVR seam]',event,{time:Math.round(performance.now()),...data});}
-function clampYawAtVisibleSeam(candidate,gestureStart=lon){
- const limit=seamSafeHalfAngle();
- if(!limit){seamDebug('guard-disabled',{setting:effectSettings.hideSeamDuringRotation,projection,stereoMode});return candidate;}
- const wrap=a=>THREE.MathUtils.euclideanModulo(a+180,360)-180;
- const seamAtStart=wrap(gestureStart),yawDelta=candidate-gestureStart,seamAtTarget=wrap(seamAtStart+yawDelta),epsilon=0.0001;
- let result=candidate,reason='allowed';
- if(Math.abs(seamAtStart)<limit-epsilon){
-  if(seamAtStart>epsilon&&yawDelta<0){result=gestureStart;reason='visible-seam-blocked-right-inward';}
-  else if(seamAtStart< -epsilon&&yawDelta>0){result=gestureStart;reason='visible-seam-blocked-left-inward';}
-  else reason='visible-seam-moving-outward';
- }else if(seamAtStart>=limit&&yawDelta<0&&seamAtTarget<limit){
-  result=gestureStart-(seamAtStart-limit);reason='right-edge-crossing-clamped';
- }else if(seamAtStart<=-limit&&yawDelta>0&&seamAtTarget> -limit){
-  result=gestureStart+(-limit-seamAtStart);reason='left-edge-crossing-clamped';
+let seamProbeCamera=null;
+const SEAM_SAFE_MARGIN_PX=15;
+function seamPenetrationAt(yaw,pitch){
+ const mesh=leftMesh||rightMesh;
+ if(!mesh?.geometry)return null;
+ const uv=mesh.geometry.getAttribute('uv'),position=mesh.geometry.getAttribute('position');
+ if(!uv||!position)return null;
+ if(!seamProbeCamera)seamProbeCamera=camera.clone();
+ // Recreate the exact desktop camera orientation used by the render loop,
+ // but at the candidate panorama rotation.
+ seamProbeCamera.copy(camera,false);
+ const phi=THREE.MathUtils.degToRad(90-pitch),theta=THREE.MathUtils.degToRad(yaw);
+ seamProbeCamera.position.copy(camera.position);
+ seamProbeCamera.lookAt(500*Math.sin(phi)*Math.cos(theta),500*Math.cos(phi),500*Math.sin(phi)*Math.sin(theta));
+ seamProbeCamera.updateMatrixWorld(true);
+ mesh.updateWorldMatrix(true,false);
+ const rect=renderer.domElement.getBoundingClientRect();
+ const width=Math.max(1,rect.width),height=Math.max(1,rect.height);
+ let maxDepth=0,samples=0,visibleSamples=0;
+ const p=new THREE.Vector3();
+ // SphereGeometry duplicates the first meridian at U=0 and U=1.
+ // Read the real, possibly depth-deformed seam vertices from the mesh.
+ for(let i=0;i<uv.count;i++){
+  if(uv.getX(i)>0.00001)continue;
+  p.fromBufferAttribute(position,i).applyMatrix4(mesh.matrixWorld).project(seamProbeCamera);
+  if(p.z < -1 || p.z > 1 || p.x < -1 || p.x > 1 || p.y < -1 || p.y > 1)continue;
+  const x=(p.x+1)*.5*width,y=(1-p.y)*.5*height;
+  if(x<0||x>width||y<0||y>height)continue;
+  visibleSamples++;
+  // Positive depth means the seam has moved more than 15px into the
+  // visible viewport. Zero means it is outside or within the safety strip.
+  const depth=Math.min(x,width-x,y,height-y);
+  maxDepth=Math.max(maxDepth,depth);
+  samples++;
  }
- seamDebug('manual-evaluate',{setting:effectSettings.hideSeamDuringRotation,projection,stereoMode,gestureStartYaw:gestureStart,currentYaw:lon,candidateYaw:candidate,resultYaw:result,yawDelta,seamAtStart,seamAtTarget,limitDegrees:limit,marginPx:15,reason,canvas:{width:renderer.domElement.clientWidth,height:renderer.domElement.clientHeight},fov:camera.fov});
- return result;
+ return {depth:maxDepth,samples,visibleSamples,width,height};
+}
+function limitRotationByProjectedSeam(candidateYaw,candidatePitch,currentYaw=lon,currentPitch=lat){
+ if(effectSettings.hideSeamDuringRotation!==true||projection!=='360'||stereoMode!=='mono')return {yaw:candidateYaw,pitch:candidatePitch,blocked:false,reason:'disabled'};
+ const current=seamPenetrationAt(currentYaw,currentPitch);
+ const candidate=seamPenetrationAt(candidateYaw,candidatePitch);
+ if(!current||!candidate){
+  seamDebug('geometry-unavailable',{hasMesh:!!(leftMesh||rightMesh),projection,stereoMode});
+  return {yaw:candidateYaw,pitch:candidatePitch,blocked:false,reason:'geometry-unavailable'};
+ }
+ const threshold=SEAM_SAFE_MARGIN_PX,epsilon=.25;
+ // If the seam is already inside the viewport, allow only movement that
+ // reduces its penetration. This always lets the user pull it back out.
+ if(current.depth>threshold+epsilon){
+  if(candidate.depth<current.depth-epsilon){
+   seamDebug('geometric-escape',{currentDepth:current.depth,candidateDepth:candidate.depth,threshold,from:{yaw:currentYaw,pitch:currentPitch},to:{yaw:candidateYaw,pitch:candidatePitch}});
+   return {yaw:candidateYaw,pitch:candidatePitch,blocked:false,reason:'moving-seam-outward'};
+  }
+  seamDebug('geometric-hold',{currentDepth:current.depth,candidateDepth:candidate.depth,threshold,from:{yaw:currentYaw,pitch:currentPitch},to:{yaw:candidateYaw,pitch:candidatePitch}});
+  return {yaw:currentYaw,pitch:currentPitch,blocked:true,reason:'seam-already-visible'};
+ }
+ if(candidate.depth<=threshold+epsilon)return {yaw:candidateYaw,pitch:candidatePitch,blocked:false,reason:'clear'};
+ // Find the last safe point along the actual camera rotation path.
+ let low=0,high=1;
+ for(let i=0;i<16;i++){
+  const mid=(low+high)*.5;
+  const testYaw=currentYaw+(candidateYaw-currentYaw)*mid;
+  const testPitch=currentPitch+(candidatePitch-currentPitch)*mid;
+  const test=seamPenetrationAt(testYaw,testPitch);
+  if(test&&test.depth<=threshold+epsilon)low=mid;else high=mid;
+ }
+ const yaw=currentYaw+(candidateYaw-currentYaw)*low;
+ const pitch=currentPitch+(candidatePitch-currentPitch)*low;
+ seamDebug('geometric-stop',{currentDepth:current.depth,candidateDepth:candidate.depth,threshold,resultDepth:seamPenetrationAt(yaw,pitch)?.depth,from:{yaw:currentYaw,pitch:currentPitch},requested:{yaw:candidateYaw,pitch:candidatePitch},result:{yaw,pitch}});
+ return {yaw,pitch,blocked:true,reason:'15px-screen-edge'};
 }
 const canZoom=()=>!cardboard&&!legacyCardboard&&!renderer.xr.isPresenting;
 function setZoom(fov){if(!canZoom())return;camera.fov=THREE.MathUtils.clamp(fov,zoomMin,zoomMax);camera.updateProjectionMatrix();}
@@ -1161,7 +1204,7 @@ addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboa
   moved=true;
   if(getViewerMode()===ViewerMode.DESKTOP&&!orientation&&projection==='360'&&stereoMode==='mono'&&parallaxDepthPixels&&effectSettings.parallaxEnabled)stopDepthTranslationForRotation();
  }
- if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){const targetLon=lon0+(x0-e.clientX)*.12;const guardedLon=clampYawAtVisibleSeam(targetLon,lon0);if(seamDebugEnabled()&&Math.abs(targetLon-guardedLon)>0.0001)seamDebug('manual-block-applied',{targetLon,guardedLon,previousLon:lon});lon=guardedLon;lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}
+ if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){const targetLon=lon0+(x0-e.clientX)*.12;const targetLat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12));const limited=limitRotationByProjectedSeam(targetLon,targetLat,lon,lat);if(limited.blocked)seamDebug('manual-block-applied',{targetLon,targetLat,resultYaw:limited.yaw,resultPitch:limited.pitch,reason:limited.reason});lon=limited.yaw;lat=limited.pitch}
 });
 addEventListener('pointerup',e=>{if(down)seamDebug('manual-end',{pointerType:e.pointerType,finalLon:lon,gestureStartLon:lon0,totalYaw:lon-lon0});down=false});
 addEventListener('pointercancel',e=>{seamDebug('manual-cancel',{pointerType:e.pointerType,finalLon:lon});down=false});
@@ -1649,29 +1692,12 @@ renderer.setAnimationLoop((time)=>{
   const dt=lastEffectTime?Math.min(.05,(time-lastEffectTime)/1000):0;
   const step=dt*Math.max(0,Math.min(10,Number(effectSettings.rotationSpeed)||1));
   if(effectSettings.hideSeamDuringRotation===true&&projection==='360'&&stereoMode==='mono'){
-   // SphereGeometry seam is at world longitude 0; auto-rotation moves it left.
-   const canvas=renderer.domElement;
-   const width=Math.max(1,canvas.clientWidth||canvas.width||1);
-   const aspect=width/Math.max(1,canvas.clientHeight||canvas.height||1);
-   const halfFov=Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov||75)/2)*aspect);
-   const margin=halfFov*(15/width);
-   const stopAngle=Math.max(0,halfFov-margin);
-   const wrapAngle=a=>THREE.MathUtils.euclideanModulo(a+Math.PI,Math.PI*2)-Math.PI;
-   const seam=wrapAngle(THREE.MathUtils.degToRad(-lon));
-   seamDebug('auto-state',{paused:seamRotationPaused,lon,seamRadians:seam,stopAngleRadians:stopAngle,stopAngleDegrees:THREE.MathUtils.radToDeg(stopAngle),step,setting:effectSettings.hideSeamDuringRotation});
-   if(seamRotationPaused){
-    // Hold until a manual drag resets the pause.
-   }else if(Math.abs(seam)<=stopAngle){
-    // If auto-rotation is enabled while the seam is already visible,
-    // do not rotate it across the whole image.
-    seamRotationPaused=true;
-   }else if(step>0){
-    const nextSeam=wrapAngle(THREE.MathUtils.degToRad(-(lon+step)));
-    // Positive lon moves the seam toward negative longitude.
-    if(seam>stopAngle&&nextSeam<=stopAngle){
-     lon=-THREE.MathUtils.radToDeg(stopAngle);
-     seamRotationPaused=true;
-    }else{
+   const limited=limitRotationByProjectedSeam(lon+step,lat,lon,lat);
+   lon=limited.yaw;
+   seamRotationPaused=limited.blocked;
+   if(limited.blocked)seamDebug('auto-geometric-stop',{lon,step,reason:limited.reason});
+   else if(seamDebugEnabled())seamDebug('auto-geometric-clear',{lon,step});
+  }else{
      lon+=step;
     }
    }
