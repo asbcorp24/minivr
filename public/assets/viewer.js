@@ -1140,8 +1140,8 @@ function clampYawAtVisibleSeam(candidate,gestureStart=lon){
  // Gesture starts with the seam visible: let the user move it OUT through
  // either edge, but never drag it farther through the visible picture.
  if(Math.abs(seamAtStart)<limit-epsilon){
-  if(seamAtStart>epsilon && yawDelta>0)return gestureStart;
-  if(seamAtStart< -epsilon && yawDelta<0)return gestureStart;
+  if(seamAtStart>epsilon && yawDelta<0)return gestureStart;
+  if(seamAtStart< -epsilon && yawDelta>0)return gestureStart;
   // At the centre either direction is valid; once outside, normal crossing
   // checks below no longer apply to this gesture.
   return candidate;
