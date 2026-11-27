@@ -24,3 +24,8 @@ const viewer=readFileSync(new URL('../public/assets/viewer.js',import.meta.url),
 assert.ok(!viewer.includes('seamSafeHalfAngle'), 'Viewer must not retain the removed yaw-based seam helper');
 assert.ok(viewer.includes('seamGeometry:seamPenetrationAt(lon,lat)'), 'Manual debug output must use the geometric seam measurement');
 console.log('Viewer seam debug integration checks passed');
+
+assert.ok(viewer.includes('rotationDirection=1'), 'Automatic rotation must track its current direction');
+assert.ok(viewer.includes('rotationDirection*=-1'), 'Automatic rotation must reverse direction when the seam guard blocks it');
+assert.ok(viewer.includes("auto-geometric-bounce"), 'A seam collision must be logged as a bounce, not a stop');
+
