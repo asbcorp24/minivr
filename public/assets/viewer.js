@@ -1152,36 +1152,49 @@ function seamPenetrationAt(yaw,pitch){
 function limitRotationByProjectedSeam(candidateYaw,candidatePitch,currentYaw=lon,currentPitch=lat){
  if(effectSettings.hideSeamDuringRotation!==true||projection!=='360'||stereoMode!=='mono')return {yaw:candidateYaw,pitch:candidatePitch,blocked:false,reason:'disabled'};
  const current=seamPenetrationAt(currentYaw,currentPitch);
- const candidate=seamPenetrationAt(candidateYaw,candidatePitch);
- if(!current||!candidate){
+ if(!current){
   seamDebug('geometry-unavailable',{hasMesh:!!(leftMesh||rightMesh),projection,stereoMode});
   return {yaw:candidateYaw,pitch:candidatePitch,blocked:false,reason:'geometry-unavailable'};
  }
  const threshold=SEAM_SAFE_MARGIN_PX,epsilon=.25;
- // If the seam is already inside the viewport, allow only movement that
- // reduces its penetration. This always lets the user pull it back out.
- if(current.depth>threshold+epsilon){
-  if(candidate.depth<current.depth-epsilon){
-   seamDebug('geometric-escape',{currentDepth:current.depth,candidateDepth:candidate.depth,threshold,from:{yaw:currentYaw,pitch:currentPitch},to:{yaw:candidateYaw,pitch:candidatePitch}});
-   return {yaw:candidateYaw,pitch:candidatePitch,blocked:false,reason:'moving-seam-outward'};
+ const deltaYaw=candidateYaw-currentYaw,deltaPitch=candidatePitch-currentPitch;
+ const steps=Math.max(1,Math.min(180,Math.ceil(Math.max(Math.abs(deltaYaw),Math.abs(deltaPitch))/2)));
+ let previousT=0,previousDepth=current.depth;
+ // Walk the real camera path in small angular increments. This prevents a
+ // fast drag from jumping over the visible seam and landing safely on its
+ // opposite side in a single pointer event.
+ for(let i=1;i<=steps;i++){
+  const t=i/steps,yaw=currentYaw+deltaYaw*t,pitch=currentPitch+deltaPitch*t;
+  const sample=seamPenetrationAt(yaw,pitch);
+  if(!sample)continue;
+  if(previousDepth>threshold+epsilon){
+   // If the seam is already too far inside the image, only permit steps
+   // that move it toward the nearest outside region.
+   if(sample.depth>=previousDepth-epsilon){
+    const safeT=previousT,safeYaw=currentYaw+deltaYaw*safeT,safePitch=currentPitch+deltaPitch*safeT;
+    seamDebug('geometric-escape-stop',{currentDepth:current.depth,previousDepth,sampleDepth:sample.depth,threshold,from:{yaw:currentYaw,pitch:currentPitch},requested:{yaw:candidateYaw,pitch:candidatePitch},result:{yaw:safeYaw,pitch:safePitch}});
+    return {yaw:safeYaw,pitch:safePitch,blocked:true,reason:'seam-not-moving-outward'};
+   }
+  }else if(sample.depth>threshold+epsilon){
+   // First entry beyond the 15px screen-edge line: binary-search the last
+   // safe point between the previous sample and this one.
+   let low=previousT,high=t;
+   for(let j=0;j<12;j++){
+    const mid=(low+high)*.5;
+    const test=seamPenetrationAt(currentYaw+deltaYaw*mid,currentPitch+deltaPitch*mid);
+    if(test&&test.depth<=threshold+epsilon)low=mid;else high=mid;
+   }
+   const resultYaw=currentYaw+deltaYaw*low,resultPitch=currentPitch+deltaPitch*low;
+   seamDebug('geometric-stop',{currentDepth:current.depth,candidateDepth:sample.depth,threshold,resultDepth:seamPenetrationAt(resultYaw,resultPitch)?.depth,from:{yaw:currentYaw,pitch:currentPitch},requested:{yaw:candidateYaw,pitch:candidatePitch},result:{yaw:resultYaw,pitch:resultPitch}});
+   return {yaw:resultYaw,pitch:resultPitch,blocked:true,reason:'15px-screen-edge'};
   }
-  seamDebug('geometric-hold',{currentDepth:current.depth,candidateDepth:candidate.depth,threshold,from:{yaw:currentYaw,pitch:currentPitch},to:{yaw:candidateYaw,pitch:candidatePitch}});
-  return {yaw:currentYaw,pitch:currentPitch,blocked:true,reason:'seam-already-visible'};
+  previousT=t;
+  previousDepth=sample.depth;
  }
- if(candidate.depth<=threshold+epsilon)return {yaw:candidateYaw,pitch:candidatePitch,blocked:false,reason:'clear'};
- // Find the last safe point along the actual camera rotation path.
- let low=0,high=1;
- for(let i=0;i<16;i++){
-  const mid=(low+high)*.5;
-  const testYaw=currentYaw+(candidateYaw-currentYaw)*mid;
-  const testPitch=currentPitch+(candidatePitch-currentPitch)*mid;
-  const test=seamPenetrationAt(testYaw,testPitch);
-  if(test&&test.depth<=threshold+epsilon)low=mid;else high=mid;
+ if(current.depth>threshold+epsilon){
+  seamDebug('geometric-escape',{currentDepth:current.depth,finalDepth:previousDepth,threshold,from:{yaw:currentYaw,pitch:currentPitch},to:{yaw:candidateYaw,pitch:candidatePitch}});
  }
- const yaw=currentYaw+(candidateYaw-currentYaw)*low;
- const pitch=currentPitch+(candidatePitch-currentPitch)*low;
- seamDebug('geometric-stop',{currentDepth:current.depth,candidateDepth:candidate.depth,threshold,resultDepth:seamPenetrationAt(yaw,pitch)?.depth,from:{yaw:currentYaw,pitch:currentPitch},requested:{yaw:candidateYaw,pitch:candidatePitch},result:{yaw,pitch}});
- return {yaw,pitch,blocked:true,reason:'15px-screen-edge'};
+ return {yaw:candidateYaw,pitch:candidatePitch,blocked:false,reason:current.depth>threshold+epsilon?'moving-seam-outward':'clear'};
 }
 const canZoom=()=>!cardboard&&!legacyCardboard&&!renderer.xr.isPresenting;
 function setZoom(fov){if(!canZoom())return;camera.fov=THREE.MathUtils.clamp(fov,zoomMin,zoomMax);camera.updateProjectionMatrix();}
