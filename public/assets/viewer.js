@@ -1698,10 +1698,6 @@ renderer.setAnimationLoop((time)=>{
    if(limited.blocked)seamDebug('auto-geometric-stop',{lon,step,reason:limited.reason});
    else if(seamDebugEnabled())seamDebug('auto-geometric-clear',{lon,step});
   }else{
-     lon+=step;
-    }
-   }
-  }else{
    seamRotationPaused=false;
    lon+=step;
   }
