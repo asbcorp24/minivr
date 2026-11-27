@@ -1130,12 +1130,12 @@ function clampYawAtVisibleSeam(candidate,reference,direction=0){
  const limit=seamSafeHalfAngle();
  if(!limit)return candidate;
  const wrap=a=>THREE.MathUtils.euclideanModulo(a+180,360)-180;
- const relative=wrap(-candidate);
- // Allow the seam to remain outside the viewport. Stop only when it
- // crosses the 15px inset line and would move farther into the visible image.
- if(Math.abs(relative)>=limit)return candidate;
- const side=Math.sign(relative)||Math.sign(-direction)||1;
- return wrap(-side*limit);
+ const from=wrap(-reference),to=wrap(-candidate);
+ // Block only movement FROM outside TOWARD the visible area. Movement
+ // away from the seam must remain free in both directions.
+ if(from>limit&&to<limit&&direction>0)return wrap(-limit);
+ if(from< -limit&&to> -limit&&direction<0)return wrap(limit);
+ return candidate;
 }
 const canZoom=()=>!cardboard&&!legacyCardboard&&!renderer.xr.isPresenting;
 function setZoom(fov){if(!canZoom())return;camera.fov=THREE.MathUtils.clamp(fov,zoomMin,zoomMax);camera.updateProjectionMatrix();}
@@ -1649,13 +1649,18 @@ renderer.setAnimationLoop((time)=>{
    const wrapAngle=a=>THREE.MathUtils.euclideanModulo(a+Math.PI,Math.PI*2)-Math.PI;
    const seam=wrapAngle(THREE.MathUtils.degToRad(-lon));
    if(seamRotationPaused){
-    // Resume only after the seam has moved back outside the viewport.
-    if(Math.abs(seam)>stopAngle+THREE.MathUtils.degToRad(.5))seamRotationPaused=false;
-   }
-   if(!seamRotationPaused&&step>0){
+    // Keep paused at the approached edge. Manual movement resets the pause.
+   }else if(step>0){
     const nextSeam=wrapAngle(THREE.MathUtils.degToRad(-(lon+step)));
-    if(Math.abs(nextSeam)<=stopAngle)seamRotationPaused=true;
-    else lon+=step;
+    // Auto rotation increases lon, so the seam moves toward negative
+    // longitude. Stop only when it ENTERS the viewport from the positive side.
+    if(seam>stopAngle&&nextSeam<=stopAngle){
+     const stopLon=-THREE.MathUtils.radToDeg(stopAngle);
+     lon=stopLon;
+     seamRotationPaused=true;
+    }else{
+     lon+=step;
+    }
    }
   }else{
    seamRotationPaused=false;
