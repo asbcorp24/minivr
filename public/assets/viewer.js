@@ -350,7 +350,7 @@ try{
  root.appendChild(notice);
  throw error;
 }
-let cardboard=false,lon=0,lat=0,down=false,x0=0,y0=0,lon0=0,lat0=0,orientation=false,leftMesh,rightMesh,seamRotationPaused=false;
+let cardboard=false,lon=0,lat=0,down=false,x0=0,y0=0,lon0=0,lat0=0,orientation=false,leftMesh,rightMesh,seamRotationPaused=false,rotationDirection=1;
 const cardboardStereo=new THREE.StereoCamera();cardboardStereo.eyeSep=.064;
 const legacyVREffect=new VREffect(renderer);const legacyVRControls=new VRControls(camera);let legacyVRDisplay=null,legacyCardboard=false;
 const ViewerMode=Object.freeze({DESKTOP:'desktop',CARDBOARD:'cardboard',WEBXR:'webxr'});
@@ -1699,11 +1699,16 @@ renderer.setAnimationLoop((time)=>{
   const dt=lastEffectTime?Math.min(.05,(time-lastEffectTime)/1000):0;
   const step=dt*Math.max(0,Math.min(10,Number(effectSettings.rotationSpeed)||1));
   if(effectSettings.hideSeamDuringRotation===true&&projection==='360'&&stereoMode==='mono'){
-   const limited=limitRotationByProjectedSeam(lon+step,lat,lon,lat);
+   const directedStep=step*rotationDirection;
+   const limited=limitRotationByProjectedSeam(lon+directedStep,lat,lon,lat);
    lon=limited.yaw;
-   seamRotationPaused=limited.blocked;
-   if(limited.blocked)seamDebug('auto-geometric-stop',{lon,step,reason:limited.reason});
-   else if(seamDebugEnabled())seamDebug('auto-geometric-clear',{lon,step});
+   seamRotationPaused=false;
+   if(limited.blocked){
+    // Bounce at the seam instead of freezing: the next animation frame
+    // travels back along the same path, away from the visible seam.
+    rotationDirection*=-1;
+    seamDebug('auto-geometric-bounce',{lon,step:directedStep,nextDirection:rotationDirection,reason:limited.reason});
+   }else if(seamDebugEnabled())seamDebug('auto-geometric-clear',{lon,step:directedStep});
   }else{
    seamRotationPaused=false;
    lon+=step;
