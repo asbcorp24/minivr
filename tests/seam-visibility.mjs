@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {seamViewportPenetration} from '../public/assets/seam-visibility.js';
 
 const width=400,height=300;
@@ -18,3 +19,8 @@ assert.deepEqual(seamViewportPenetration([{x:20,y:10},{x:410,y:20}],width,height
  'Only samples inside the viewport contribute');
 
 console.log('Projected panorama seam geometry tests passed');
+
+const viewer=readFileSync(new URL('../public/assets/viewer.js',import.meta.url),'utf8');
+assert.ok(!viewer.includes('seamSafeHalfAngle'), 'Viewer must not retain the removed yaw-based seam helper');
+assert.ok(viewer.includes('seamGeometry:seamPenetrationAt(lon,lat)'), 'Manual debug output must use the geometric seam measurement');
+console.log('Viewer seam debug integration checks passed');
