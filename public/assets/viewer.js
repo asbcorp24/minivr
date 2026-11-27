@@ -1126,36 +1126,25 @@ function seamSafeHalfAngle(){
  // Stop 15 CSS pixels INSIDE the visible viewport, not outside it.
  return THREE.MathUtils.radToDeg(Math.max(0,halfFov-marginAngle));
 }
+function seamDebugEnabled(){return window.MINIVR_SEAM_DEBUG===true||new URLSearchParams(window.location.search).get('debugSeam')==='1';}
+function seamDebug(event,data){if(seamDebugEnabled())console.info('[MiniVR seam]',event,{time:Math.round(performance.now()),...data});}
 function clampYawAtVisibleSeam(candidate,gestureStart=lon){
  const limit=seamSafeHalfAngle();
- if(!limit)return candidate;
+ if(!limit){seamDebug('guard-disabled',{setting:effectSettings.hideSeamDuringRotation,projection,stereoMode});return candidate;}
  const wrap=a=>THREE.MathUtils.euclideanModulo(a+180,360)-180;
- // Match the viewer's actual longitude convention: positive camera yaw
- // moves the visible seam toward positive screen longitude in this renderer.
- const seamAtStart=wrap(gestureStart);
- const yawDelta=candidate-gestureStart;
- const seamAtTarget=wrap(seamAtStart+yawDelta);
- const epsilon=0.0001;
-
- // Gesture starts with the seam visible: let the user move it OUT through
- // either edge, but never drag it farther through the visible picture.
+ const seamAtStart=wrap(gestureStart),yawDelta=candidate-gestureStart,seamAtTarget=wrap(seamAtStart+yawDelta),epsilon=0.0001;
+ let result=candidate,reason='allowed';
  if(Math.abs(seamAtStart)<limit-epsilon){
-  if(seamAtStart>epsilon && yawDelta<0)return gestureStart;
-  if(seamAtStart< -epsilon && yawDelta>0)return gestureStart;
-  // At the centre either direction is valid; once outside, normal crossing
-  // checks below no longer apply to this gesture.
-  return candidate;
+  if(seamAtStart>epsilon&&yawDelta<0){result=gestureStart;reason='visible-seam-blocked-right-inward';}
+  else if(seamAtStart< -epsilon&&yawDelta>0){result=gestureStart;reason='visible-seam-blocked-left-inward';}
+  else reason='visible-seam-moving-outward';
+ }else if(seamAtStart>=limit&&yawDelta<0&&seamAtTarget<limit){
+  result=gestureStart-(seamAtStart-limit);reason='right-edge-crossing-clamped';
+ }else if(seamAtStart<=-limit&&yawDelta>0&&seamAtTarget> -limit){
+  result=gestureStart+(-limit-seamAtStart);reason='left-edge-crossing-clamped';
  }
-
- // From the right side, negative yaw moves the seam into the image.
- if(seamAtStart>=limit && yawDelta<0 && seamAtTarget<limit){
-  return gestureStart-(seamAtStart-limit);
- }
- // From the left side, positive yaw moves the seam into the image.
- if(seamAtStart<=-limit && yawDelta>0 && seamAtTarget> -limit){
-  return gestureStart+(-limit-seamAtStart);
- }
- return candidate;
+ seamDebug('manual-evaluate',{setting:effectSettings.hideSeamDuringRotation,projection,stereoMode,gestureStartYaw:gestureStart,currentYaw:lon,candidateYaw:candidate,resultYaw:result,yawDelta,seamAtStart,seamAtTarget,limitDegrees:limit,marginPx:15,reason,canvas:{width:renderer.domElement.clientWidth,height:renderer.domElement.clientHeight},fov:camera.fov});
+ return result;
 }
 const canZoom=()=>!cardboard&&!legacyCardboard&&!renderer.xr.isPresenting;
 function setZoom(fov){if(!canZoom())return;camera.fov=THREE.MathUtils.clamp(fov,zoomMin,zoomMax);camera.updateProjectionMatrix();}
@@ -1166,15 +1155,16 @@ renderer.domElement.addEventListener('pointermove',e=>{if(!activeTouches.has(e.p
 const releaseTouch=e=>{activeTouches.delete(e.pointerId);if(activeTouches.size<2)pinchDistance=0;};
 renderer.domElement.addEventListener('pointerup',releaseTouch);
 renderer.domElement.addEventListener('pointercancel',releaseTouch);
-let moved=false;renderer.domElement.addEventListener('pointerdown',e=>{seamRotationPaused=false;down=true;moved=false;x0=e.clientX;y0=e.clientY;lon0=lon;lat0=lat});
+let moved=false;renderer.domElement.addEventListener('pointerdown',e=>{seamRotationPaused=false;down=true;moved=false;x0=e.clientX;y0=e.clientY;lon0=lon;lat0=lat;seamDebug('manual-start',{pointerType:e.pointerType,clientX:e.clientX,clientY:e.clientY,lon,lon0,setting:effectSettings.hideSeamDuringRotation,projection,stereoMode,limitDegrees:seamSafeHalfAngle()})});
 addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboard&&!renderer.xr.isPresenting){const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);activate(raycaster.intersectObjects(hotspotObjects,false)[0]?.object)}down=false});addEventListener('pointermove',e=>{
  if(down&&!moved&&(Math.abs(e.clientX-x0)>5||Math.abs(e.clientY-y0)>5)){
   moved=true;
   if(getViewerMode()===ViewerMode.DESKTOP&&!orientation&&projection==='360'&&stereoMode==='mono'&&parallaxDepthPixels&&effectSettings.parallaxEnabled)stopDepthTranslationForRotation();
  }
- if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){const targetLon=lon0+(x0-e.clientX)*.12;lon=clampYawAtVisibleSeam(targetLon,lon0);lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}
+ if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){const targetLon=lon0+(x0-e.clientX)*.12;const guardedLon=clampYawAtVisibleSeam(targetLon,lon0);if(seamDebugEnabled()&&Math.abs(targetLon-guardedLon)>0.0001)seamDebug('manual-block-applied',{targetLon,guardedLon,previousLon:lon});lon=guardedLon;lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}
 });
-addEventListener('pointercancel',()=>{down=false});
+addEventListener('pointerup',e=>{if(down)seamDebug('manual-end',{pointerType:e.pointerType,finalLon:lon,gestureStartLon:lon0,totalYaw:lon-lon0});down=false});
+addEventListener('pointercancel',e=>{seamDebug('manual-cancel',{pointerType:e.pointerType,finalLon:lon});down=false});
 addEventListener('blur',()=>{down=false});
 
 
@@ -1668,6 +1658,7 @@ renderer.setAnimationLoop((time)=>{
    const stopAngle=Math.max(0,halfFov-margin);
    const wrapAngle=a=>THREE.MathUtils.euclideanModulo(a+Math.PI,Math.PI*2)-Math.PI;
    const seam=wrapAngle(THREE.MathUtils.degToRad(-lon));
+   seamDebug('auto-state',{paused:seamRotationPaused,lon,seamRadians:seam,stopAngleRadians:stopAngle,stopAngleDegrees:THREE.MathUtils.radToDeg(stopAngle),step,setting:effectSettings.hideSeamDuringRotation});
    if(seamRotationPaused){
     // Hold until a manual drag resets the pause.
    }else if(Math.abs(seam)<=stopAngle){
