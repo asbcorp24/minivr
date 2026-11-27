@@ -1130,30 +1130,30 @@ function clampYawAtVisibleSeam(candidate,gestureStart=lon){
  const limit=seamSafeHalfAngle();
  if(!limit)return candidate;
  const wrap=a=>THREE.MathUtils.euclideanModulo(a+180,360)-180;
- // Camera yaw increases toward the right-hand side of the panorama;
- // the world-space seam therefore moves by the opposite angle.
- const seamAtStart=wrap(-gestureStart);
+ // Match the viewer's actual longitude convention: positive camera yaw
+ // moves the visible seam toward positive screen longitude in this renderer.
+ const seamAtStart=wrap(gestureStart);
  const yawDelta=candidate-gestureStart;
- const seamAtTarget=wrap(seamAtStart-yawDelta);
+ const seamAtTarget=wrap(seamAtStart+yawDelta);
  const epsilon=0.0001;
 
  // Gesture starts with the seam visible: let the user move it OUT through
  // either edge, but never drag it farther through the visible picture.
  if(Math.abs(seamAtStart)<limit-epsilon){
-  if(seamAtStart>epsilon && yawDelta>0)return gestureStart;
-  if(seamAtStart< -epsilon && yawDelta<0)return gestureStart;
+  if(seamAtStart>epsilon && yawDelta<0)return gestureStart;
+  if(seamAtStart< -epsilon && yawDelta>0)return gestureStart;
   // At the centre either direction is valid; once outside, normal crossing
   // checks below no longer apply to this gesture.
   return candidate;
  }
 
- // From the right side, positive yaw moves the seam into the image.
- if(seamAtStart>=limit && yawDelta>0 && seamAtTarget<limit){
-  return gestureStart+(seamAtStart-limit);
+ // From the right side, negative yaw moves the seam into the image.
+ if(seamAtStart>=limit && yawDelta<0 && seamAtTarget<limit){
+  return gestureStart-(seamAtStart-limit);
  }
- // From the left side, negative yaw moves the seam into the image.
- if(seamAtStart<=-limit && yawDelta<0 && seamAtTarget> -limit){
-  return gestureStart+(seamAtStart+limit);
+ // From the left side, positive yaw moves the seam into the image.
+ if(seamAtStart<=-limit && yawDelta>0 && seamAtTarget> -limit){
+  return gestureStart+(-limit-seamAtStart);
  }
  return candidate;
 }
