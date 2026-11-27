@@ -6,6 +6,7 @@ import {createAtmosphere} from '/assets/panorama-atmosphere.js';
 import {createPanoramaEffects} from '/assets/panorama-effects.js';
 import {createTiledPanorama} from '/assets/tiled-panorama.js';
 import {seamBlurAmount,installPanoramaSeamShader} from '/assets/panorama-seam-blur.js';
+import {seamViewportPenetration} from '/assets/seam-visibility.js';
 import {makeDepthRadiusField,canUseTiledDepth} from '/assets/depth-tile-geometry.js';
 import {createScenePreloader,fetchPreparedScene} from '/assets/scene-preloader.js';
 import {createDesktop3DWindow} from '/assets/desktop-3d-window.js';
@@ -1136,24 +1137,17 @@ function seamPenetrationAt(yaw,pitch){
  mesh.updateWorldMatrix(true,false);
  const rect=renderer.domElement.getBoundingClientRect();
  const width=Math.max(1,rect.width),height=Math.max(1,rect.height);
- let maxDepth=0,samples=0,visibleSamples=0;
- const p=new THREE.Vector3();
+ const projected=[],p=new THREE.Vector3();
  // SphereGeometry duplicates the first meridian at U=0 and U=1.
  // Read the real, possibly depth-deformed seam vertices from the mesh.
  for(let i=0;i<uv.count;i++){
   if(uv.getX(i)>0.00001)continue;
   p.fromBufferAttribute(position,i).applyMatrix4(mesh.matrixWorld).project(seamProbeCamera);
   if(p.z < -1 || p.z > 1 || p.x < -1 || p.x > 1 || p.y < -1 || p.y > 1)continue;
-  const x=(p.x+1)*.5*width,y=(1-p.y)*.5*height;
-  if(x<0||x>width||y<0||y>height)continue;
-  visibleSamples++;
-  // Positive depth means the seam has moved more than 15px into the
-  // visible viewport. Zero means it is outside or within the safety strip.
-  const depth=Math.min(x,width-x,y,height-y);
-  maxDepth=Math.max(maxDepth,depth);
-  samples++;
+  projected.push({x:(p.x+1)*.5*width,y:(1-p.y)*.5*height});
  }
- return {depth:maxDepth,samples,visibleSamples,width,height};
+ const visibility=seamViewportPenetration(projected,width,height);
+ return {...visibility,width,height};
 }
 function limitRotationByProjectedSeam(candidateYaw,candidatePitch,currentYaw=lon,currentPitch=lat){
  if(effectSettings.hideSeamDuringRotation!==true||projection!=='360'||stereoMode!=='mono')return {yaw:candidateYaw,pitch:candidatePitch,blocked:false,reason:'disabled'};
