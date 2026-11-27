@@ -1131,9 +1131,9 @@ function clampYawAtVisibleSeam(candidate,reference,direction=0){
  if(!limit)return candidate;
  const wrap=a=>THREE.MathUtils.euclideanModulo(a+180,360)-180;
  const relative=wrap(-candidate);
- // Permit the seam to travel across the image; clamp only when it reaches
- // the inner 15px safety line near either horizontal edge.
- if(Math.abs(relative)<=limit)return candidate;
+ // Allow the seam to remain outside the viewport. Stop only when it
+ // crosses the 15px inset line and would move farther into the visible image.
+ if(Math.abs(relative)>=limit)return candidate;
  const side=Math.sign(relative)||Math.sign(-direction)||1;
  return wrap(-side*limit);
 }
@@ -1649,13 +1649,12 @@ renderer.setAnimationLoop((time)=>{
    const wrapAngle=a=>THREE.MathUtils.euclideanModulo(a+Math.PI,Math.PI*2)-Math.PI;
    const seam=wrapAngle(THREE.MathUtils.degToRad(-lon));
    if(seamRotationPaused){
-    // Resume only after the user changes direction/position or the seam is
-    // moved away from the 15px inner stop line.
-    if(Math.abs(seam)<stopAngle-THREE.MathUtils.degToRad(.5))seamRotationPaused=false;
+    // Resume only after the seam has moved back outside the viewport.
+    if(Math.abs(seam)>stopAngle+THREE.MathUtils.degToRad(.5))seamRotationPaused=false;
    }
    if(!seamRotationPaused&&step>0){
     const nextSeam=wrapAngle(THREE.MathUtils.degToRad(-(lon+step)));
-    if(Math.abs(nextSeam)>=stopAngle)seamRotationPaused=true;
+    if(Math.abs(nextSeam)<=stopAngle)seamRotationPaused=true;
     else lon+=step;
    }
   }else{
