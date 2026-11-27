@@ -1122,19 +1122,20 @@ function seamSafeHalfAngle(){
  const height=Math.max(1,canvas.clientHeight||canvas.height||1);
  const aspect=width/height;
  const halfFov=Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov||75)/2)*aspect);
- return THREE.MathUtils.radToDeg(halfFov+halfFov*(15/width));
+ const marginAngle=halfFov*(15/width);
+ // Stop 15 CSS pixels INSIDE the visible viewport, not outside it.
+ return THREE.MathUtils.radToDeg(Math.max(0,halfFov-marginAngle));
 }
-function clampYawAwayFromSeam(candidate,reference,direction=0){
+function clampYawAtVisibleSeam(candidate,reference,direction=0){
  const limit=seamSafeHalfAngle();
  if(!limit)return candidate;
  const wrap=a=>THREE.MathUtils.euclideanModulo(a+180,360)-180;
  const relative=wrap(-candidate);
- if(Math.abs(relative)>=limit)return candidate;
- let side=Math.sign(wrap(-reference));
- if(!side)side=direction>=0?-1:1;
- // Keep the seam on the same side of the viewport while dragging.
- const boundary=side>0?-limit:limit;
- return wrap(-boundary);
+ // Permit the seam to travel across the image; clamp only when it reaches
+ // the inner 15px safety line near either horizontal edge.
+ if(Math.abs(relative)<=limit)return candidate;
+ const side=Math.sign(relative)||Math.sign(-direction)||1;
+ return wrap(-side*limit);
 }
 const canZoom=()=>!cardboard&&!legacyCardboard&&!renderer.xr.isPresenting;
 function setZoom(fov){if(!canZoom())return;camera.fov=THREE.MathUtils.clamp(fov,zoomMin,zoomMax);camera.updateProjectionMatrix();}
@@ -1151,7 +1152,7 @@ addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboa
   moved=true;
   if(getViewerMode()===ViewerMode.DESKTOP&&!orientation&&projection==='360'&&stereoMode==='mono'&&parallaxDepthPixels&&effectSettings.parallaxEnabled)stopDepthTranslationForRotation();
  }
- if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){const targetLon=lon0+(x0-e.clientX)*.12;lon=clampYawAwayFromSeam(targetLon,lon0,targetLon-lon0);lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}
+ if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){const targetLon=lon0+(x0-e.clientX)*.12;lon=clampYawAtVisibleSeam(targetLon,lon0,targetLon-lon0);lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}
 });
 addEventListener('pointercancel',()=>{down=false});
 addEventListener('blur',()=>{down=false});
@@ -1644,12 +1645,17 @@ renderer.setAnimationLoop((time)=>{
    const aspect=width/Math.max(1,canvas.clientHeight||canvas.height||1);
    const halfFov=Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov||75)/2)*aspect);
    const margin=halfFov*(15/width);
-   const seam=THREE.MathUtils.degToRad(THREE.MathUtils.euclideanModulo(-lon+180,360)-180);
-   const stopAngle=-(halfFov+margin);
-   if(seamRotationPaused||seam<=stopAngle)seamRotationPaused=true;
-   else if(step>0){
-    const nextSeam=THREE.MathUtils.degToRad(THREE.MathUtils.euclideanModulo(-(lon+step)+180,360)-180);
-    if(nextSeam<=stopAngle)seamRotationPaused=true;
+   const stopAngle=Math.max(0,halfFov-margin);
+   const wrapAngle=a=>THREE.MathUtils.euclideanModulo(a+Math.PI,Math.PI*2)-Math.PI;
+   const seam=wrapAngle(THREE.MathUtils.degToRad(-lon));
+   if(seamRotationPaused){
+    // Resume only after the user changes direction/position or the seam is
+    // moved away from the 15px inner stop line.
+    if(Math.abs(seam)<stopAngle-THREE.MathUtils.degToRad(.5))seamRotationPaused=false;
+   }
+   if(!seamRotationPaused&&step>0){
+    const nextSeam=wrapAngle(THREE.MathUtils.degToRad(-(lon+step)));
+    if(Math.abs(nextSeam)>=stopAngle)seamRotationPaused=true;
     else lon+=step;
    }
   }else{
