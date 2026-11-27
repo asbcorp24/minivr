@@ -1126,15 +1126,23 @@ function seamSafeHalfAngle(){
  // Stop 15 CSS pixels INSIDE the visible viewport, not outside it.
  return THREE.MathUtils.radToDeg(Math.max(0,halfFov-marginAngle));
 }
-function clampYawAtVisibleSeam(candidate,reference,direction=0){
+function clampYawAtVisibleSeam(candidate,current=lon){
  const limit=seamSafeHalfAngle();
  if(!limit)return candidate;
  const wrap=a=>THREE.MathUtils.euclideanModulo(a+180,360)-180;
- const from=wrap(-reference),to=wrap(-candidate);
- // Block only movement FROM outside TOWARD the visible area. Movement
- // away from the seam must remain free in both directions.
- if(from>limit&&to<limit&&direction>0)return wrap(-limit);
- if(from< -limit&&to> -limit&&direction<0)return wrap(limit);
+ const from=wrap(-current),to=wrap(-candidate);
+ const delta=wrap(to-from);
+ // If the seam is already inside the viewport, only allow it to move
+ // toward the nearest edge. Never let it travel farther through the image.
+ if(Math.abs(from)<limit){
+  const side=Math.sign(from)||Math.sign(delta)||1;
+  if(delta*side<0)return current;
+  return candidate;
+ }
+ // Outside the viewport: stop precisely at the 15px inset line when
+ // this movement crosses into the visible area.
+ if(from>=limit&&to<limit)return wrap(-limit);
+ if(from<=-limit&&to>-limit)return wrap(limit);
  return candidate;
 }
 const canZoom=()=>!cardboard&&!legacyCardboard&&!renderer.xr.isPresenting;
@@ -1152,7 +1160,7 @@ addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboa
   moved=true;
   if(getViewerMode()===ViewerMode.DESKTOP&&!orientation&&projection==='360'&&stereoMode==='mono'&&parallaxDepthPixels&&effectSettings.parallaxEnabled)stopDepthTranslationForRotation();
  }
- if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){const targetLon=lon0+(x0-e.clientX)*.12;lon=clampYawAtVisibleSeam(targetLon,lon0,targetLon-lon0);lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}
+ if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){const targetLon=lon0+(x0-e.clientX)*.12;lon=clampYawAtVisibleSeam(targetLon,lon);lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}
 });
 addEventListener('pointercancel',()=>{down=false});
 addEventListener('blur',()=>{down=false});
@@ -1649,14 +1657,16 @@ renderer.setAnimationLoop((time)=>{
    const wrapAngle=a=>THREE.MathUtils.euclideanModulo(a+Math.PI,Math.PI*2)-Math.PI;
    const seam=wrapAngle(THREE.MathUtils.degToRad(-lon));
    if(seamRotationPaused){
-    // Keep paused at the approached edge. Manual movement resets the pause.
+    // Hold until a manual drag resets the pause.
+   }else if(Math.abs(seam)<=stopAngle){
+    // If auto-rotation is enabled while the seam is already visible,
+    // do not rotate it across the whole image.
+    seamRotationPaused=true;
    }else if(step>0){
     const nextSeam=wrapAngle(THREE.MathUtils.degToRad(-(lon+step)));
-    // Auto rotation increases lon, so the seam moves toward negative
-    // longitude. Stop only when it ENTERS the viewport from the positive side.
+    // Positive lon moves the seam toward negative longitude.
     if(seam>stopAngle&&nextSeam<=stopAngle){
-     const stopLon=-THREE.MathUtils.radToDeg(stopAngle);
-     lon=stopLon;
+     lon=-THREE.MathUtils.radToDeg(stopAngle);
      seamRotationPaused=true;
     }else{
      lon+=step;
