@@ -349,7 +349,7 @@ try{
  root.appendChild(notice);
  throw error;
 }
-let cardboard=false,lon=0,lat=0,down=false,x0=0,y0=0,lon0=0,lat0=0,orientation=false,leftMesh,rightMesh;
+let cardboard=false,lon=0,lat=0,down=false,x0=0,y0=0,lon0=0,lat0=0,orientation=false,leftMesh,rightMesh,seamRotationPaused=false;
 const cardboardStereo=new THREE.StereoCamera();cardboardStereo.eyeSep=.064;
 const legacyVREffect=new VREffect(renderer);const legacyVRControls=new VRControls(camera);let legacyVRDisplay=null,legacyCardboard=false;
 const ViewerMode=Object.freeze({DESKTOP:'desktop',CARDBOARD:'cardboard',WEBXR:'webxr'});
@@ -1125,7 +1125,7 @@ renderer.domElement.addEventListener('pointermove',e=>{if(!activeTouches.has(e.p
 const releaseTouch=e=>{activeTouches.delete(e.pointerId);if(activeTouches.size<2)pinchDistance=0;};
 renderer.domElement.addEventListener('pointerup',releaseTouch);
 renderer.domElement.addEventListener('pointercancel',releaseTouch);
-let moved=false;renderer.domElement.addEventListener('pointerdown',e=>{down=true;moved=false;x0=e.clientX;y0=e.clientY;lon0=lon;lat0=lat});
+let moved=false;renderer.domElement.addEventListener('pointerdown',e=>{seamRotationPaused=false;down=true;moved=false;x0=e.clientX;y0=e.clientY;lon0=lon;lat0=lat});
 addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboard&&!renderer.xr.isPresenting){const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);activate(raycaster.intersectObjects(hotspotObjects,false)[0]?.object)}down=false});addEventListener('pointermove',e=>{
  if(down&&!moved&&(Math.abs(e.clientX-x0)>5||Math.abs(e.clientY-y0)>5)){
   moved=true;
@@ -1616,7 +1616,26 @@ renderer.setAnimationLoop((time)=>{
  effectSystem?.update(time,camera);atmosphereSystem?.update(time,camera);moonSystem?.update(time,camera);environmentSystem?.update(time,camera);panoramaObjectSystem?.update(time);
  if(getViewerMode()===ViewerMode.DESKTOP&&!down&&!orientation&&effectSettings.rotation){
   const dt=lastEffectTime?Math.min(.05,(time-lastEffectTime)/1000):0;
-  lon+=dt*Math.max(0,Math.min(10,Number(effectSettings.rotationSpeed)||1));
+  const step=dt*Math.max(0,Math.min(10,Number(effectSettings.rotationSpeed)||1));
+  if(effectSettings.hideSeamDuringRotation===true&&projection==='360'&&stereoMode==='mono'){
+   // SphereGeometry seam is at world longitude 0; auto-rotation moves it left.
+   const canvas=renderer.domElement;
+   const width=Math.max(1,canvas.clientWidth||canvas.width||1);
+   const aspect=width/Math.max(1,canvas.clientHeight||canvas.height||1);
+   const halfFov=Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov||75)/2)*aspect);
+   const margin=halfFov*(15/width);
+   const seam=THREE.MathUtils.degToRad(THREE.MathUtils.euclideanModulo(-lon+180,360)-180);
+   const stopAngle=-(halfFov+margin);
+   if(seamRotationPaused||seam<=stopAngle)seamRotationPaused=true;
+   else if(step>0){
+    const nextSeam=THREE.MathUtils.degToRad(THREE.MathUtils.euclideanModulo(-(lon+step)+180,360)-180);
+    if(nextSeam<=stopAngle)seamRotationPaused=true;
+    else lon+=step;
+   }
+  }else{
+   seamRotationPaused=false;
+   lon+=step;
+  }
  }
  lastEffectTime=time;
  const mode=getViewerMode();
