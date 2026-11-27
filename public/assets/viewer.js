@@ -1205,7 +1205,7 @@ renderer.domElement.addEventListener('pointermove',e=>{if(!activeTouches.has(e.p
 const releaseTouch=e=>{activeTouches.delete(e.pointerId);if(activeTouches.size<2)pinchDistance=0;};
 renderer.domElement.addEventListener('pointerup',releaseTouch);
 renderer.domElement.addEventListener('pointercancel',releaseTouch);
-let moved=false;renderer.domElement.addEventListener('pointerdown',e=>{seamRotationPaused=false;down=true;moved=false;x0=e.clientX;y0=e.clientY;lon0=lon;lat0=lat;seamDebug('manual-start',{pointerType:e.pointerType,clientX:e.clientX,clientY:e.clientY,lon,lon0,setting:effectSettings.hideSeamDuringRotation,projection,stereoMode,limitDegrees:seamSafeHalfAngle()})});
+let moved=false;renderer.domElement.addEventListener('pointerdown',e=>{seamRotationPaused=false;down=true;moved=false;x0=e.clientX;y0=e.clientY;lon0=lon;lat0=lat;seamDebug('manual-start',{pointerType:e.pointerType,clientX:e.clientX,clientY:e.clientY,lon,lon0,setting:effectSettings.hideSeamDuringRotation,projection,stereoMode,seamGeometry:seamPenetrationAt(lon,lat),marginPx:SEAM_SAFE_MARGIN_PX})});
 addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboard&&!renderer.xr.isPresenting){const r=renderer.domElement.getBoundingClientRect(),p=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);raycaster.setFromCamera(p,camera);activate(raycaster.intersectObjects(hotspotObjects,false)[0]?.object)}down=false});addEventListener('pointermove',e=>{
  if(down&&!moved&&(Math.abs(e.clientX-x0)>5||Math.abs(e.clientY-y0)>5)){
   moved=true;
