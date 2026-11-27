@@ -1126,23 +1126,35 @@ function seamSafeHalfAngle(){
  // Stop 15 CSS pixels INSIDE the visible viewport, not outside it.
  return THREE.MathUtils.radToDeg(Math.max(0,halfFov-marginAngle));
 }
-function clampYawAtVisibleSeam(candidate,current=lon){
+function clampYawAtVisibleSeam(candidate,gestureStart=lon){
  const limit=seamSafeHalfAngle();
  if(!limit)return candidate;
  const wrap=a=>THREE.MathUtils.euclideanModulo(a+180,360)-180;
- const from=wrap(-current),to=wrap(-candidate);
- const delta=wrap(to-from);
- // If the seam is already inside the viewport, only allow it to move
- // toward the nearest edge. Never let it travel farther through the image.
- if(Math.abs(from)<limit){
-  const side=Math.sign(from)||Math.sign(delta)||1;
-  if(delta*side<0)return current;
+ // Camera yaw increases toward the right-hand side of the panorama;
+ // the world-space seam therefore moves by the opposite angle.
+ const seamAtStart=wrap(-gestureStart);
+ const yawDelta=candidate-gestureStart;
+ const seamAtTarget=wrap(seamAtStart-yawDelta);
+ const epsilon=0.0001;
+
+ // Gesture starts with the seam visible: let the user move it OUT through
+ // either edge, but never drag it farther through the visible picture.
+ if(Math.abs(seamAtStart)<limit-epsilon){
+  if(seamAtStart>epsilon && yawDelta>0)return gestureStart;
+  if(seamAtStart< -epsilon && yawDelta<0)return gestureStart;
+  // At the centre either direction is valid; once outside, normal crossing
+  // checks below no longer apply to this gesture.
   return candidate;
  }
- // Outside the viewport: stop precisely at the 15px inset line when
- // this movement crosses into the visible area.
- if(from>=limit&&to<limit)return wrap(-limit);
- if(from<=-limit&&to>-limit)return wrap(limit);
+
+ // From the right side, positive yaw moves the seam into the image.
+ if(seamAtStart>=limit && yawDelta>0 && seamAtTarget<limit){
+  return gestureStart+(seamAtStart-limit);
+ }
+ // From the left side, negative yaw moves the seam into the image.
+ if(seamAtStart<=-limit && yawDelta<0 && seamAtTarget> -limit){
+  return gestureStart+(seamAtStart+limit);
+ }
  return candidate;
 }
 const canZoom=()=>!cardboard&&!legacyCardboard&&!renderer.xr.isPresenting;
@@ -1160,7 +1172,7 @@ addEventListener('pointerup',e=>{if(down&&!moved&&activeTouches.size<2&&!cardboa
   moved=true;
   if(getViewerMode()===ViewerMode.DESKTOP&&!orientation&&projection==='360'&&stereoMode==='mono'&&parallaxDepthPixels&&effectSettings.parallaxEnabled)stopDepthTranslationForRotation();
  }
- if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){const targetLon=lon0+(x0-e.clientX)*.12;lon=clampYawAtVisibleSeam(targetLon,lon);lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}
+ if(down&&activeTouches.size<2&&!orientation&&!desktop3DWindow.isDragging()){const targetLon=lon0+(x0-e.clientX)*.12;lon=clampYawAtVisibleSeam(targetLon,lon0);lat=Math.max(-85,Math.min(85,lat0+(e.clientY-y0)*.12))}
 });
 addEventListener('pointercancel',()=>{down=false});
 addEventListener('blur',()=>{down=false});
