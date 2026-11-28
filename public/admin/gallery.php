@@ -137,12 +137,12 @@ function galleryH(string $value): string { return htmlspecialchars($value,ENT_QU
 <div><small>РЕДАКТИРОВАНИЕ</small><h2 style="margin:5px 0 0">Название и описание</h2></div>
 <label>Название<input id="gallery-edit-title" name="title" maxlength="300" required value="<?=galleryH((string)$selected['title'])?>"></label>
 <label>Описание<textarea id="gallery-edit-description" name="description" maxlength="4000" placeholder="Описание изображения..."><?=galleryH((string)$selected['description'])?></textarea></label>
-<div class="gallery-actions"><button type="submit">СОХРАНИТЬ ИЗМЕНЕНИЯ</button><a class="btn" href="/viewer.php?id=<?=(int)$selected['id']?>" target="_blank" rel="noopener">ОТКРЫТЬ ПРОСМОТР</a></div>
+<div class="gallery-actions"><button type="submit">СОХРАНИТЬ ИЗМЕНЕНИЯ</button><a class="btn" id="gallery-view-link" href="/viewer.php?id=<?=(int)$selected['id']?>" target="_blank" rel="noopener">ОТКРЫТЬ ПРОСМОТР</a></div>
 </form>
-<div class="gallery-side"><small>ДЕЙСТВИЯ С ИЗОБРАЖЕНИЕМ</small><h3><?=galleryH((string)$selected['title'])?></h3>
-<p>Формат: <?=galleryH((string)$selected['projection'])?> · <?=galleryH((string)$selected['stereo'])?></p>
+<div class="gallery-side"><small>ДЕЙСТВИЯ С ИЗОБРАЖЕНИЕМ</small><h3 id="gallery-delete-title"><?=galleryH((string)$selected['title'])?></h3>
+<p id="gallery-format">Формат: <?=galleryH((string)$selected['projection'])?> · <?=galleryH((string)$selected['stereo'])?></p>
 <p>Удаление убирает панораму из каталога и экскурсий. Если исходный файл больше нигде не используется, он также удаляется с сервера.</p>
-<form method="post" action="/admin/gallery.php" onsubmit="return confirm('Удалить эту панораму? Она также будет удалена из связанных экскурсий. Это действие нельзя отменить.')">
+<form id="gallery-delete-form" method="post" action="/admin/gallery.php" onsubmit="return confirm('Удалить эту панораму? Она также будет удалена из связанных экскурсий. Это действие нельзя отменить.')">
 <input type="hidden" name="csrf" value="<?=galleryH($_SESSION['panorama_gallery_csrf'])?>">
 <input type="hidden" name="id" value="<?=(int)$selected['id']?>">
 <input type="hidden" name="action" value="delete">
@@ -156,7 +156,7 @@ const galleryItems=<?=json_encode(array_map(static fn($p)=>[
  'description'=>(string)$p['description'],
  'projection'=>(string)$p['projection'],
  'stereo'=>(string)$p['stereo'],
- 'src'=>panoramaThumbnailUrl((string)$p['image'],'large') ?: (string)$p['image'],
+ 'src'=>panoramaThumbnailUrl((string)$p['image'],'card') ?: (string)$p['image'],
  'published'=>(int)$p['published']===1
 ],$panos),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>;
 let galleryIndex=<?=$selectedIndex?>;
