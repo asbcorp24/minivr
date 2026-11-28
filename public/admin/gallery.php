@@ -25,9 +25,9 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     if ($action==='save') {
         $title=trim((string)($_POST['title'] ?? ''));
         $description=trim((string)($_POST['description'] ?? ''));
-        if ($title==='' || mb_strlen($title)>300) {
+        if ($title==='' || (function_exists('mb_strlen') ? mb_strlen($title) : strlen($title))>600) {
             $error='Название должно содержать от 1 до 300 символов.';
-        } elseif (mb_strlen($description)>4000) {
+        } elseif ((function_exists('mb_strlen') ? mb_strlen($description) : strlen($description))>8000) {
             $error='Описание не должно превышать 4000 символов.';
         } else {
             $q=$db->prepare('UPDATE panoramas SET title=?, description=? WHERE id=?');
@@ -122,7 +122,7 @@ function galleryH(string $value): string { return htmlspecialchars($value,ENT_QU
 <?php else:?>
 <section class="carousel" aria-label="Карусель изображений">
 <div class="stage">
-<img id="gallery-image" src="<?=galleryH(panoramaThumbnailUrl((string)($selected['image'] ?? ''),'large') ?: (string)$selected['image'])?>" alt="<?=galleryH((string)$selected['title'])?>">
+<img id="gallery-image" src="<?=galleryH(panoramaThumbnailUrl((string)($selected['image'] ?? ''),'card') ?: (string)$selected['image'])?>" alt="<?=galleryH((string)$selected['title'])?>">
 <button class="nav-arrow prev" type="button" aria-label="Предыдущее изображение" id="gallery-prev">‹</button>
 <button class="nav-arrow next" type="button" aria-label="Следующее изображение" id="gallery-next">›</button>
 </div>
@@ -135,8 +135,8 @@ function galleryH(string $value): string { return htmlspecialchars($value,ENT_QU
 <input type="hidden" name="id" value="<?=(int)$selected['id']?>">
 <input type="hidden" name="action" value="save">
 <div><small>РЕДАКТИРОВАНИЕ</small><h2 style="margin:5px 0 0">Название и описание</h2></div>
-<label>Название<input name="title" maxlength="300" required value="<?=galleryH((string)$selected['title'])?>"></label>
-<label>Описание<textarea name="description" maxlength="4000" placeholder="Описание изображения..."><?=galleryH((string)$selected['description'])?></textarea></label>
+<label>Название<input id="gallery-edit-title" name="title" maxlength="300" required value="<?=galleryH((string)$selected['title'])?>"></label>
+<label>Описание<textarea id="gallery-edit-description" name="description" maxlength="4000" placeholder="Описание изображения..."><?=galleryH((string)$selected['description'])?></textarea></label>
 <div class="gallery-actions"><button type="submit">СОХРАНИТЬ ИЗМЕНЕНИЯ</button><a class="btn" href="/viewer.php?id=<?=(int)$selected['id']?>" target="_blank" rel="noopener">ОТКРЫТЬ ПРОСМОТР</a></div>
 </form>
 <div class="gallery-side"><small>ДЕЙСТВИЯ С ИЗОБРАЖЕНИЕМ</small><h3><?=galleryH((string)$selected['title'])?></h3>
@@ -153,16 +153,19 @@ function galleryH(string $value): string { return htmlspecialchars($value,ENT_QU
 const galleryItems=<?=json_encode(array_map(static fn($p)=>[
  'id'=>(int)$p['id'],
  'title'=>(string)$p['title'],
+ 'description'=>(string)$p['description'],
+ 'projection'=>(string)$p['projection'],
+ 'stereo'=>(string)$p['stereo'],
  'src'=>panoramaThumbnailUrl((string)$p['image'],'large') ?: (string)$p['image'],
  'published'=>(int)$p['published']===1
 ],$panos),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>;
 let galleryIndex=<?=$selectedIndex?>;
-const image=document.getElementById('gallery-image'),title=document.getElementById('gallery-title'),position=document.getElementById('gallery-position'),prev=document.getElementById('gallery-prev'),next=document.getElementById('gallery-next'),dots=document.getElementById('gallery-dots');
+const image=document.getElementById('gallery-image'),title=document.getElementById('gallery-title'),editTitle=document.getElementById('gallery-edit-title'),editDescription=document.getElementById('gallery-edit-description'),deleteTitle=document.getElementById('gallery-delete-title'),format=document.getElementById('gallery-format'),viewLink=document.getElementById('gallery-view-link'),deleteForm=document.getElementById('gallery-delete-form'),position=document.getElementById('gallery-position'),prev=document.getElementById('gallery-prev'),next=document.getElementById('gallery-next'),dots=document.getElementById('gallery-dots');
 function showGalleryItem(index,updateUrl=true){
  if(!galleryItems.length)return;
  galleryIndex=(index+galleryItems.length)%galleryItems.length;
  const item=galleryItems[galleryIndex];
- image.src=item.src;image.alt=item.title;title.textContent=item.title;
+ image.src=item.src;image.alt=item.title;title.textContent=item.title;editTitle.value=item.title;editDescription.value=item.description;deleteTitle.textContent=item.title;format.textContent='Формат: '+item.projection+' · '+item.stereo;viewLink.href='/viewer.php?id='+item.id;document.querySelector('.gallery-form input[name=id]').value=item.id;deleteForm.querySelector('input[name=id]').value=item.id;
  position.textContent=(galleryIndex+1)+' / '+galleryItems.length;
  prev.disabled=galleryItems.length<2;next.disabled=galleryItems.length<2;
  [...dots.children].forEach((dot,i)=>dot.classList.toggle('active',i===galleryIndex));
